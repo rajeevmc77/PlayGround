@@ -144,3 +144,24 @@ def test_figure_falls_back_when_id_shares_no_prefix_with_any_citation():
     images = extract_images(content, citations, fallback_citation="nbc.divZ.part9.sect1")
     assert len(images) == 1
     assert images[0].owner_citation == "nbc.divZ.part9.sect1"
+
+
+def test_figure_without_id_is_skipped_not_crashed():
+    citations = {"nbc.divA.part1.sect1"}
+    content = {
+        "content": [
+            {
+                "type": "figure",
+                "graphic": {"src": "malformed", "alt_text": "No id"},
+            },
+            {
+                "type": "figure",
+                "id": "nbc.divA.part1.sect1.figGood",
+                "graphic": {"src": "good", "alt_text": "Good"},
+            },
+        ]
+    }
+    images = extract_images(content, citations, fallback_citation="nbc.divA.part1.sect1")
+    assert len(images) == 1
+    assert images[0].src == "good"
+    assert images[0].owner_citation == "nbc.divA.part1.sect1"

@@ -34,11 +34,14 @@ def _walk_figures(node):
 def extract_images(content: dict, citations: set[str], fallback_citation: str) -> list[WebImage]:
     images = []
     for figure in _walk_figures(content):
+        figure_id = figure.get("id")
+        if figure_id is None:
+            continue
         graphic = figure.get("graphic", {})
-        owner = _resolve_owner(figure["id"], citations, fallback_citation)
+        owner = _resolve_owner(figure_id, citations, fallback_citation)
         images.append(
             WebImage(
-                id=figure["id"],
+                id=figure_id,
                 src=graphic.get("src", ""),
                 alt_text=graphic.get("alt_text", ""),
                 owner_citation=owner,
