@@ -94,25 +94,32 @@ Run these and fix everything they report before calling a task complete:
 3. `vulture .`
 4. `pytest --cov=.` — all green, new branches covered
 
-Not yet wired up in this repo (no `pyproject.toml`/lint config, no test suite exists yet) —
-apply this checklist as tooling and tests are actually introduced, not retroactively to
-existing untested scripts.
+Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker for the
+real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
+`src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, and `tests/` — not the whole
+repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
+archived and intentionally exempt from this checklist. Apply the checklist to any of those
+only if/when they're actually touched, not retroactively.
 
 ## Verification commands (quiet flags)
 - Python: `pytest -q`
 
 ## New code or enhancements
-- This is not a git repo yet. Once it becomes one: create a new git worktree for any source
-  code change (use skill `superpowers:using-git-worktrees` to manage work in the worktree),
-  open a PR to merge back to main, then delete the worktree, local branch, and remote branch
-  after merge (`git branch -d <branch-name>` and `git push origin --delete <branch-name>`).
+- This is a git repo now. Create a new git worktree for any source code change (use skill
+  `superpowers:using-git-worktrees` to manage work in the worktree), open a PR to merge back
+  to main, then delete the worktree, local branch, and remote branch after merge
+  (`git branch -d <branch-name>` and `git push origin --delete <branch-name>`). This is
+  exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- No test suite or CI exists here yet, and this isn't a git repo yet either — most existing
-  code (the OAuth web app, the PDF indexer) was built as exploratory/ad hoc work, verified by
-  direct execution (`py_compile`, sample runs on page/data subsets before a full run) rather
-  than automated tests. The Workflow/Code standards/Definition of done above are the bar for
-  new work going forward; they don't retroactively apply to what's already there unless it's
-  being touched anyway.
+- A real test suite (91+ tests, `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
+  and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
+  (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
+  verified by direct execution (`py_compile`, sample runs on page/data subsets before a full
+  run) rather than automated tests; they're now archived-equivalent in spirit even though
+  `app.py` and `check_directory_access.py` themselves still live at their original paths.
+  The Workflow/Code standards/Definition of done above are the bar for new work going
+  forward; they don't retroactively apply to what's already there unless it's being touched
+  anyway.
 - Prefer testing a small sample first for anything that processes the full 1685-page PDF or
   the full Workspace directory, before running it against the whole thing.
