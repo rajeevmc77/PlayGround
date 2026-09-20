@@ -155,6 +155,19 @@ minutes; safe to delete and rebuild. Requires no local PDF or credentials.
 Then run `python src/serve_mo_toc.py` as usual — the "BC Code (Web)" tab reads this file if
 present, and shows a "not built yet" message otherwise.
 
+## 4. Unified document-level numbering
+
+Both `mo_toc.json` and `web_toc.json` trees carry a `unified_number` on every node — a
+purely positional `volume.division.part.section.subsection.article.sentence.clause.subclause`
+label, computed independently within each tree (1-based position among same-type
+siblings under the same parent). Node types outside those nine levels (front matter,
+appendices, notes, index/conversion pages, etc.) still get a number, using a short type
+marker plus their own position (e.g. `1.2.App1`). Because the PDF and website trees are
+shaped slightly differently (the website splits Part 9 - Housing into a second volume,
+the PDF does not), the same real section is not guaranteed to carry the same
+`unified_number` in both tabs — it's a per-tree outline number, not a cross-reference
+key. Shown in the viewer next to each tree row.
+
 ## Folder structure
 
 - `app.py` — the FastAPI directory/Drive app; stays in the project root as its own entry
@@ -166,6 +179,9 @@ present, and shows a "not built yet" message otherwise.
   - `build_mo_toc.py` — CLI entry point that runs the mo_toc parsing pipeline.
   - `serve_mo_toc.py` — CLI entry point that serves the interactive web viewer.
   - `check_directory_access.py` — standalone CLI tool (see above).
+  - `shared/` — small pure-function helpers with no dependency on either indexing
+    library, shared between `mo_toc/` and `web_toc/` (currently just the unified
+    document-level numbering algorithm).
   - All scripts anchor their file paths (credentials, token, PDF, output) to the project
     root, not the current working directory, so they run correctly regardless of where
     they're invoked from.
