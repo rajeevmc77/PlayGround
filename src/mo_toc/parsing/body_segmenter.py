@@ -10,6 +10,7 @@ clause markers from its confirmed subclause markers, (3) same-page indent vs.
 the immediately preceding clause, falling back to "clause" if nothing else
 applies.
 """
+
 import statistics
 
 from mo_toc.domain.models import BBox, Node
@@ -45,29 +46,56 @@ def _clause_subclause_x0s(group: list[BodyLine]) -> tuple[list[float], list[floa
     return clause_x, subclause_x
 
 
+def _resolve_by_threshold(pline: PageLine, threshold: float) -> str:
+    return "clause" if pline.x0 < threshold else "subclause"
+
+
+def _resolve_by_proximity(pline: PageLine, prev_clause_x0: float | None) -> str:
+    if prev_clause_x0 is not None and pline.x0 > prev_clause_x0 + 8:
+        return "subclause"
+    return "clause"
+
+
 def _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0):
     if kind != "ambiguous":
         return kind
     if token.lower() == next_letter:
         return "clause"
     if threshold is not None:
-        return "clause" if pline.x0 < threshold else "subclause"
-    if prev_clause_x0 is not None and pline.x0 > prev_clause_x0 + 8:
-        return "subclause"
-    return "clause"
+        return _resolve_by_threshold(pline, threshold)
+    return _resolve_by_proximity(pline, prev_clause_x0)
 
 
-def _build_sentence(group: list[BodyLine], article_citation: str, end_page: int) -> Node:
-    first_page_index, first_line = group[0]
-    token = RE_MARKER.match(first_line.text).group(1)
-    sentence = Node(type="Sentence", identifier=f"({token})",
-                     citation=f"{article_citation}({token})",
-                     title=first_line.text,
-                     page=first_page_index + 1, end_page=end_page, bbox=BBox(*first_line.bbox))
+def _sentence_threshold(clause_x: list[float], subclause_x: list[float]) -> float | None:
+    if not (clause_x and subclause_x):
+        return None
+    return (statistics.median(clause_x) + statistics.median(subclause_x)) / 2
 
+
+def _marker_node(
+    node_type: str, token: str, parent_citation: str, page_index: int, pline, end_page: int
+) -> Node:
+    identifier = f"({token.lower()})"
+    return Node(
+        type=node_type,
+        identifier=identifier,
+        citation=f"{parent_citation}{identifier}",
+        title=pline.text,
+        page=page_index + 1,
+        end_page=end_page,
+        bbox=BBox(*pline.bbox),
+    )
+
+
+def _advance_clause_state(pline: PageLine, token: str, next_letter: str) -> tuple[str, float]:
+    if len(token) == 1:
+        next_letter = chr(ord(token.lower()) + 1)
+    return next_letter, pline.x0
+
+
+def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: int) -> None:
     clause_x, subclause_x = _clause_subclause_x0s(group)
-    threshold = ((statistics.median(clause_x) + statistics.median(subclause_x)) / 2
-                 if clause_x and subclause_x else None)
+    threshold = _sentence_threshold(clause_x, subclause_x)
     next_letter, prev_clause_x0, cur_clause = "a", None, None
 
     for page_index, pline in group[1:]:
@@ -77,28 +105,41 @@ def _build_sentence(group: list[BodyLine], article_citation: str, end_page: int)
         token, kind = match.group(1), classify_marker(match.group(1))
         kind = _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0)
         if kind == "clause":
-            cur_clause = Node(type="Clause", identifier=f"({token.lower()})",
-                               citation=f"{sentence.citation}({token.lower()})",
-                               title=pline.text,
-                               page=page_index + 1, end_page=end_page, bbox=BBox(*pline.bbox))
+            cur_clause = _marker_node(
+                "Clause", token, sentence.citation, page_index, pline, end_page
+            )
             sentence.children.append(cur_clause)
-            prev_clause_x0 = pline.x0
-            if len(token) == 1:
-                next_letter = chr(ord(token.lower()) + 1)
-        elif kind == "subclause" and cur_clause is not None:
-            subclause = Node(type="Subclause", identifier=f"({token.lower()})",
-                              citation=f"{cur_clause.citation}({token.lower()})",
-                              title=pline.text,
-                              page=page_index + 1, end_page=end_page, bbox=BBox(*pline.bbox))
-            cur_clause.children.append(subclause)
+            next_letter, prev_clause_x0 = _advance_clause_state(pline, token, next_letter)
+            continue
+        if kind != "subclause" or cur_clause is None:
+            continue
+        subclause = _marker_node(
+            "Subclause", token, cur_clause.citation, page_index, pline, end_page
+        )
+        cur_clause.children.append(subclause)
+
+
+def _build_sentence(group: list[BodyLine], article_citation: str, end_page: int) -> Node:
+    first_page_index, first_line = group[0]
+    token = RE_MARKER.match(first_line.text).group(1)
+    sentence = Node(
+        type="Sentence",
+        identifier=f"({token})",
+        citation=f"{article_citation}({token})",
+        title=first_line.text,
+        page=first_page_index + 1,
+        end_page=end_page,
+        bbox=BBox(*first_line.bbox),
+    )
+    _add_markers_to_sentence(sentence, group, end_page)
     return sentence
 
 
-def segment_article_body(body_lines: list[BodyLine], article_citation: str,
-                          article_end_page: int) -> list[Node]:
+def segment_article_body(
+    body_lines: list[BodyLine], article_citation: str, article_end_page: int
+) -> list[Node]:
     groups = _split_into_sentence_groups(body_lines)
     sentences = [_build_sentence(g, article_citation, article_end_page) for g in groups]
     for i, sentence in enumerate(sentences):
-        sentence.end_page = (sentences[i + 1].page if i + 1 < len(sentences)
-                              else article_end_page)
+        sentence.end_page = sentences[i + 1].page if i + 1 < len(sentences) else article_end_page
     return sentences
