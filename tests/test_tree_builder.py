@@ -1,0 +1,119 @@
+from mo_toc.parsing.pdf_source import PageLine
+from mo_toc.parsing.tree_builder import build_tree
+
+
+class FakePdfSource:
+    """Minimal PdfSource stand-in: pages[i] is a list of PageLine for page i."""
+
+    def __init__(self, pages: list[list[PageLine]]):
+        self._pages = pages
+
+    @property
+    def page_count(self):
+        return len(self._pages)
+
+    def page_lines(self, page_index):
+        return self._pages[page_index]
+
+    def page_images(self, page_index):
+        return []
+
+    def extract_image(self, xref):
+        raise NotImplementedError
+
+
+def line(y0, x0, text, font):
+    return PageLine(bbox=(x0, y0, x0 + 300, y0 + 10), text=text, font=font)
+
+
+BLACK, BOLD, BODY = "Arial-Black", "Arial-BoldMT", "BookAntiqua"
+
+
+def _document_fixture():
+    return [
+        [line(50, 40, "Random front matter text.", BODY)],  # page 0: FrontMatter
+        [line(50, 40, "Division A", BLACK)],  # page 1
+        [
+            line(50, 40, "Part 1", BLACK),
+            line(70, 40, "Compliance", BLACK),
+            line(90, 40, "Section  1.1.   General", BLACK),
+            line(110, 40, "1.1.1. Application", BLACK),
+            line(130, 40, "1.1.1.1. Application of this Code", BLACK),
+            line(150, 40, "1) Fire protection shall conform to NFPA 303.", BODY),
+        ],  # page 2
+        [
+            line(50, 40, "Notes to Part 1", BLACK),
+            line(70, 40, "A-1.1.1.1. Some note text.", BODY),
+        ],  # page 3
+        [
+            line(50, 40, "Figure 1.1.1.1.-A", BOLD),
+            line(70, 40, "Sample figure title", BOLD),
+        ],  # page 4
+        [line(50, 40, "PROVINCE OF BRITISH COLUMBIA", BOLD)],  # page 5: BackMatter
+    ]
+
+
+def test_front_matter_precedes_first_division():
+    root, _captions = build_tree(FakePdfSource(_document_fixture()))
+    assert root.children[0].type == "FrontMatter"
+    assert root.children[0].page == 1
+
+
+def test_division_part_section_subsection_article_nest_correctly():
+    root, _captions = build_tree(FakePdfSource(_document_fixture()))
+    division = root.children[1]
+    assert division.type == "Division" and division.identifier == "A"
+    part = division.children[0]
+    assert part.type == "Part"
+    assert part.title == "Compliance"  # folded from a separate Arial-Black block
+    section = part.children[0]
+    assert section.type == "Section" and section.citation == "A-1.1."
+    subsection = section.children[0]
+    assert subsection.type == "Subsection"
+    article = subsection.children[0]
+    assert article.type == "Article" and article.citation == "A-1.1.1.1."
+
+
+def test_article_body_segmented_into_sentence():
+    root, _captions = build_tree(FakePdfSource(_document_fixture()))
+    article = root.children[1].children[0].children[0].children[0].children[0]
+    assert len(article.children) == 1
+    assert article.children[0].type == "Sentence"
+    assert article.children[0].citation == "A-1.1.1.1.(1)"
+
+
+def test_notes_container_holds_note():
+    root, _captions = build_tree(FakePdfSource(_document_fixture()))
+    # NotesContainer shares Part's own RANK (2), so the stack-close rule that
+    # lets consecutive Parts close each other also closes the current Part
+    # when "Notes to Part" is hit - it nests as a sibling of Part under
+    # Division, not as a child of Part.
+    division = root.children[1]
+    notes_container = division.children[1]
+    assert notes_container.type == "NotesContainer"
+    assert notes_container.children[0].type == "Note"
+    # rstrip(".") removes the one trailing dot the RE_NOTE_ENTRY token includes
+    assert notes_container.children[0].identifier == "A-1.1.1.1"
+
+
+def test_figure_caption_captured_with_owner_citation():
+    _root, captions = build_tree(FakePdfSource(_document_fixture()))
+    assert len(captions) == 1
+    assert captions[0].kind == "Figure"
+    assert captions[0].identifier == "1.1.1.1.-A"
+    assert captions[0].title == "Sample figure title"
+
+
+def test_backmatter_opens_only_after_first_division_seen():
+    root, _captions = build_tree(FakePdfSource(_document_fixture()))
+    assert root.children[-1].type == "BackMatter"
+
+
+def test_backmatter_marker_before_any_division_is_not_a_heading():
+    pages = [
+        [line(50, 40, "PROVINCE OF BRITISH COLUMBIA", BOLD)],
+        [line(50, 40, "Division A", BLACK)],
+    ]
+    root, _captions = build_tree(FakePdfSource(pages))
+    assert root.children[0].type == "FrontMatter"
+    assert len([c for c in root.children if c.type == "BackMatter"]) == 0
