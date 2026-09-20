@@ -6,9 +6,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 
-def create_app(toc_json_path: str, pdf_path: str, thumbnails_dir: str) -> FastAPI:
+def create_app(
+    toc_json_path: str,
+    pdf_path: str,
+    thumbnails_dir: str,
+    web_toc_json_path: str | None = None,
+) -> FastAPI:
     app = FastAPI(title="MO Package TOC Viewer")
     payload = json.loads(Path(toc_json_path).read_text())
+    web_payload = None
+    if web_toc_json_path and Path(web_toc_json_path).exists():
+        web_payload = json.loads(Path(web_toc_json_path).read_text())
 
     @app.get("/api/toc")
     def get_toc():
@@ -17,6 +25,12 @@ def create_app(toc_json_path: str, pdf_path: str, thumbnails_dir: str) -> FastAP
     @app.get("/api/images")
     def get_images():
         return JSONResponse(payload["images"])
+
+    @app.get("/api/web-toc")
+    def get_web_toc():
+        if web_payload is None:
+            raise HTTPException(status_code=503, detail="Run src/build_web_toc.py first")
+        return JSONResponse(web_payload)
 
     @app.get("/pdf")
     def get_pdf():

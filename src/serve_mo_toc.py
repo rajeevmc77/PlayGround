@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOC_JSON = str(PROJECT_ROOT / "output" / "mo_toc.json")
 PDF_PATH = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
 THUMBNAILS_DIR = str(PROJECT_ROOT / "output" / "thumbnails")
+WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "web_toc.json")
 
 _app = None
 
@@ -32,7 +33,13 @@ def _get_app():
     if _app is None:
         if not Path(TOC_JSON).exists():
             sys.exit(f"No such file: {TOC_JSON} (run src/build_mo_toc.py first)")
-        _app = create_app(toc_json_path=TOC_JSON, pdf_path=PDF_PATH, thumbnails_dir=THUMBNAILS_DIR)
+        web_toc_json = WEB_TOC_JSON if Path(WEB_TOC_JSON).exists() else None
+        _app = create_app(
+            toc_json_path=TOC_JSON,
+            pdf_path=PDF_PATH,
+            thumbnails_dir=THUMBNAILS_DIR,
+            web_toc_json_path=web_toc_json,
+        )
     return _app
 
 

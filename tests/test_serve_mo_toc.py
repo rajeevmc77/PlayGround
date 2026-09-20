@@ -59,3 +59,10 @@ def test_main_exits_when_toc_json_missing(tmp_path, monkeypatch):
         serve_mo_toc.main()
 
     assert "No such file" in str(exc_info.value)
+
+
+def test_app_returns_503_for_web_toc_when_web_toc_json_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(serve_mo_toc, "WEB_TOC_JSON", str(tmp_path / "missing_web_toc.json"))
+    client = _make_client(tmp_path)
+    resp = client.get("/api/web-toc")
+    assert resp.status_code == 503
