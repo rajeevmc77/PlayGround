@@ -8,6 +8,7 @@ from build_mo_toc import main, run
 
 @patch("build_mo_toc.write_markdown")
 @patch("build_mo_toc.write_json")
+@patch("build_mo_toc.match_images")
 @patch("build_mo_toc.write_thumbnails")
 @patch("build_mo_toc.extract_images")
 @patch("build_mo_toc.build_tree")
@@ -17,6 +18,7 @@ def test_run_wires_pipeline_in_order(
     mock_build_tree,
     mock_extract_images,
     mock_write_thumbs,
+    mock_match_images,
     mock_write_json,
     mock_write_md,
     tmp_path,
@@ -26,6 +28,7 @@ def test_run_wires_pipeline_in_order(
     mock_build_tree.return_value = ("VOLUME", ["CAPTION"])
     mock_extract_images.return_value = ["RAW_IMAGE"]
     mock_write_thumbs.return_value = ["IMAGE_ASSET"]
+    mock_match_images.return_value = ["MATCHED_IMAGE_ASSET"]
 
     run("some.pdf", str(tmp_path))
 
@@ -33,8 +36,9 @@ def test_run_wires_pipeline_in_order(
     mock_build_tree.assert_called_once_with(mock_source)
     mock_extract_images.assert_called_once_with(mock_source)
     mock_write_thumbs.assert_called_once_with(["RAW_IMAGE"], str(tmp_path / "thumbnails"))
+    mock_match_images.assert_called_once_with(["IMAGE_ASSET"], ["CAPTION"], "VOLUME")
     mock_write_json.assert_called_once_with(
-        "VOLUME", ["CAPTION"], ["IMAGE_ASSET"], str(tmp_path / "mo_toc.json")
+        "VOLUME", ["CAPTION"], ["MATCHED_IMAGE_ASSET"], str(tmp_path / "mo_toc.json")
     )
     mock_write_md.assert_called_once_with("VOLUME", ["CAPTION"], str(tmp_path / "mo_toc.md"))
 

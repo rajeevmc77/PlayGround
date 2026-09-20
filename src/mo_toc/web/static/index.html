@@ -10,10 +10,15 @@
     <div id="tabs">
       <button id="tab-toc" class="active">Table of Contents</button>
       <button id="tab-images">Images</button>
+      <button id="tab-image-tree">Table of Images</button>
     </div>
     <div id="tree"></div>
     <div id="images" style="display:none">
       <label><input type="checkbox" id="declutter" checked> Hide images under 40pt</label>
+    </div>
+    <div id="image-tree" style="display:none">
+      <label><input type="checkbox" id="declutter-tree" checked> Hide images under 40pt</label>
+      <div id="image-tree-content"></div>
     </div>
   </div>
   <div id="main">
@@ -25,6 +30,6 @@
     <canvas id="page-canvas"></canvas>
     <div id="highlight" style="display:none"></div>
   </div>
-  <script type="module" src="/static/viewer.js?v=2"></script>
+  <script type="module" src="/static/viewer.js?v=3"></script>
 </body>
 </html>

@@ -44,3 +44,6 @@ class ImageAsset:
     height: int
     phash: str | None
     thumbnail_path: str
+    owner_citation: str = ""
+    caption_kind: str | None = None
+    caption_identifier: str | None = None

@@ -67,3 +67,34 @@ def test_image_asset_holds_pixel_size_and_thumbnail_path():
     )
     assert (img.width, img.height) == (100, 50)
     assert img.thumbnail_path == "thumbnails/img_0.png"
+
+
+def test_image_asset_owner_and_caption_fields_default_unset():
+    img = ImageAsset(
+        page=10,
+        bbox=BBox(0, 0, 100, 50),
+        width=100,
+        height=50,
+        phash="abc123",
+        thumbnail_path="thumbnails/img_0.png",
+    )
+    assert img.owner_citation == ""
+    assert img.caption_kind is None
+    assert img.caption_identifier is None
+
+
+def test_image_asset_owner_and_caption_fields_can_be_set():
+    img = ImageAsset(
+        page=37,
+        bbox=BBox(0, 0, 10, 10),
+        width=10,
+        height=10,
+        phash=None,
+        thumbnail_path="thumbnails/img_1.png",
+        owner_citation="Note:A-1.3.3.4",
+        caption_kind="Figure",
+        caption_identifier="A-1.3.3.4.(2)",
+    )
+    assert img.owner_citation == "Note:A-1.3.3.4"
+    assert img.caption_kind == "Figure"
+    assert img.caption_identifier == "A-1.3.3.4.(2)"

@@ -17,6 +17,7 @@ from mo_toc.output.json_writer import write_json
 from mo_toc.output.markdown_writer import write_markdown
 from mo_toc.output.thumbnail_writer import write_thumbnails
 from mo_toc.parsing.image_extractor import extract_images
+from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.pdf_source import PyMuPdfSource
 from mo_toc.parsing.tree_builder import build_tree
 
@@ -30,6 +31,7 @@ def run(pdf_path: str, output_dir: str) -> None:
     volume, captions = build_tree(source)
     raw_images = extract_images(source)
     images = write_thumbnails(raw_images, str(Path(output_dir) / "thumbnails"))
+    images = match_images(images, captions, volume)
     write_json(volume, captions, images, str(Path(output_dir) / "mo_toc.json"))
     write_markdown(volume, captions, str(Path(output_dir) / "mo_toc.md"))
 

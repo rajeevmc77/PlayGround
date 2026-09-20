@@ -5,11 +5,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 let pdfDoc = null;
 let currentPage = 1;
+let tocVolume = null;
+let allImages = null;
 
 async function loadToc() {
   const res = await fetch("/api/toc");
-  const volume = await res.json();
-  document.getElementById("tree").appendChild(renderNode(volume, 0));
+  tocVolume = await res.json();
+  document.getElementById("tree").appendChild(renderNode(tocVolume, 0));
 }
 
 function renderNode(node, depth) {
@@ -36,25 +38,110 @@ function renderNode(node, depth) {
   return wrapper;
 }
 
+function imageIsBelowMinDim(img, minDim) {
+  const width = img.bbox.x1 - img.bbox.x0;
+  const height = img.bbox.y1 - img.bbox.y0;
+  return Math.min(width, height) < minDim;
+}
+
+function imageLabel(img) {
+  if (img.caption_identifier) return `${img.caption_kind} ${img.caption_identifier}`;
+  return `p.${img.page} (${img.width}x${img.height})`;
+}
+
+function renderImageRow(img, index, depth) {
+  const row = document.createElement("div");
+  row.className = "image-row node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.innerHTML = `<img src="/api/image/${index}/thumbnail"> ${imageLabel(img)}`;
+  row.addEventListener("click", () => goToLocation(img.page, img.bbox));
+  return row;
+}
+
 async function loadImages() {
   const res = await fetch("/api/images");
-  const images = await res.json();
+  allImages = await res.json();
   const container = document.getElementById("images");
   const declutter = document.getElementById("declutter");
 
   function render() {
     container.querySelectorAll(".image-row").forEach((el) => el.remove());
     const minDim = declutter.checked ? 40 : 0;
-    images.forEach((img, index) => {
-      const width = img.bbox.x1 - img.bbox.x0;
-      const height = img.bbox.y1 - img.bbox.y0;
-      if (Math.min(width, height) < minDim) return;
-      const row = document.createElement("div");
-      row.className = "image-row node-row";
-      row.innerHTML = `<img src="/api/image/${index}/thumbnail"> p.${img.page} (${img.width}x${img.height})`;
-      row.addEventListener("click", () => goToLocation(img.page, img.bbox));
-      container.appendChild(row);
+    allImages.forEach((img, index) => {
+      if (imageIsBelowMinDim(img, minDim)) return;
+      container.appendChild(renderImageRow(img, index, 0));
     });
+  }
+  declutter.addEventListener("change", render);
+  render();
+}
+
+function buildCitationMap(node, map) {
+  map[node.citation] = node;
+  node.children.forEach((child) => buildCitationMap(child, map));
+  return map;
+}
+
+function clearAttachedImages(node) {
+  delete node._images;
+  node.children.forEach(clearAttachedImages);
+}
+
+function attachImagesToOwners(minDim) {
+  clearAttachedImages(tocVolume);
+  const citationMap = buildCitationMap(tocVolume, {});
+  allImages.forEach((img, index) => {
+    if (imageIsBelowMinDim(img, minDim)) return;
+    const owner = citationMap[img.owner_citation];
+    if (!owner) return;
+    if (!owner._images) owner._images = [];
+    owner._images.push({ img, index });
+  });
+}
+
+function subtreeHasImages(node) {
+  if (node._images && node._images.length > 0) return true;
+  return node.children.some(subtreeHasImages);
+}
+
+function renderImageTreeNode(node, depth) {
+  const relevantChildren = node.children.filter(subtreeHasImages);
+  const ownImages = node._images || [];
+  const row = document.createElement("div");
+  row.className = "node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.textContent = `▸ ${node.type} ${node.identifier} ${node.title}`.trim();
+
+  const childrenBox = document.createElement("div");
+  childrenBox.className = "node-children";
+
+  row.addEventListener("click", () => {
+    goToLocation(node.page, node.bbox);
+    childrenBox.classList.toggle("expanded");
+    if (childrenBox.children.length > 0) return;
+    relevantChildren.forEach((child) => {
+      childrenBox.appendChild(renderImageTreeNode(child, depth + 1));
+    });
+    ownImages.forEach(({ img, index }) => {
+      childrenBox.appendChild(renderImageRow(img, index, depth + 1));
+    });
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(row);
+  wrapper.appendChild(childrenBox);
+  return wrapper;
+}
+
+async function loadImageTree() {
+  const content = document.getElementById("image-tree-content");
+  const declutter = document.getElementById("declutter-tree");
+
+  function render() {
+    content.innerHTML = "";
+    attachImagesToOwners(declutter.checked ? 40 : 0);
+    if (!subtreeHasImages(tocVolume)) return;
+    content.appendChild(renderImageTreeNode(tocVolume, 0));
   }
   declutter.addEventListener("change", render);
   render();
@@ -100,17 +187,19 @@ async function goToLocation(pageNumber, bbox) {
   showHighlight(viewport, bbox);
 }
 
-document.getElementById("tab-toc").addEventListener("click", () => {
-  document.getElementById("tab-toc").classList.add("active");
-  document.getElementById("tab-images").classList.remove("active");
-  document.getElementById("tree").style.display = "block";
-  document.getElementById("images").style.display = "none";
-});
-document.getElementById("tab-images").addEventListener("click", () => {
-  document.getElementById("tab-images").classList.add("active");
-  document.getElementById("tab-toc").classList.remove("active");
-  document.getElementById("images").style.display = "block";
-  document.getElementById("tree").style.display = "none";
+const TABS = ["toc", "images", "image-tree"];
+const TAB_CONTENT_ID = { toc: "tree", images: "images", "image-tree": "image-tree" };
+
+function switchTab(active) {
+  TABS.forEach((name) => {
+    document.getElementById(`tab-${name}`).classList.toggle("active", name === active);
+    document.getElementById(TAB_CONTENT_ID[name]).style.display =
+      name === active ? "block" : "none";
+  });
+}
+
+TABS.forEach((name) => {
+  document.getElementById(`tab-${name}`).addEventListener("click", () => switchTab(name));
 });
 document.getElementById("prev-page").addEventListener("click", () => {
   if (currentPage > 1) renderPage(currentPage - 1);
@@ -124,4 +213,5 @@ document.getElementById("next-page").addEventListener("click", () => {
   await renderPage(1);
   await loadToc();
   await loadImages();
+  await loadImageTree();
 })();
