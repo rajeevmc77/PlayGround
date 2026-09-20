@@ -1,7 +1,6 @@
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = ["Archive DO NOT Refer", "app.py", "src/check_directory_access.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
