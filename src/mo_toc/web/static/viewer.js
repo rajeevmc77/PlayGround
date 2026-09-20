@@ -8,6 +8,10 @@ let currentPage = 1;
 let tocVolume = null;
 let allImages = null;
 
+function formatNodeLabel(node) {
+  return [node.unified_number, node.type, node.identifier, node.title].filter(Boolean).join(" ");
+}
+
 async function loadToc() {
   const res = await fetch("/api/toc");
   tocVolume = await res.json();
@@ -19,7 +23,7 @@ function renderNode(node, depth) {
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
   const hasChildren = node.children && node.children.length > 0;
-  row.textContent = `${hasChildren ? "▸ " : ""}${node.type} ${node.identifier} ${node.title}`.trim();
+  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
 
@@ -110,7 +114,7 @@ function renderImageTreeNode(node, depth) {
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `▸ ${node.type} ${node.identifier} ${node.title}`.trim();
+  row.textContent = `▸ ${formatNodeLabel(node)}`.trim();
 
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
@@ -181,8 +185,7 @@ function subtreeHasWebImages(node) {
 function showWebImageDetail(img, ownerNode) {
   document.getElementById("web-image-detail-img").src = webImageUrl(img);
   document.getElementById("web-image-detail-alt").textContent = img.alt_text || "(no description)";
-  document.getElementById("web-image-detail-citation").textContent =
-    `${ownerNode.type} ${ownerNode.identifier} ${ownerNode.title}`.trim();
+  document.getElementById("web-image-detail-citation").textContent = formatNodeLabel(ownerNode);
   document.getElementById("web-image-detail-link").href =
     `https://dev.buildingcode.gov.bc.ca${ownerNode.path}?version=2024&date=2024-03-08`;
   document.getElementById("web-image-detail").style.display = "block";
@@ -203,7 +206,7 @@ function renderWebTreeNode(node, depth) {
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `▸ ${node.type} ${node.identifier} ${node.title}`.trim();
+  row.textContent = `▸ ${formatNodeLabel(node)}`.trim();
 
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
