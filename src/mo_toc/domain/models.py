@@ -22,6 +22,7 @@ class Node:
     end_page: int
     bbox: BBox
     children: list["Node"] = field(default_factory=list)
+    unified_number: str = ""
 
 
 @dataclass
