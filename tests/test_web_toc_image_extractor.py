@@ -128,3 +128,19 @@ def test_multiple_figures_in_one_content_json_are_all_extracted():
 def test_no_figures_returns_empty_list():
     content = {"id": "nbc.divA.part1.sect1", "subsections": []}
     assert extract_images(content, {"nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1") == []
+
+
+def test_figure_falls_back_when_id_shares_no_prefix_with_any_citation():
+    citations = {"nbc.divZ.part9.sect1"}
+    content = {
+        "content": [
+            {
+                "type": "figure",
+                "id": "other.namespace.figure1",
+                "graphic": {"src": "x", "alt_text": "X"},
+            }
+        ]
+    }
+    images = extract_images(content, citations, fallback_citation="nbc.divZ.part9.sect1")
+    assert len(images) == 1
+    assert images[0].owner_citation == "nbc.divZ.part9.sect1"
