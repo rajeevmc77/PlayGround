@@ -147,6 +147,99 @@ async function loadImageTree() {
   render();
 }
 
+function webImageUrl(img) {
+  return `https://dev.buildingcode.gov.bc.ca/${img.src}.jpg`;
+}
+
+function buildWebCitationMap(node, map) {
+  map[node.citation] = node;
+  node.children.forEach((child) => buildWebCitationMap(child, map));
+  return map;
+}
+
+function clearAttachedWebImages(node) {
+  delete node._images;
+  node.children.forEach(clearAttachedWebImages);
+}
+
+function attachWebImagesToOwners(tree, images) {
+  clearAttachedWebImages(tree);
+  const citationMap = buildWebCitationMap(tree, {});
+  images.forEach((img) => {
+    const owner = citationMap[img.owner_citation];
+    if (!owner) return;
+    if (!owner._images) owner._images = [];
+    owner._images.push(img);
+  });
+}
+
+function subtreeHasWebImages(node) {
+  if (node._images && node._images.length > 0) return true;
+  return node.children.some(subtreeHasWebImages);
+}
+
+function showWebImageDetail(img, ownerNode) {
+  document.getElementById("web-image-detail-img").src = webImageUrl(img);
+  document.getElementById("web-image-detail-alt").textContent = img.alt_text || "(no description)";
+  document.getElementById("web-image-detail-citation").textContent =
+    `${ownerNode.type} ${ownerNode.identifier} ${ownerNode.title}`.trim();
+  document.getElementById("web-image-detail-link").href =
+    `https://dev.buildingcode.gov.bc.ca${ownerNode.path}?version=2024&date=2024-03-08`;
+  document.getElementById("web-image-detail").style.display = "block";
+}
+
+function renderWebImageRow(img, ownerNode, depth) {
+  const row = document.createElement("div");
+  row.className = "image-row node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.innerHTML = `<img src="${webImageUrl(img)}" loading="lazy"> ${img.alt_text || "(no description)"}`;
+  row.addEventListener("click", () => showWebImageDetail(img, ownerNode));
+  return row;
+}
+
+function renderWebTreeNode(node, depth) {
+  const relevantChildren = node.children.filter(subtreeHasWebImages);
+  const ownImages = node._images || [];
+  const row = document.createElement("div");
+  row.className = "node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.textContent = `▸ ${node.type} ${node.identifier} ${node.title}`.trim();
+
+  const childrenBox = document.createElement("div");
+  childrenBox.className = "node-children";
+
+  row.addEventListener("click", () => {
+    childrenBox.classList.toggle("expanded");
+    if (childrenBox.children.length > 0) return;
+    relevantChildren.forEach((child) => childrenBox.appendChild(renderWebTreeNode(child, depth + 1)));
+    ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(row);
+  wrapper.appendChild(childrenBox);
+  return wrapper;
+}
+
+async function loadWebToc() {
+  const content = document.getElementById("web-image-tree-content");
+  const res = await fetch("/api/web-toc");
+  if (!res.ok) {
+    content.textContent = "Not built yet - run src/build_web_toc.py, then reload.";
+    return;
+  }
+  const data = await res.json();
+  attachWebImagesToOwners(data.tree, data.images);
+  content.innerHTML = "";
+  if (subtreeHasWebImages(data.tree)) {
+    content.appendChild(renderWebTreeNode(data.tree, 0));
+  }
+}
+
+document.getElementById("web-image-detail-close").addEventListener("click", () => {
+  document.getElementById("web-image-detail").style.display = "none";
+});
+
 async function renderPage(pageNumber) {
   const page = await pdfDoc.getPage(pageNumber);
   const viewport = page.getViewport({ scale: 1.5 });
@@ -187,8 +280,10 @@ async function goToLocation(pageNumber, bbox) {
   showHighlight(viewport, bbox);
 }
 
-const TABS = ["toc", "images", "image-tree"];
-const TAB_CONTENT_ID = { toc: "tree", images: "images", "image-tree": "image-tree" };
+const TABS = ["toc", "images", "image-tree", "web-images"];
+const TAB_CONTENT_ID = {
+  toc: "tree", images: "images", "image-tree": "image-tree", "web-images": "web-images",
+};
 
 function switchTab(active) {
   TABS.forEach((name) => {
@@ -214,4 +309,5 @@ document.getElementById("next-page").addEventListener("click", () => {
   await loadToc();
   await loadImages();
   await loadImageTree();
+  await loadWebToc();
 })();

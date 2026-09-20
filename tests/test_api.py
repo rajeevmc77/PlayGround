@@ -34,7 +34,7 @@ def _write_fixture_json(tmp_path):
     return str(path)
 
 
-def _make_client(tmp_path, pdf_path=None, create_thumbnail=True):
+def _make_client(tmp_path, pdf_path=None, create_thumbnail=True, web_toc_json_path=None):
     json_path = _write_fixture_json(tmp_path)
     thumbs_dir = tmp_path / "thumbnails"
     thumbs_dir.mkdir()
@@ -47,6 +47,7 @@ def _make_client(tmp_path, pdf_path=None, create_thumbnail=True):
         toc_json_path=json_path,
         pdf_path=str(pdf_path),
         thumbnails_dir=str(thumbs_dir),
+        web_toc_json_path=web_toc_json_path,
     )
     return TestClient(app)
 
@@ -90,3 +91,36 @@ def test_get_thumbnail_missing_file_returns_404(tmp_path):
     resp = client.get("/api/image/0/thumbnail")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Thumbnail file missing"
+
+
+def _write_web_toc_fixture(tmp_path):
+    payload = {
+        "tree": {
+            "type": "root",
+            "identifier": "",
+            "citation": "root",
+            "title": "",
+            "path": "/",
+            "children": [],
+        },
+        "images": [
+            {"id": "fig1", "src": "bc-graphics/x", "alt_text": "alt", "owner_citation": "root"}
+        ],
+    }
+    path = tmp_path / "web_toc.json"
+    path.write_text(json.dumps(payload))
+    return str(path)
+
+
+def test_get_web_toc_returns_payload_when_present(tmp_path):
+    web_toc_json_path = _write_web_toc_fixture(tmp_path)
+    client = _make_client(tmp_path, web_toc_json_path=web_toc_json_path)
+    resp = client.get("/api/web-toc")
+    assert resp.status_code == 200
+    assert resp.json()["images"][0]["src"] == "bc-graphics/x"
+
+
+def test_get_web_toc_returns_503_when_not_built(tmp_path):
+    client = _make_client(tmp_path)
+    resp = client.get("/api/web-toc")
+    assert resp.status_code == 503

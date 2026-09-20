@@ -11,6 +11,7 @@
       <button id="tab-toc" class="active">Table of Contents</button>
       <button id="tab-images">Images</button>
       <button id="tab-image-tree">Table of Images</button>
+      <button id="tab-web-images">BC Code (Web)</button>
     </div>
     <div id="tree"></div>
     <div id="images" style="display:none">
@@ -19,6 +20,9 @@
     <div id="image-tree" style="display:none">
       <label><input type="checkbox" id="declutter-tree" checked> Hide images under 40pt</label>
       <div id="image-tree-content"></div>
+    </div>
+    <div id="web-images" style="display:none">
+      <div id="web-image-tree-content"></div>
     </div>
   </div>
   <div id="main">
@@ -29,7 +33,14 @@
     </div>
     <canvas id="page-canvas"></canvas>
     <div id="highlight" style="display:none"></div>
+    <div id="web-image-detail" style="display:none">
+      <button id="web-image-detail-close">&times;</button>
+      <img id="web-image-detail-img">
+      <div id="web-image-detail-alt"></div>
+      <div id="web-image-detail-citation"></div>
+      <a id="web-image-detail-link" target="_blank" rel="noopener">View on official site &#8599;</a>
+    </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=3"></script>
+  <script type="module" src="/static/viewer.js?v=4"></script>
 </body>
 </html>

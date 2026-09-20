@@ -132,6 +132,29 @@ pytest --cov=src/mo_toc --cov=src.build_mo_toc --cov=src.serve_mo_toc
 Scoped to the new work only — `app.py`, `src/check_directory_access.py`, and
 `Archive DO NOT Refer/` are legacy/archived and intentionally exempt.
 
+## 3. BC Building Code (Web) — Table of Images (`src/web_toc/`)
+
+Builds a second, independent hierarchical Table of Images — this one sourced from the live
+[BC Building Code website](https://dev.buildingcode.gov.bc.ca/?version=2024&date=2024-03-08)
+rather than the local PDF, using its own `navigation-tree.json` and per-section content JSON.
+Served as a fourth tab in the same viewer (`src/serve_mo_toc.py`); images are hotlinked
+directly from the official site rather than mirrored locally.
+
+### Build the index
+
+```bash
+python src/build_web_toc.py
+
+# or a different site version
+python src/build_web_toc.py --base-url https://dev.buildingcode.gov.bc.ca --version 2024
+```
+
+Writes `output/web_toc.json`. Makes ~100 real HTTP requests to the live site and takes a few
+minutes; safe to delete and rebuild. Requires no local PDF or credentials.
+
+Then run `python src/serve_mo_toc.py` as usual — the "BC Code (Web)" tab reads this file if
+present, and shows a "not built yet" message otherwise.
+
 ## Folder structure
 
 - `app.py` — the FastAPI directory/Drive app; stays in the project root as its own entry
