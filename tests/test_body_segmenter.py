@@ -54,6 +54,33 @@ def test_ambiguous_roman_letter_resolved_as_next_expected_clause():
     assert clause_i.type == "Clause"
 
 
+def test_ambiguous_roman_letter_priority_overrides_indent_threshold():
+    """Priority (1) [next-expected-clause-letter] must win over priority (2)
+    [x0-indent threshold] when they disagree. 'd)' is roman-shaped (ambiguous)
+    and sits at x0=75 -- the same indent as this sentence's confirmed
+    subclause 'iv)' -- while this sentence's confirmed clauses (a, b) sit at
+    x0=60, giving a threshold of (60+75)/2=67.5. By indent alone (priority 2),
+    x0=75 is not < 67.5, so 'd)' would be a Subclause. But 'd' is also the
+    next expected clause letter after a, b, c, so priority (1) must resolve it
+    as a Clause instead -- and as a direct child of the sentence, not nested
+    under clause (c)."""
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 60, "a) clause a"),
+        line(5, 124, 75, "iv) subclause under a"),
+        line(5, 136, 60, "b) clause b"),
+        line(5, 148, 60, "c) clause c"),
+        line(5, 160, 75, "d) clause d, deeply indented"),
+    ]
+    sentences = segment_article_body(body, "B-9.9.9.9.", article_end_page=7)
+    clause_a, clause_b, clause_c, clause_d = sentences[0].children
+    assert clause_d.type == "Clause"
+    assert clause_d.citation == "B-9.9.9.9.(1)(d)"
+    assert clause_d.bbox.x0 == 75
+    assert clause_d.children == []
+    assert clause_c.children == []
+
+
 def test_preamble_before_first_sentence_marker_is_dropped():
     body = [
         line(5, 90, 50, "This introductory line has no marker."),
