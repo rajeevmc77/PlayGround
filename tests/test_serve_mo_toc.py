@@ -61,8 +61,19 @@ def test_main_exits_when_toc_json_missing(tmp_path, monkeypatch):
     assert "No such file" in str(exc_info.value)
 
 
-def test_app_returns_503_for_web_toc_when_web_toc_json_missing(tmp_path, monkeypatch):
+def test_get_app_returns_503_for_web_toc_when_web_toc_json_missing(tmp_path, monkeypatch):
+    toc_json_path = _write_fixture_json(tmp_path)
+    thumbs_dir = tmp_path / "thumbnails"
+    thumbs_dir.mkdir()
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+    monkeypatch.setattr(serve_mo_toc, "TOC_JSON", toc_json_path)
+    monkeypatch.setattr(serve_mo_toc, "PDF_PATH", str(pdf_path))
+    monkeypatch.setattr(serve_mo_toc, "THUMBNAILS_DIR", str(thumbs_dir))
     monkeypatch.setattr(serve_mo_toc, "WEB_TOC_JSON", str(tmp_path / "missing_web_toc.json"))
-    client = _make_client(tmp_path)
+    monkeypatch.setattr(serve_mo_toc, "_app", None)
+
+    client = TestClient(serve_mo_toc._get_app())
     resp = client.get("/api/web-toc")
     assert resp.status_code == 503
