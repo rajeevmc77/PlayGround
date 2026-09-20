@@ -73,9 +73,17 @@ async function renderPage(pageNumber) {
 }
 
 function showHighlight(viewport, bbox) {
-  const rect = viewport.convertToViewportRectangle([bbox.x0, bbox.y0, bbox.x1, bbox.y1]);
-  const [x0, y0, x1, y1] = [Math.min(rect[0], rect[2]), Math.min(rect[1], rect[3]),
-                              Math.max(rect[0], rect[2]), Math.max(rect[1], rect[3])];
+  // bbox comes from PyMuPDF, which already uses a top-left-origin, y-down
+  // coordinate system (like the canvas) - NOT the PDF spec's native
+  // bottom-left-origin, y-up space that pdf.js's own
+  // convertToViewportRectangle() expects for raw PDF-space coordinates.
+  // Running our bbox through that conversion flips it vertically, so we
+  // scale directly by the render scale instead.
+  const scale = viewport.scale;
+  const x0 = bbox.x0 * scale;
+  const y0 = bbox.y0 * scale;
+  const x1 = bbox.x1 * scale;
+  const y1 = bbox.y1 * scale;
   const canvas = document.getElementById("page-canvas");
   const highlight = document.getElementById("highlight");
   highlight.style.display = "block";
@@ -85,7 +93,6 @@ function showHighlight(viewport, bbox) {
   highlight.style.width = `${x1 - x0}px`;
   highlight.style.height = `${y1 - y0}px`;
   document.getElementById("main").scrollTo({ top: canvas.offsetTop + y0 - 80, behavior: "smooth" });
-  setTimeout(() => { highlight.style.opacity = "0"; }, 400);
 }
 
 async function goToLocation(pageNumber, bbox) {
