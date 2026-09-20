@@ -9,3 +9,5 @@ token.json
 .ruff_cache/
 *.egg-info/
 .worktrees/
+.coverage
+.coverage.*
