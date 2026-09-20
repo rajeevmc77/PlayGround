@@ -12,6 +12,7 @@ new heading/caption of its own is hit, with one override (mirrors the
 archived analysis): a heading-shaped continuation line is still folded in if
 the title captured so far trails off on "and"/"or".
 """
+
 import re
 from dataclasses import dataclass, field
 
@@ -81,8 +82,9 @@ def _consume_heading_title(lines: list[PageLine], idx: int, title: str) -> tuple
     return title, idx
 
 
-def _open_node(ntype: str, match, page_index: int, lines: list[PageLine], idx: int,
-                state: _BuildState) -> int:
+def _open_node(
+    ntype: str, match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
+) -> int:
     identifier, title, citation = _citation_for(ntype, match, state.division)
     bbox = BBox(*lines[idx].bbox)
     next_idx = idx + 1
@@ -95,8 +97,15 @@ def _open_node(ntype: str, match, page_index: int, lines: list[PageLine], idx: i
     while len(state.stack) > 1 and state.stack[-1][0] >= rank:
         state.stack.pop()
     parent = state.stack[-1][1]
-    node = Node(type=ntype, identifier=identifier, citation=citation, title=title,
-                page=page_index + 1, end_page=page_index + 1, bbox=bbox)
+    node = Node(
+        type=ntype,
+        identifier=identifier,
+        citation=citation,
+        title=title,
+        page=page_index + 1,
+        end_page=page_index + 1,
+        bbox=bbox,
+    )
     parent.children.append(node)
     state.stack.append((rank, node))
     if rank <= 2:
@@ -111,8 +120,15 @@ def _open_node(ntype: str, match, page_index: int, lines: list[PageLine], idx: i
 
 def _open_note(match, page_index: int, bbox: BBox, state: _BuildState) -> None:
     identifier, title = match.group(1).rstrip("."), match.group(2).strip()
-    node = Node(type="Note", identifier=identifier, citation=f"Note:{identifier}",
-                title=title, page=page_index + 1, end_page=page_index + 1, bbox=bbox)
+    node = Node(
+        type="Note",
+        identifier=identifier,
+        citation=f"Note:{identifier}",
+        title=title,
+        page=page_index + 1,
+        end_page=page_index + 1,
+        bbox=bbox,
+    )
     state.stack[-1][1].children.append(node)
     state.current_article = None
 
@@ -131,16 +147,24 @@ def _consume_caption_title(lines: list[PageLine], idx: int) -> tuple[str, int]:
     return " ".join(parts).strip(), idx
 
 
-def _open_caption(match, page_index: int, lines: list[PageLine], idx: int,
-                   state: _BuildState) -> int:
+def _open_caption(
+    match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
+) -> int:
     bbox = BBox(*lines[idx].bbox)
     title, next_idx = _consume_caption_title(lines, idx + 1)
     owner = state.stack[-1][1].citation if len(state.stack) > 1 else ""
-    state.captions.append(Caption(
-        kind=match.group(1), identifier=match.group(2).strip(), title=title,
-        page=page_index + 1, bbox=bbox, owner_citation=owner,
-        forming_part_of=None, continuation=False,
-    ))
+    state.captions.append(
+        Caption(
+            kind=match.group(1),
+            identifier=match.group(2).strip(),
+            title=title,
+            page=page_index + 1,
+            bbox=bbox,
+            owner_citation=owner,
+            forming_part_of=None,
+            continuation=False,
+        )
+    )
     return next_idx
 
 
@@ -182,10 +206,24 @@ def _iter_nodes(node: Node):
 
 
 def build_tree(source: PdfSource) -> tuple[Node, list[Caption]]:
-    volume = Node(type="Volume", identifier="Volume", citation="Volume", title="",
-                  page=1, end_page=source.page_count, bbox=BBox(0, 0, 0, 0))
-    front_matter = Node(type="FrontMatter", identifier="FrontMatter", citation="FrontMatter",
-                         title="", page=1, end_page=1, bbox=BBox(0, 0, 0, 0))
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=source.page_count,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    front_matter = Node(
+        type="FrontMatter",
+        identifier="FrontMatter",
+        citation="FrontMatter",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
     volume.children.append(front_matter)
     state = _BuildState(stack=[(0, volume), (1, front_matter)])
 

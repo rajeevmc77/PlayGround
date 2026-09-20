@@ -18,8 +18,7 @@ def test_division_a_starts_on_page_6():
 @pytest.mark.slow
 def test_appendix_c_and_d_sit_between_division_b_and_c():
     volume, _captions = build_tree(PyMuPdfSource(str(PDF_PATH)))
-    order = [c.type + c.identifier for c in volume.children
-             if c.type in ("Division", "Appendix")]
+    order = [c.type + c.identifier for c in volume.children if c.type in ("Division", "Appendix")]
     assert order.index("DivisionB") < order.index("AppendixC") < order.index("DivisionC")
     assert order.index("AppendixC") < order.index("AppendixD") < order.index("DivisionC")
 

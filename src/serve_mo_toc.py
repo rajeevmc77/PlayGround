@@ -4,6 +4,7 @@
 Usage:
     python3 src/serve_mo_toc.py            # serves on http://127.0.0.1:8001
 """
+
 import sys
 from pathlib import Path
 

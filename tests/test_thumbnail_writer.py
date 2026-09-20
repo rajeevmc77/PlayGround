@@ -3,8 +3,9 @@ from mo_toc.parsing.image_extractor import RawImage
 
 
 def _raw(page=1, ext="png", data=b"\x89PNG\r\n\x1a\nfake"):
-    return RawImage(page=page, bbox=(0, 0, 10, 10), width=10, height=10,
-                     data=data, ext=ext, phash="abc")
+    return RawImage(
+        page=page, bbox=(0, 0, 10, 10), width=10, height=10, data=data, ext=ext, phash="abc"
+    )
 
 
 def test_writes_one_file_per_image(tmp_path):

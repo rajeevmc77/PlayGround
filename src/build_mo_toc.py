@@ -6,6 +6,7 @@ Usage:
     python3 src/build_mo_toc.py                # uses data/<default PDF>
     python3 src/build_mo_toc.py /path/to/other.pdf
 """
+
 import argparse
 import sys
 from pathlib import Path
