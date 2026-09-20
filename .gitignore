@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+credentials.json
+token.json
+output/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.worktrees/
