@@ -6,7 +6,9 @@ and regular (non-front-matter) articles return None: no working URL was found
 for the former, and the latter's figures are already covered by their parent
 section's own content fetch.
 """
+
 import re
+from collections.abc import Callable
 
 from web_toc.domain.models import WebNode
 
@@ -20,20 +22,36 @@ def _div_slug(div_id: str) -> str:
     return div_id.lower().replace(".", "-")
 
 
+def _format_section(base: str, m: re.Match) -> str:
+    return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/section-{m['sect']}.json"
+
+
+def _format_part_appendix(base: str, m: re.Match) -> str:
+    return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/appendix.json"
+
+
+def _format_division_appendix(base: str, m: re.Match) -> str:
+    return f"{base}/{_div_slug(m['div'])}/appendix-{m['letter'].lower()}.json"
+
+
+def _format_spectables(base: str, m: re.Match) -> str:
+    return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/spectables/{m['num']}.json"
+
+
+_DISPATCH: dict[str, tuple[re.Pattern, Callable[[str, re.Match], str]]] = {
+    "section": (_SECTION_RE, _format_section),
+    "part_appendix": (_PART_APPENDIX_RE, _format_part_appendix),
+    "division_appendix": (_DIVISION_APPENDIX_RE, _format_division_appendix),
+    "spectables": (_SPECTABLES_RE, _format_spectables),
+}
+
+
 def content_url(node: WebNode, version: str) -> str | None:
     base = f"/data/{version}/content"
-    if node.type == "section":
-        m = _SECTION_RE.match(node.citation)
-        return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/section-{m['sect']}.json" if m else None
-    if node.type == "part_appendix":
-        m = _PART_APPENDIX_RE.match(node.citation)
-        return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/appendix.json" if m else None
-    if node.type == "division_appendix":
-        m = _DIVISION_APPENDIX_RE.match(node.citation)
-        return f"{base}/{_div_slug(m['div'])}/appendix-{m['letter'].lower()}.json" if m else None
-    if node.type == "spectables":
-        m = _SPECTABLES_RE.match(node.citation)
-        return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/spectables/{m['num']}.json" if m else None
+    if node.type in _DISPATCH:
+        regex, formatter = _DISPATCH[node.type]
+        m = regex.match(node.citation)
+        return formatter(base, m) if m else None
     if node.type == "article" and node.path.startswith("/code/front-matter/"):
         slug = node.path.rstrip("/").rsplit("/", 1)[-1]
         return f"{base}/front-matter/{slug}.json"
