@@ -61,7 +61,7 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
 @patch("build_web_toc.collect_citations")
 @patch("build_web_toc.build_tree")
 @patch("build_web_toc.HttpxWebSource")
-def test_run_skips_nodes_where_fetch_content_returns_none(
+def test_run_skips_nodes_where_content_url_returns_none(
     mock_source_cls,
     mock_build_tree,
     mock_collect_citations,
@@ -81,5 +81,43 @@ def test_run_skips_nodes_where_fetch_content_returns_none(
     run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path))
 
     mock_source.fetch_content.assert_not_called()
+    mock_extract_images.assert_not_called()
+    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "web_toc.json"))
+
+
+@patch("build_web_toc.write_json")
+@patch("build_web_toc.extract_images")
+@patch("build_web_toc.content_url")
+@patch("build_web_toc.collect_citations")
+@patch("build_web_toc.build_tree")
+@patch("build_web_toc.HttpxWebSource")
+def test_run_skips_nodes_where_fetch_content_returns_none(
+    mock_source_cls,
+    mock_build_tree,
+    mock_collect_citations,
+    mock_content_url,
+    mock_extract_images,
+    mock_write_json,
+    tmp_path,
+):
+    leaf = WebNode(
+        type="section", identifier="1.1", citation="nbc.divA.part1.sect1", title="", path=""
+    )
+    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
+    mock_source = MagicMock()
+    mock_source_cls.return_value = mock_source
+    mock_build_tree.return_value = root
+    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
+    # root has no content URL, the leaf section does
+    mock_content_url.side_effect = lambda node, version: (
+        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
+    )
+    mock_source.fetch_content.return_value = None  # content URL exists but fetch failed/empty
+
+    run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path))
+
+    mock_source.fetch_content.assert_called_once_with(
+        "/data/2024/content/nbc-diva/part-1/section-1.json"
+    )
     mock_extract_images.assert_not_called()
     mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "web_toc.json"))
