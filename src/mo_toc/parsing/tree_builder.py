@@ -23,6 +23,7 @@ from mo_toc.parsing.heading_rules import (
     RANK,
     classify_caption_line,
     classify_heading_line,
+    is_caption_font,
 )
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
 
@@ -36,33 +37,77 @@ class _BuildState:
     division: str | None = None
     in_notes: bool = False
     seen_structure: bool = False
-    current_article: Node | None = None
-    article_bodies: dict = field(default_factory=dict)
+    # The body-line list for whichever Article is currently open, or None
+    # when no Article is open. Also referenced (by the same list object) from
+    # article_bodies, so appending a body line and later segmenting it are
+    # both O(1) - no need to re-scan the tree to find "the node this body
+    # belongs to".
+    current_body: list | None = None
+    article_bodies: list = field(default_factory=list)
     captions: list = field(default_factory=list)
 
 
-def _citation_for(ntype: str, match, division: str | None) -> tuple[str, str, str]:
-    if ntype == "Division":
-        return match.group(1), "", match.group(1)
-    if ntype == "Part":
-        return match.group(1), "", f"{division}-{match.group(1)}"
-    if ntype == "NotesContainer":
-        return match.group(1), "", f"Notes-{division}-{match.group(1)}"
-    if ntype in ("Section", "Article", "Subsection"):
-        ident = match.group(1) + "."
-        return ident, match.group(2).strip(), f"{division}-{ident}"
-    if ntype == "Appendix":
-        return match.group(1), "", f"Appendix-{match.group(1)}"
-    if ntype == "AppendixPart":
-        ident = f"{match.group(1)}-{match.group(2)}"
-        return ident, match.group(3).strip(), f"Appendix-{ident}"
-    if ntype in ("AppendixSection", "AppendixArticle"):
-        ident = f"{match.group(1)}-{match.group(2)}."
-        return ident, match.group(3).strip(), f"Appendix-{ident}"
-    if ntype == "TableGroup":
-        ident = match.group(0).strip()
-        return ident, "", f"{division}-{ident}"
+def _citation_division(match, division: str | None) -> tuple[str, str, str]:
+    return match.group(1), "", match.group(1)
+
+
+def _citation_part(match, division: str | None) -> tuple[str, str, str]:
+    return match.group(1), "", f"{division}-{match.group(1)}"
+
+
+def _citation_notes_container(match, division: str | None) -> tuple[str, str, str]:
+    return match.group(1), "", f"Notes-{division}-{match.group(1)}"
+
+
+def _citation_numbered(match, division: str | None) -> tuple[str, str, str]:
+    ident = match.group(1) + "."
+    return ident, match.group(2).strip(), f"{division}-{ident}"
+
+
+def _citation_appendix(match, division: str | None) -> tuple[str, str, str]:
+    return match.group(1), "", f"Appendix-{match.group(1)}"
+
+
+def _citation_appendix_part(match, division: str | None) -> tuple[str, str, str]:
+    ident = f"{match.group(1)}-{match.group(2)}"
+    return ident, match.group(3).strip(), f"Appendix-{ident}"
+
+
+def _citation_appendix_numbered(match, division: str | None) -> tuple[str, str, str]:
+    ident = f"{match.group(1)}-{match.group(2)}."
+    return ident, match.group(3).strip(), f"Appendix-{ident}"
+
+
+def _citation_table_group(match, division: str | None) -> tuple[str, str, str]:
+    ident = match.group(0).strip()
+    return ident, "", f"{division}-{ident}"
+
+
+def _citation_back_matter(match, division: str | None) -> tuple[str, str, str]:
     return "BackMatter", "", "BackMatter"
+
+
+# One handler per heading type family; Section/Article/Subsection and the two
+# Appendix-numbered types genuinely share the same citation shape, so they
+# point at the same handler rather than repeating it.
+_CITATION_HANDLERS = {
+    "Division": _citation_division,
+    "Part": _citation_part,
+    "NotesContainer": _citation_notes_container,
+    "Section": _citation_numbered,
+    "Article": _citation_numbered,
+    "Subsection": _citation_numbered,
+    "Appendix": _citation_appendix,
+    "AppendixPart": _citation_appendix_part,
+    "AppendixSection": _citation_appendix_numbered,
+    "AppendixArticle": _citation_appendix_numbered,
+    "TableGroup": _citation_table_group,
+}
+
+
+def _citation_for(ntype: str, match, division: str | None) -> tuple[str, str, str]:
+    handler = _CITATION_HANDLERS.get(ntype, _citation_back_matter)
+    return handler(match, division)
 
 
 def _consume_heading_title(lines: list[PageLine], idx: int, title: str) -> tuple[str, int]:
@@ -82,6 +127,25 @@ def _consume_heading_title(lines: list[PageLine], idx: int, title: str) -> tuple
     return title, idx
 
 
+def _close_stack_to_rank(state: _BuildState, rank: int) -> Node:
+    while len(state.stack) > 1 and state.stack[-1][0] >= rank:
+        state.stack.pop()
+    return state.stack[-1][1]
+
+
+def _update_state_after_open(ntype: str, node: Node, state: _BuildState) -> None:
+    rank = RANK[ntype]
+    if rank <= 2:
+        state.in_notes = ntype == "NotesContainer"
+    if ntype in ("Division", "Appendix"):
+        state.seen_structure = True
+    if ntype not in ARTICLE_TYPES:
+        state.current_body = None
+        return
+    state.current_body = []
+    state.article_bodies.append((node, state.current_body))
+
+
 def _open_node(
     ntype: str, match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
 ) -> int:
@@ -94,9 +158,7 @@ def _open_node(
         title, next_idx = _consume_heading_title(lines, next_idx, title)
 
     rank = RANK[ntype]
-    while len(state.stack) > 1 and state.stack[-1][0] >= rank:
-        state.stack.pop()
-    parent = state.stack[-1][1]
+    parent = _close_stack_to_rank(state, rank)
     node = Node(
         type=ntype,
         identifier=identifier,
@@ -108,13 +170,7 @@ def _open_node(
     )
     parent.children.append(node)
     state.stack.append((rank, node))
-    if rank <= 2:
-        state.in_notes = ntype == "NotesContainer"
-    if ntype in ("Division", "Appendix"):
-        state.seen_structure = True
-    state.current_article = node if ntype in ARTICLE_TYPES else None
-    if ntype in ARTICLE_TYPES:
-        state.article_bodies[id(node)] = []
+    _update_state_after_open(ntype, node, state)
     return next_idx
 
 
@@ -130,15 +186,14 @@ def _open_note(match, page_index: int, bbox: BBox, state: _BuildState) -> None:
         bbox=bbox,
     )
     state.stack[-1][1].children.append(node)
-    state.current_article = None
+    state.current_body = None
 
 
 def _consume_caption_title(lines: list[PageLine], idx: int) -> tuple[str, int]:
     parts = []
     while idx < len(lines) and len(parts) < 3:
         text, font = lines[idx].text, lines[idx].font
-        is_caption_font = "Bold" in font and "Black" not in font and "Narrow" not in font
-        if not is_caption_font:
+        if not is_caption_font(font):
             break
         if classify_heading_line(text, font) or classify_caption_line(text, font):
             break
@@ -168,6 +223,29 @@ def _open_caption(
     return next_idx
 
 
+def _classify_heading(pline: PageLine, state: _BuildState):
+    heading = classify_heading_line(pline.text, pline.font)
+    if heading and heading[0] == "BackMatter" and not state.seen_structure:
+        return None
+    return heading
+
+
+def _try_open_note(pline: PageLine, page_index: int, state: _BuildState) -> bool:
+    if not state.in_notes:
+        return False
+    note_match = RE_NOTE_ENTRY.match(pline.text)
+    if not note_match:
+        return False
+    _open_note(note_match, page_index, BBox(*pline.bbox), state)
+    return True
+
+
+def _append_to_current_article(pline: PageLine, page_index: int, state: _BuildState) -> None:
+    if state.current_body is None:
+        return
+    state.current_body.append((page_index, pline))
+
+
 def _process_page(lines: list[PageLine], page_index: int, state: _BuildState) -> None:
     idx = 0
     while idx < len(lines):
@@ -176,33 +254,30 @@ def _process_page(lines: list[PageLine], page_index: int, state: _BuildState) ->
         if cap_match:
             idx = _open_caption(cap_match, page_index, lines, idx, state)
             continue
-        heading = classify_heading_line(pline.text, pline.font)
-        if heading and heading[0] == "BackMatter" and not state.seen_structure:
-            heading = None
+        heading = _classify_heading(pline, state)
         if heading:
             idx = _open_node(heading[0], heading[1], page_index, lines, idx, state)
             continue
-        if state.in_notes:
-            note_match = RE_NOTE_ENTRY.match(pline.text)
-            if note_match:
-                _open_note(note_match, page_index, BBox(*pline.bbox), state)
-                idx += 1
-                continue
-        if state.current_article is not None:
-            state.article_bodies[id(state.current_article)].append((page_index, pline))
+        if _try_open_note(pline, page_index, state):
+            idx += 1
+            continue
+        _append_to_current_article(pline, page_index, state)
         idx += 1
 
 
 def _finalize_end_pages(node: Node, last_page: int) -> None:
+    # Both branches are clamped, not just the sibling-boundary one: the last
+    # child in a list inherits `last_page` verbatim from its parent, which is
+    # just as capable of landing before the child's own start page whenever
+    # an ancestor a few levels up was itself clamped down close to its own
+    # start page (see Fix 1 in the final-review report - this is the same
+    # bug, one level removed).
     for i, child in enumerate(node.children):
-        child.end_page = node.children[i + 1].page - 1 if i + 1 < len(node.children) else last_page
+        if i + 1 < len(node.children):
+            child.end_page = max(child.page, node.children[i + 1].page - 1)
+        else:
+            child.end_page = max(child.page, last_page)
         _finalize_end_pages(child, child.end_page)
-
-
-def _iter_nodes(node: Node):
-    yield node
-    for child in node.children:
-        yield from _iter_nodes(child)
 
 
 def build_tree(source: PdfSource) -> tuple[Node, list[Caption]]:
@@ -231,7 +306,6 @@ def build_tree(source: PdfSource) -> tuple[Node, list[Caption]]:
         _process_page(source.page_lines(page_index), page_index, state)
 
     _finalize_end_pages(volume, source.page_count)
-    for node_id, body in state.article_bodies.items():
-        article = next(n for n in _iter_nodes(volume) if id(n) == node_id)
+    for article, body in state.article_bodies:
         article.children = segment_article_body(body, article.citation, article.end_page)
     return volume, state.captions

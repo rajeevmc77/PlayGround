@@ -72,7 +72,11 @@ def classify_heading_line(text: str, font: str) -> tuple[str, re.Match] | None:
     return None
 
 
+def is_caption_font(font: str) -> bool:
+    return "Bold" in font and "Black" not in font and "Narrow" not in font
+
+
 def classify_caption_line(text: str, font: str) -> re.Match | None:
-    if "Bold" not in font or "Black" in font or "Narrow" in font:
+    if not is_caption_font(font):
         return None
     return RE_CAPTION.match(text)

@@ -6,7 +6,7 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m \"not slow\""
 testpaths = ["tests"]
 markers = [
     "slow: exercises the full 1685-page PDF; skipped unless -m slow is passed",

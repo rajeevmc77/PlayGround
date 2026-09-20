@@ -76,13 +76,17 @@ def _marker_node(
     node_type: str, token: str, parent_citation: str, page_index: int, pline, end_page: int
 ) -> Node:
     identifier = f"({token.lower()})"
+    page = page_index + 1
     return Node(
         type=node_type,
         identifier=identifier,
         citation=f"{parent_citation}{identifier}",
         title=pline.text,
-        page=page_index + 1,
-        end_page=end_page,
+        page=page,
+        # end_page is inherited from the sentence/article boundary computed
+        # before this marker's own page was known - clamp so it can't land
+        # before this node's own start page (same class of bug as Fix 1).
+        end_page=max(page, end_page),
         bbox=BBox(*pline.bbox),
     )
 
@@ -141,5 +145,11 @@ def segment_article_body(
     groups = _split_into_sentence_groups(body_lines)
     sentences = [_build_sentence(g, article_citation, article_end_page) for g in groups]
     for i, sentence in enumerate(sentences):
-        sentence.end_page = sentences[i + 1].page if i + 1 < len(sentences) else article_end_page
+        if i + 1 < len(sentences):
+            sentence.end_page = sentences[i + 1].page
+        else:
+            # article_end_page is an inherited upper bound computed before
+            # this (last) sentence's own page was known - clamp it the same
+            # way _marker_node does, so it can't land before sentence.page.
+            sentence.end_page = max(sentence.page, article_end_page)
     return sentences

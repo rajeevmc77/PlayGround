@@ -101,6 +101,29 @@ def test_last_sentence_end_page_falls_back_to_article_end_page():
     assert sentences[0].end_page == 9
 
 
+def test_last_sentence_end_page_clamped_when_article_end_page_precedes_it():
+    # article_end_page is an inherited upper bound computed at the tree level
+    # before this (last) sentence's own page was known (see Fix 1 in the
+    # final-review report: _finalize_end_pages can hand a "last child"
+    # article an end_page that's actually earlier than pages its own body
+    # later lands on). end_page must never precede the sentence's own page.
+    body = [line(5, 100, 50, "1) Only sentence, but article_end_page is stale.")]
+    sentences = segment_article_body(body, "B-1.1.1.1.", article_end_page=3)
+    assert sentences[0].page == 6
+    assert sentences[0].end_page >= sentences[0].page
+
+
+def test_clause_end_page_clamped_when_inherited_bound_precedes_it():
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 60, "a) clause a"),
+    ]
+    sentences = segment_article_body(body, "B-1.1.1.1.", article_end_page=3)
+    clause_a = sentences[0].children[0]
+    assert clause_a.page == 6
+    assert clause_a.end_page >= clause_a.page
+
+
 def test_ambiguous_roman_without_threshold_falls_back_to_proximity():
     """With only one confirmed clause and no confirmed subclause markers in
     the sentence, there aren't both samples needed to compute an indent

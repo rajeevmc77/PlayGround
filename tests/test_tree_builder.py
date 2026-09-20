@@ -117,3 +117,30 @@ def test_backmatter_marker_before_any_division_is_not_a_heading():
     root, _captions = build_tree(FakePdfSource(pages))
     assert root.children[0].type == "FrontMatter"
     assert len([c for c in root.children if c.type == "BackMatter"]) == 0
+
+
+def test_end_page_never_precedes_start_page_for_siblings_sharing_a_page():
+    # Two Articles under the same Subsection both start on page index 2 (the
+    # norm in a code book - several Articles often share a page). Before the
+    # clamp in _finalize_end_pages, the first sibling's end_page was computed
+    # as the second sibling's start page minus 1, landing BEFORE its own
+    # start page whenever siblings share a page.
+    pages = [
+        [line(50, 40, "Random front matter text.", BODY)],  # page 0
+        [line(50, 40, "Division A", BLACK)],  # page 1
+        [
+            line(50, 40, "Part 1", BLACK),
+            line(70, 40, "Compliance", BLACK),
+            line(90, 40, "Section  1.1.   General", BLACK),
+            line(110, 40, "1.1.1. Application", BLACK),
+            line(130, 40, "1.1.1.1. Application of this Code", BLACK),
+            line(150, 40, "1.1.1.2. Second Article", BLACK),
+        ],  # page index 2 (page number 3): two Articles sharing the same page
+    ]
+    root, _captions = build_tree(FakePdfSource(pages))
+    subsection = root.children[1].children[0].children[0].children[0]
+    article_1, article_2 = subsection.children
+    assert article_1.citation == "A-1.1.1.1." and article_2.citation == "A-1.1.1.2."
+    assert article_1.page == article_2.page == 3
+    assert article_1.end_page >= article_1.page
+    assert article_2.end_page >= article_2.page

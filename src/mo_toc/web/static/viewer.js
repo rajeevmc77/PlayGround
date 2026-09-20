@@ -5,7 +5,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 let pdfDoc = null;
 let currentPage = 1;
-let currentBBox = null;
 
 async function loadToc() {
   const res = await fetch("/api/toc");
@@ -90,7 +89,6 @@ function showHighlight(viewport, bbox) {
 }
 
 async function goToLocation(pageNumber, bbox) {
-  currentBBox = bbox;
   const viewport = await renderPage(pageNumber);
   showHighlight(viewport, bbox);
 }

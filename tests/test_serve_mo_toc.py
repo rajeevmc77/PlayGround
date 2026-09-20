@@ -1,12 +1,52 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 import serve_mo_toc
-from serve_mo_toc import app
+from mo_toc.web.api import create_app
 
 
-def test_app_serves_index_page():
-    client = TestClient(app)
+def _write_fixture_json(tmp_path):
+    payload = {
+        "volume": {
+            "type": "Volume",
+            "identifier": "Volume",
+            "citation": "Volume",
+            "title": "",
+            "page": 1,
+            "end_page": 10,
+            "bbox": {"x0": 0, "y0": 0, "x1": 0, "y1": 0},
+            "children": [],
+        },
+        "captions": [],
+        "images": [],
+    }
+    path = tmp_path / "mo_toc.json"
+    path.write_text(json.dumps(payload))
+    return str(path)
+
+
+def _make_client(tmp_path):
+    json_path = _write_fixture_json(tmp_path)
+    thumbs_dir = tmp_path / "thumbnails"
+    thumbs_dir.mkdir()
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    app = create_app(
+        toc_json_path=json_path,
+        pdf_path=str(pdf_path),
+        thumbnails_dir=str(thumbs_dir),
+    )
+    return TestClient(app)
+
+
+def test_app_serves_index_page(tmp_path):
+    # Built from a local fixture via create_app, not the real module-level
+    # `serve_mo_toc.app` - that object reads the real output/mo_toc.json,
+    # a generated file .gitignore excludes, which wouldn't exist yet on a
+    # fresh checkout and would break test collection.
+    client = _make_client(tmp_path)
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"MO Package TOC Viewer" in resp.content

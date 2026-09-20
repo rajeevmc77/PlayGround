@@ -53,8 +53,7 @@ def _hierarchy_section(volume: Node) -> list[str]:
                 f"{node.page} | {node.end_page} |"
             )
         for child in node.children:
-            if child.type not in skip:
-                walk(child, depth + 1)
+            walk(child, depth + 1)
 
     walk(volume, 0)
     return lines + [""]
