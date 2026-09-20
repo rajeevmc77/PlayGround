@@ -34,7 +34,8 @@ def test_sentence_with_clauses_and_subclauses():
     clause_a, clause_b = sentences[0].children
     assert clause_a.citation == "B-1.1.1.1.(1)(a)"
     assert [c.citation for c in clause_a.children] == [
-        "B-1.1.1.1.(1)(a)(i)", "B-1.1.1.1.(1)(a)(ii)",
+        "B-1.1.1.1.(1)(a)(i)",
+        "B-1.1.1.1.(1)(a)(ii)",
     ]
     assert clause_b.citation == "B-1.1.1.1.(1)(b)"
     assert clause_b.children == []
@@ -98,3 +99,24 @@ def test_last_sentence_end_page_falls_back_to_article_end_page():
     body = [line(5, 100, 50, "1) Only sentence.")]
     sentences = segment_article_body(body, "B-1.1.1.1.", article_end_page=9)
     assert sentences[0].end_page == 9
+
+
+def test_ambiguous_roman_without_threshold_falls_back_to_proximity():
+    """With only one confirmed clause and no confirmed subclause markers in
+    the sentence, there aren't both samples needed to compute an indent
+    threshold. An ambiguous roman-shaped marker that also isn't the next
+    expected clause letter then falls back to comparing its indent against
+    the previous clause's x0: indented more than 8pt past it reads as a
+    Subclause of that clause."""
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 60, "a) clause a"),
+        line(5, 124, 80, "v) indented under a, not next-letter"),
+    ]
+    sentences = segment_article_body(body, "B-4.4.4.4.", article_end_page=7)
+    clause_a = sentences[0].children[0]
+    assert clause_a.citation == "B-4.4.4.4.(1)(a)"
+    assert len(clause_a.children) == 1
+    subclause = clause_a.children[0]
+    assert subclause.type == "Subclause"
+    assert subclause.identifier == "(v)"

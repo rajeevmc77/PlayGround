@@ -34,11 +34,12 @@ def _write_fixture_json(tmp_path):
     return str(path)
 
 
-def _make_client(tmp_path, pdf_path=None):
+def _make_client(tmp_path, pdf_path=None, create_thumbnail=True):
     json_path = _write_fixture_json(tmp_path)
     thumbs_dir = tmp_path / "thumbnails"
     thumbs_dir.mkdir()
-    (thumbs_dir / "img_0.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    if create_thumbnail:
+        (thumbs_dir / "img_0.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
     if pdf_path is None:
         pdf_path = tmp_path / "sample.pdf"
         pdf_path.write_bytes(b"%PDF-1.4 fake")
@@ -82,3 +83,10 @@ def test_get_thumbnail_out_of_range_returns_404(tmp_path):
     client = _make_client(tmp_path)
     resp = client.get("/api/image/99/thumbnail")
     assert resp.status_code == 404
+
+
+def test_get_thumbnail_missing_file_returns_404(tmp_path):
+    client = _make_client(tmp_path, create_thumbnail=False)
+    resp = client.get("/api/image/0/thumbnail")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Thumbnail file missing"

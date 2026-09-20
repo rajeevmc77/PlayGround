@@ -71,3 +71,10 @@ def test_computes_phash_from_image_bytes():
 def test_no_images_returns_empty_list():
     source = FakeImageSource({})
     assert extract_images(source) == []
+
+
+def test_phash_none_when_image_bytes_are_invalid():
+    source = FakeImageSource({0: [PageImageInfo(bbox=(0, 0, 10, 10), xref=1)]})
+    source.register_image(1, b"not a real image")
+    images = extract_images(source)
+    assert images[0].phash is None

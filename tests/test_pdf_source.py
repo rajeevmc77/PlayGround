@@ -1,5 +1,8 @@
+import io
+
 import pymupdf as fitz
 import pytest
+from PIL import Image
 
 from mo_toc.parsing.pdf_source import PyMuPdfSource
 
@@ -11,6 +14,19 @@ def two_page_pdf(tmp_path):
     page1.insert_text((72, 72), "Hello World")
     _page2 = doc.new_page()
     path = tmp_path / "sample.pdf"
+    doc.save(str(path))
+    doc.close()
+    return str(path)
+
+
+@pytest.fixture
+def pdf_with_image(tmp_path):
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (255, 0, 0)).save(buf, format="PNG")
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_image(fitz.Rect(10, 10, 60, 60), stream=buf.getvalue())
+    path = tmp_path / "with_image.pdf"
     doc.save(str(path))
     doc.close()
     return str(path)
@@ -44,3 +60,16 @@ def test_page_line_x0_y0_properties_match_bbox(two_page_pdf):
 def test_page_images_empty_when_no_images(two_page_pdf):
     source = PyMuPdfSource(two_page_pdf)
     assert source.page_images(0) == []
+
+
+def test_extract_image_returns_raw_bytes_and_dimensions(pdf_with_image):
+    source = PyMuPdfSource(pdf_with_image)
+    infos = source.page_images(0)
+    assert len(infos) == 1
+
+    extracted = source.extract_image(infos[0].xref)
+
+    assert extracted.data
+    assert extracted.width > 0
+    assert extracted.height > 0
+    assert extracted.ext
