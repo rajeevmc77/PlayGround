@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MO Package TOC Viewer</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+</head>
+<body>
+  <div id="sidebar">
+    <div id="tabs">
+      <button id="tab-toc" class="active">Table of Contents</button>
+      <button id="tab-images">Images</button>
+    </div>
+    <div id="tree"></div>
+    <div id="images" style="display:none">
+      <label><input type="checkbox" id="declutter" checked> Hide images under 40pt</label>
+    </div>
+  </div>
+  <div id="main">
+    <div id="controls">
+      <button id="prev-page">&larr; Prev</button>
+      <span id="page-indicator">Page 1</span>
+      <button id="next-page">Next &rarr;</button>
+    </div>
+    <canvas id="page-canvas"></canvas>
+    <div id="highlight" style="display:none"></div>
+  </div>
+  <script src="/static/viewer.js"></script>
+</body>
+</html>

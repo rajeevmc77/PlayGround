@@ -31,4 +31,13 @@ def create_app(toc_json_path: str, pdf_path: str, thumbnails_dir: str) -> FastAP
             raise HTTPException(status_code=404, detail="Thumbnail file missing")
         return FileResponse(str(file_path))
 
+    from fastapi.staticfiles import StaticFiles
+
+    static_dir = Path(__file__).resolve().parent / "static"
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/")
+    def index():
+        return FileResponse(str(static_dir / "index.html"))
+
     return app
