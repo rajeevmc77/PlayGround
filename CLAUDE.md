@@ -37,7 +37,7 @@ and prints which path works and why.
   file paths (credentials, token, PDF, output) to the project root via
   `Path(__file__).resolve().parent.parent`, not the current working directory, so they run
   correctly regardless of where they're invoked from.
-- `web_toc.py` — the BC Building Code website indexing library (mirrors `mo_toc/`'s
+- `web_toc/` — the BC Building Code website indexing library (mirrors `mo_toc/`'s
   domain/parsing/output split), fetching from `https://dev.buildingcode.gov.bc.ca` rather
   than reading a local PDF. `build_web_toc.py` is its CLI entry point.
 - `data/` — input source files, e.g. `MO Package BCBC MRK signed.pdf`, `bcbc_2024.pdf`.
