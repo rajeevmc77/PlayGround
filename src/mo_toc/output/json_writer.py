@@ -5,8 +5,9 @@ from pathlib import Path
 from mo_toc.domain.models import Caption, ImageAsset, Node
 
 
-def write_json(volume: Node, captions: list[Caption], images: list[ImageAsset],
-               out_path: str) -> None:
+def write_json(
+    volume: Node, captions: list[Caption], images: list[ImageAsset], out_path: str
+) -> None:
     payload = {
         "volume": dataclasses.asdict(volume),
         "captions": [dataclasses.asdict(c) for c in captions],
