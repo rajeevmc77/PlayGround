@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from web_toc.parsing.content_url import content_url
@@ -20,20 +22,25 @@ def _find(node, citation):
 
 @pytest.mark.slow
 def test_navigation_tree_has_two_volumes():
-    source = HttpxWebSource(BASE_URL, VERSION)
-    root = build_tree(source.fetch_navigation_tree())
+    async def scenario():
+        async with HttpxWebSource(BASE_URL, VERSION) as source:
+            return build_tree(await source.fetch_navigation_tree())
+
+    root = asyncio.run(scenario())
     assert len(root.children) == 2
 
 
 @pytest.mark.slow
 def test_front_matter_preface_content_is_fetchable():
-    source = HttpxWebSource(BASE_URL, VERSION)
-    root = build_tree(source.fetch_navigation_tree())
-    preface = _find(root, "nbc.2020.preface")
-    assert preface is not None
+    async def scenario():
+        async with HttpxWebSource(BASE_URL, VERSION) as source:
+            root = build_tree(await source.fetch_navigation_tree())
+            preface = _find(root, "nbc.2020.preface")
+            assert preface is not None
 
-    url = content_url(preface, VERSION)
-    content = source.fetch_content(url)
+            url = content_url(preface, VERSION)
+            return await source.fetch_content(url)
 
+    content = asyncio.run(scenario())
     assert content is not None
     assert content["id"] == "nbc.2020.preface"

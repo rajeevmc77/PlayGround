@@ -9,8 +9,8 @@ Usage:
 """
 
 import argparse
+import asyncio
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -33,9 +33,9 @@ DEFAULT_BASE_URL = "https://dev.buildingcode.gov.bc.ca"
 DEFAULT_VERSION = "2024"
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 
-# I/O-bound HTTP fetches, not CPU work - a small worker pool overlaps the
+# I/O-bound HTTP fetches, not CPU work - a bounded semaphore overlaps the
 # per-request latency without hammering the site with unbounded concurrency.
-CONTENT_FETCH_WORKERS = 8
+CONTENT_FETCH_CONCURRENCY = 8
 
 
 def _walk(node):
@@ -51,9 +51,10 @@ def _content_bearing_nodes(root, version):
             yield node, url
 
 
-def _fetch_content(source, url):
+async def _fetch_content(source, semaphore, url):
     print(f"Fetching {url} ...", file=sys.stderr)
-    return source.fetch_content(url)
+    async with semaphore:
+        return await source.fetch_content(url)
 
 
 def _images_for(node, url, content, citations):
@@ -63,26 +64,29 @@ def _images_for(node, url, content, citations):
     return extract_images(content, citations, node.citation)
 
 
-def run(base_url: str, version: str, output_dir: str) -> None:
-    source = HttpxWebSource(base_url, version)
-    root = build_tree(source.fetch_navigation_tree())
-    assign_unified_numbers(
-        root.children,
-        WEB_TOC_TYPE_MARKERS,
-        identifier_types=WEB_TOC_IDENTIFIER_TYPES,
-        suffix_types=WEB_TOC_SUFFIX_TYPES,
-    )
-    citations = collect_citations(root)
+async def run(base_url: str, version: str, output_dir: str) -> None:
+    async with HttpxWebSource(base_url, version) as source:
+        root = build_tree(await source.fetch_navigation_tree())
+        assign_unified_numbers(
+            root.children,
+            WEB_TOC_TYPE_MARKERS,
+            identifier_types=WEB_TOC_IDENTIFIER_TYPES,
+            suffix_types=WEB_TOC_SUFFIX_TYPES,
+        )
+        citations = collect_citations(root)
 
-    targets = list(_content_bearing_nodes(root, version))
-    with ThreadPoolExecutor(max_workers=CONTENT_FETCH_WORKERS) as executor:
-        contents = list(executor.map(lambda t: _fetch_content(source, t[1]), targets))
+        targets = list(_content_bearing_nodes(root, version))
+        semaphore = asyncio.Semaphore(CONTENT_FETCH_CONCURRENCY)
+        contents = await asyncio.gather(
+            *(_fetch_content(source, semaphore, url) for _, url in targets)
+        )
 
-    images = []
-    for (node, url), content in zip(targets, contents, strict=True):
-        images.extend(_images_for(node, url, content, citations))
+        images = []
+        for (node, url), content in zip(targets, contents, strict=True):
+            images.extend(_images_for(node, url, content, citations))
 
-    download_images(images, source, str(Path(output_dir) / "web_images"))
+        await download_images(images, source, str(Path(output_dir) / "web_images"))
+
     write_json(root, images, str(Path(output_dir) / "web_toc.json"))
 
 
@@ -93,7 +97,7 @@ def main() -> None:
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args()
     print(f"Parsing {args.base_url} (version {args.version}) ...", file=sys.stderr)
-    run(args.base_url, args.version, args.output_dir)
+    asyncio.run(run(args.base_url, args.version, args.output_dir))
     print(f"Wrote {args.output_dir}/web_toc.json", file=sys.stderr)
 
 
