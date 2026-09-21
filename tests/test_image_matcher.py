@@ -187,3 +187,71 @@ def test_original_image_fields_are_preserved():
 
 def test_empty_images_list_returns_empty_list():
     assert match_images([], [], _tree()) == []
+
+
+def test_prefers_a_farther_figure_caption_over_a_closer_table_caption():
+    # Confirmed real-document case (Article 4.1.6.5.'s Figure 4.1.6.5.-A
+    # diagram): the genuine "Figure ..." caption introduces the diagram from
+    # 48pt above it, while an unrelated "Table ..." caption - introducing the
+    # data table that follows the diagram, not the diagram itself - sits only
+    # 44pt below it. Pure nearest-distance picks the Table caption and
+    # mislabels the diagram; images are never themselves tables (tables are
+    # parsed as text, never as an embedded image), so a Figure-kind caption
+    # is always the semantically correct pick when one is in range.
+    volume = _tree()
+    image = _image(page=11, y0=248, y1=498)
+    figure_caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=200, y1=214)  # 34pt above
+    table_caption = _caption("Table", "A-1.1.1.1.-B", page=11, y0=508, y1=522)  # 10pt below
+    result = match_images([image], [figure_caption, table_caption], volume)
+    assert result[0].caption_kind == "Figure"
+    assert result[0].caption_identifier == "A-1.1.1.1.-A"
+
+
+def test_falls_back_to_table_caption_when_no_figure_caption_is_in_range():
+    volume = _tree()
+    image = _image(page=11, y0=200, y1=250)
+    table_caption = _caption("Table", "A-1.1.1.1.-B", page=11, y0=170, y1=190)
+    result = match_images([image], [table_caption], volume)
+    assert result[0].caption_kind == "Table"
+    assert result[0].caption_identifier == "A-1.1.1.1.-B"
+
+
+def test_nearest_figure_caption_wins_when_multiple_figure_captions_are_in_range():
+    volume = _tree()
+    image = _image(page=11, y0=200, y1=250)
+    near = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=255, y1=270)
+    far = _caption("Figure", "A-1.1.1.1.-B", page=11, y0=140, y1=155)
+    result = match_images([image], [far, near], volume)
+    assert result[0].caption_identifier == "A-1.1.1.1.-A"
+
+
+def test_image_below_caption_eligibility_threshold_never_gets_a_caption():
+    # An inline equation glyph (e.g. "xd = 5(CbSs/y)(Ca0-1)") is never itself
+    # captioned in this document, but can still sit close enough to a real
+    # Figure/Table caption to look like a match by distance alone. 40pt in
+    # its smaller dimension matches the viewer's own "declutter" convention
+    # for what counts as a real figure vs. a decorative/inline graphic.
+    volume = _tree()
+    tiny_image = _image(page=11, y0=100, y1=130, x0=100, x1=150)  # 50x30pt
+    caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=135, y1=150)
+    result = match_images([tiny_image], [caption], volume)
+    assert result[0].caption_kind is None
+    assert result[0].caption_identifier is None
+
+
+def test_small_ineligible_image_does_not_steal_a_caption_from_a_farther_real_figure():
+    # Confirmed real-document case (Article 4.1.6.5.'s Figure 4.1.6.5.-A): a
+    # small equation-glyph image geometrically closer to the caption must not
+    # win it over the actual (larger, farther) diagram the caption describes.
+    volume = _tree()
+    equation_glyph = _image(page=11, y0=126, y1=150, x0=100, x1=200)  # 100x24pt
+    diagram = _image(page=11, y0=248, y1=498, x0=100, x1=400)  # 300x250pt
+    figure_caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=188, y1=202)
+    table_caption = _caption("Table", "A-1.1.1.1.-B", page=11, y0=545, y1=559)
+
+    result = match_images([equation_glyph, diagram], [figure_caption, table_caption], volume)
+
+    by_y0 = {img.bbox.y0: img for img in result}
+    assert by_y0[126].caption_identifier is None
+    assert by_y0[248].caption_identifier == "A-1.1.1.1.-A"
+    assert by_y0[248].caption_kind == "Figure"
