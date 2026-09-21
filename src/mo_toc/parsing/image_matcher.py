@@ -4,6 +4,7 @@ Table/Figure caption sits close enough to it on the same page - that
 caption's own identifier, so an image can be shown as "Figure A-1.3.3.4.(2)"
 rather than just "p.37" wherever a real caption exists for it.
 """
+
 import dataclasses
 
 from mo_toc.domain.models import Caption, ImageAsset, Node
@@ -94,6 +95,7 @@ def match_images(
                 owner_citation=owner_citation,
                 caption_kind=caption.kind if caption else None,
                 caption_identifier=caption.identifier if caption else None,
+                caption_title=caption.title if caption else None,
             )
         )
     return enriched

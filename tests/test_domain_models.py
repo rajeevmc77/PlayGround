@@ -108,6 +108,7 @@ def test_image_asset_owner_and_caption_fields_default_unset():
     assert img.owner_citation == ""
     assert img.caption_kind is None
     assert img.caption_identifier is None
+    assert img.caption_title is None
 
 
 def test_image_asset_owner_and_caption_fields_can_be_set():
@@ -121,7 +122,9 @@ def test_image_asset_owner_and_caption_fields_can_be_set():
         owner_citation="Note:A-1.3.3.4",
         caption_kind="Figure",
         caption_identifier="A-1.3.3.4.(2)",
+        caption_title="Flight",
     )
     assert img.owner_citation == "Note:A-1.3.3.4"
     assert img.caption_kind == "Figure"
     assert img.caption_identifier == "A-1.3.3.4.(2)"
+    assert img.caption_title == "Flight"

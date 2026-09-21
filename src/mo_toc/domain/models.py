@@ -48,3 +48,4 @@ class ImageAsset:
     owner_citation: str = ""
     caption_kind: str | None = None
     caption_identifier: str | None = None
+    caption_title: str | None = None
