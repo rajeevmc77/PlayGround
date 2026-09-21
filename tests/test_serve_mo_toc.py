@@ -29,14 +29,14 @@ def _write_fixture_json(tmp_path):
 
 def _make_client(tmp_path):
     json_path = _write_fixture_json(tmp_path)
-    thumbs_dir = tmp_path / "thumbnails"
-    thumbs_dir.mkdir()
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
     app = create_app(
         toc_json_path=json_path,
         pdf_path=str(pdf_path),
-        thumbnails_dir=str(thumbs_dir),
+        images_dir=str(images_dir),
     )
     return TestClient(app)
 
@@ -63,14 +63,14 @@ def test_main_exits_when_toc_json_missing(tmp_path, monkeypatch):
 
 def test_get_app_returns_503_for_web_toc_when_web_toc_json_missing(tmp_path, monkeypatch):
     toc_json_path = _write_fixture_json(tmp_path)
-    thumbs_dir = tmp_path / "thumbnails"
-    thumbs_dir.mkdir()
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
 
     monkeypatch.setattr(serve_mo_toc, "TOC_JSON", toc_json_path)
     monkeypatch.setattr(serve_mo_toc, "PDF_PATH", str(pdf_path))
-    monkeypatch.setattr(serve_mo_toc, "THUMBNAILS_DIR", str(thumbs_dir))
+    monkeypatch.setattr(serve_mo_toc, "IMAGES_DIR", str(images_dir))
     monkeypatch.setattr(serve_mo_toc, "WEB_TOC_JSON", str(tmp_path / "missing_web_toc.json"))
     monkeypatch.setattr(serve_mo_toc, "_app", None)
 

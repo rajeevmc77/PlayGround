@@ -1,13 +1,16 @@
-"""Extracts every embedded raster image from a PdfSource, page by page, with
-no minimum-size filter (unlike the archived extract_figures.py, which only
-kept images matched to a genuine Figure caption above ~40pt) — this indexes
-every image in the document, including logos/icons/decorative graphics.
+"""Extracts every embedded raster image and every vector-drawn figure from a
+PdfSource, page by page, with no minimum-size filter on raster images (unlike
+the archived extract_figures.py, which only kept images matched to a genuine
+Figure caption above ~40pt) — this indexes every raster image in the document,
+including logos/icons/decorative graphics, plus a rendered crop for each
+distinct cluster of vector paths that isn't already covered by a raster image.
 """
 
 import io
 from dataclasses import dataclass
 
-from mo_toc.parsing.pdf_source import PdfSource
+from mo_toc.parsing.pdf_source import ExtractedImage, PdfSource
+from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
 
 
 @dataclass(frozen=True)
@@ -31,20 +34,42 @@ def _phash(data: bytes) -> str | None:
         return None
 
 
+def _raw_image(page_index: int, bbox, extracted: ExtractedImage) -> RawImage:
+    return RawImage(
+        page=page_index + 1,
+        bbox=bbox,
+        width=extracted.width,
+        height=extracted.height,
+        data=extracted.data,
+        ext=extracted.ext,
+        phash=_phash(extracted.data),
+    )
+
+
+def _raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
+    images = []
+    for info in source.page_images(page_index):
+        extracted = source.extract_image(info.xref)
+        images.append(_raw_image(page_index, info.bbox, extracted))
+    return images
+
+
+def _vector_images_on_page(
+    source: PdfSource, page_index: int, raster_bboxes: list[tuple[float, float, float, float]]
+) -> list[RawImage]:
+    clusters = cluster_drawing_rects(source.page_drawing_rects(page_index))
+    clusters = exclude_overlapping_rects(clusters, raster_bboxes)
+    images = []
+    for bbox in clusters:
+        extracted = source.render_region(page_index, bbox)
+        images.append(_raw_image(page_index, bbox, extracted))
+    return images
+
+
 def extract_images(source: PdfSource) -> list[RawImage]:
     images = []
     for page_index in range(source.page_count):
-        for info in source.page_images(page_index):
-            extracted = source.extract_image(info.xref)
-            images.append(
-                RawImage(
-                    page=page_index + 1,
-                    bbox=info.bbox,
-                    width=extracted.width,
-                    height=extracted.height,
-                    data=extracted.data,
-                    ext=extracted.ext,
-                    phash=_phash(extracted.data),
-                )
-            )
+        raster = _raster_images_on_page(source, page_index)
+        images.extend(raster)
+        images.extend(_vector_images_on_page(source, page_index, [r.bbox for r in raster]))
     return images

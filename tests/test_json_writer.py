@@ -40,7 +40,7 @@ def test_write_json_roundtrips_tree_shape(tmp_path):
         width=5,
         height=5,
         phash="abc",
-        thumbnail_path="thumbnails/img_0.png",
+        image_path="images/img_0.png",
     )
 
     out_path = tmp_path / "out.json"

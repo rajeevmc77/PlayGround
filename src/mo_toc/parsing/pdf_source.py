@@ -45,6 +45,14 @@ class PdfSource(ABC):
     @abstractmethod
     def extract_image(self, xref: int) -> ExtractedImage: ...
 
+    @abstractmethod
+    def page_drawing_rects(self, page_index: int) -> list[tuple[float, float, float, float]]: ...
+
+    @abstractmethod
+    def render_region(
+        self, page_index: int, bbox: tuple[float, float, float, float]
+    ) -> ExtractedImage: ...
+
 
 def _line_from_span_dict(line_dict) -> PageLine | None:
     spans = [s for s in line_dict["spans"] if s["text"].strip()]
@@ -83,4 +91,21 @@ class PyMuPdfSource(PdfSource):
         info = self._doc.extract_image(xref)
         return ExtractedImage(
             data=info["image"], ext=info["ext"], width=info["width"], height=info["height"]
+        )
+
+    def page_drawing_rects(self, page_index: int) -> list[tuple[float, float, float, float]]:
+        drawings = self._doc[page_index].get_drawings()
+        return [tuple(d["rect"]) for d in drawings]
+
+    def render_region(
+        self, page_index: int, bbox: tuple[float, float, float, float]
+    ) -> ExtractedImage:
+        import pymupdf as fitz
+
+        zoom = 3
+        pixmap = self._doc[page_index].get_pixmap(
+            clip=fitz.Rect(*bbox), matrix=fitz.Matrix(zoom, zoom)
+        )
+        return ExtractedImage(
+            data=pixmap.tobytes("png"), ext="png", width=pixmap.width, height=pixmap.height
         )

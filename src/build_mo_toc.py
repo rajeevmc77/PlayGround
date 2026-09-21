@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Parses MO Package BCBC MRK signed.pdf into output/mo_toc.json + output/mo_toc.md
-and every embedded image's thumbnail under output/thumbnails/.
+and every embedded raster and vector-drawn image under output/images/.
 
 Usage:
     python3 src/build_mo_toc.py                # uses data/<default PDF>
@@ -13,9 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from mo_toc.output.image_writer import write_images
 from mo_toc.output.json_writer import write_json
 from mo_toc.output.markdown_writer import write_markdown
-from mo_toc.output.thumbnail_writer import write_thumbnails
 from mo_toc.parsing.image_extractor import extract_images
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.numbering_config import MO_TOC_TYPE_MARKERS
@@ -33,7 +33,7 @@ def run(pdf_path: str, output_dir: str) -> None:
     volume, captions = build_tree(source)
     assign_unified_numbers([volume], MO_TOC_TYPE_MARKERS)
     raw_images = extract_images(source)
-    images = write_thumbnails(raw_images, str(Path(output_dir) / "thumbnails"))
+    images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
     write_json(volume, captions, images, str(Path(output_dir) / "mo_toc.json"))
     write_markdown(volume, captions, str(Path(output_dir) / "mo_toc.md"))
@@ -48,7 +48,7 @@ def main() -> None:
         sys.exit(f"No such file: {args.pdf_path}")
     print(f"Parsing {args.pdf_path} ...", file=sys.stderr)
     run(args.pdf_path, args.output_dir)
-    print(f"Wrote {args.output_dir}/mo_toc.json, mo_toc.md, thumbnails/", file=sys.stderr)
+    print(f"Wrote {args.output_dir}/mo_toc.json, mo_toc.md, images/", file=sys.stderr)
 
 
 if __name__ == "__main__":

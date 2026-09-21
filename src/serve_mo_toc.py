@@ -15,7 +15,7 @@ from mo_toc.web.api import create_app
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOC_JSON = str(PROJECT_ROOT / "output" / "mo_toc.json")
 PDF_PATH = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
-THUMBNAILS_DIR = str(PROJECT_ROOT / "output" / "thumbnails")
+IMAGES_DIR = str(PROJECT_ROOT / "output" / "images")
 WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "web_toc.json")
 
 _app = None
@@ -37,7 +37,7 @@ def _get_app():
         _app = create_app(
             toc_json_path=TOC_JSON,
             pdf_path=PDF_PATH,
-            thumbnails_dir=THUMBNAILS_DIR,
+            images_dir=IMAGES_DIR,
             web_toc_json_path=web_toc_json,
         )
     return _app

@@ -32,6 +32,17 @@ def pdf_with_image(tmp_path):
     return str(path)
 
 
+@pytest.fixture
+def pdf_with_vector_drawing(tmp_path):
+    doc = fitz.open()
+    page = doc.new_page()
+    page.draw_rect(fitz.Rect(50, 50, 150, 150), color=(0, 0, 0), fill=(1, 1, 1))
+    path = tmp_path / "with_drawing.pdf"
+    doc.save(str(path))
+    doc.close()
+    return str(path)
+
+
 def test_page_count(two_page_pdf):
     source = PyMuPdfSource(two_page_pdf)
     assert source.page_count == 2
@@ -73,3 +84,24 @@ def test_extract_image_returns_raw_bytes_and_dimensions(pdf_with_image):
     assert extracted.width > 0
     assert extracted.height > 0
     assert extracted.ext
+
+
+def test_page_drawing_rects_empty_when_no_drawings(two_page_pdf):
+    source = PyMuPdfSource(two_page_pdf)
+    assert source.page_drawing_rects(0) == []
+
+
+def test_page_drawing_rects_returns_bbox_of_each_path(pdf_with_vector_drawing):
+    source = PyMuPdfSource(pdf_with_vector_drawing)
+    rects = source.page_drawing_rects(0)
+    assert len(rects) == 1
+    assert rects[0] == pytest.approx((50, 50, 150, 150))
+
+
+def test_render_region_returns_raster_bytes_at_requested_bbox(pdf_with_vector_drawing):
+    source = PyMuPdfSource(pdf_with_vector_drawing)
+    extracted = source.render_region(0, (50, 50, 150, 150))
+    assert extracted.data
+    assert extracted.ext == "png"
+    assert extracted.width > 0
+    assert extracted.height > 0
