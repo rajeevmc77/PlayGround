@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from build_web_toc import run
+from build_web_toc import CONTENT_FETCH_CONCURRENCY, run
 from web_toc.domain.models import WebNode
 
 
@@ -238,3 +238,67 @@ def test_run_closes_the_source_even_when_a_fetch_raises(
         pass
 
     mock_source.__aexit__.assert_awaited_once()
+
+
+@patch("build_web_toc.write_json")
+@patch("build_web_toc.download_images")
+@patch("build_web_toc.extract_images")
+@patch("build_web_toc.content_url")
+@patch("build_web_toc.collect_citations")
+@patch("build_web_toc.build_tree")
+@patch("build_web_toc.HttpxWebSource")
+def test_run_logs_fetch_progress_only_as_the_semaphore_admits_each_request(
+    mock_source_cls,
+    mock_build_tree,
+    mock_collect_citations,
+    mock_content_url,
+    mock_extract_images,
+    mock_download_images,
+    mock_write_json,
+    tmp_path,
+    capsys,
+):
+    leaves = [
+        WebNode(
+            type="section",
+            identifier=str(n),
+            citation=f"nbc.divA.part1.sect{n}",
+            title="",
+            path="",
+        )
+        for n in range(CONTENT_FETCH_CONCURRENCY + 2)
+    ]
+    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=leaves)
+    mock_source = _mock_source(mock_source_cls)
+    mock_source.fetch_navigation_tree.return_value = {"tree": []}
+    mock_build_tree.return_value = root
+    mock_collect_citations.return_value = {"root", *(leaf.citation for leaf in leaves)}
+    mock_content_url.side_effect = lambda node, version: (
+        f"/data/2024/content/{node.citation}.json" if node in leaves else None
+    )
+
+    gate = asyncio.Event()
+
+    async def _blocked_fetch(url):
+        await gate.wait()
+        return {"id": url}
+
+    mock_source.fetch_content.side_effect = _blocked_fetch
+    mock_extract_images.return_value = []
+
+    async def scenario():
+        task = asyncio.create_task(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        blocked_output = capsys.readouterr().err
+        gate.set()
+        await task
+        return blocked_output
+
+    blocked_output = _run(scenario())
+
+    fetch_lines_while_blocked = blocked_output.count("Fetching ")
+    assert fetch_lines_while_blocked == CONTENT_FETCH_CONCURRENCY, (
+        f"expected exactly {CONTENT_FETCH_CONCURRENCY} in-flight fetches to be logged while the "
+        f"remaining requests wait on the semaphore, but saw {fetch_lines_while_blocked}"
+    )

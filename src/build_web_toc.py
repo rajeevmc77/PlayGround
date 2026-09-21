@@ -52,8 +52,8 @@ def _content_bearing_nodes(root, version):
 
 
 async def _fetch_content(source, semaphore, url):
-    print(f"Fetching {url} ...", file=sys.stderr)
     async with semaphore:
+        print(f"Fetching {url} ...", file=sys.stderr)
         return await source.fetch_content(url)
 
 
