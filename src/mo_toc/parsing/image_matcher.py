@@ -11,6 +11,14 @@ from mo_toc.domain.models import Caption, ImageAsset, Node
 
 MAX_CAPTION_GAP = 50.0  # pt; beyond this a caption is presumed unrelated
 
+# pt, in the image's smaller dimension; matches the viewer's own "declutter"
+# convention (index.html's "Hide images under 40pt"). Inline equation glyphs
+# are never themselves captioned in this document, but can still sit closer
+# to a real Figure/Table caption than the actual figure it describes -
+# without this floor, a glyph would steal the caption before the real,
+# larger figure gets a chance at it.
+MIN_CAPTION_ELIGIBLE_DIM = 40.0
+
 # Sentence/Clause/Subclause are never pushed onto tree_builder's own open-node
 # stack (only Division/Part/.../Article/Note/... are), so a caption's
 # owner_citation never descends past Article/Note either - image ownership
@@ -67,15 +75,40 @@ def _gap(image: ImageAsset, caption: Caption) -> float | None:
     )
 
 
+def _kind_rank(caption: Caption) -> int:
+    """Embedded images are never themselves data tables - tables in this
+    document are parsed as text, never as an image - so a Figure-kind
+    caption in range is always the semantically correct pick over a Table
+    caption, even one that happens to sit a little closer (e.g. a Table
+    caption introducing unrelated text content right after the figure)."""
+    return 0 if caption.kind == "Figure" else 1
+
+
+def _is_caption_eligible(image: ImageAsset) -> bool:
+    width = image.bbox.x1 - image.bbox.x0
+    height = image.bbox.y1 - image.bbox.y0
+    return min(width, height) >= MIN_CAPTION_ELIGIBLE_DIM
+
+
 def _nearest_caption(image: ImageAsset, captions: list[Caption]) -> Caption | None:
     candidates = []
     for caption in captions:
         gap = _gap(image, caption)
         if gap is not None and gap <= MAX_CAPTION_GAP:
-            candidates.append((gap, caption))
+            candidates.append((_kind_rank(caption), gap, caption))
     if not candidates:
         return None
-    return min(candidates, key=lambda pair: pair[0])[1]
+    return min(candidates, key=lambda triple: triple[:2])[2]
+
+
+def _claim_caption(image: ImageAsset, captions: list[Caption], claimed_ids: set) -> Caption | None:
+    if not _is_caption_eligible(image):
+        return None
+    available = [c for c in captions if id(c) not in claimed_ids]
+    caption = _nearest_caption(image, available)
+    if caption is not None:
+        claimed_ids.add(id(caption))
+    return caption
 
 
 def match_images(
@@ -85,10 +118,7 @@ def match_images(
     enriched = []
     for image in images:
         owner_citation = assign_owner(image, volume)
-        available = [c for c in captions if id(c) not in claimed_ids]
-        caption = _nearest_caption(image, available)
-        if caption is not None:
-            claimed_ids.add(id(caption))
+        caption = _claim_caption(image, captions, claimed_ids)
         enriched.append(
             dataclasses.replace(
                 image,
