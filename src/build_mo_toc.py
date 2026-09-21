@@ -18,7 +18,11 @@ from mo_toc.output.markdown_writer import write_markdown
 from mo_toc.output.thumbnail_writer import write_thumbnails
 from mo_toc.parsing.image_extractor import extract_images
 from mo_toc.parsing.image_matcher import match_images
-from mo_toc.parsing.numbering_config import MO_TOC_TYPE_MARKERS
+from mo_toc.parsing.numbering_config import (
+    MO_TOC_IDENTIFIER_TYPES,
+    MO_TOC_SUFFIX_TYPES,
+    MO_TOC_TYPE_MARKERS,
+)
 from mo_toc.parsing.pdf_source import PyMuPdfSource
 from mo_toc.parsing.tree_builder import build_tree
 from shared.numbering import assign_unified_numbers
@@ -31,7 +35,12 @@ DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 def run(pdf_path: str, output_dir: str) -> None:
     source = PyMuPdfSource(pdf_path)
     volume, captions = build_tree(source)
-    assign_unified_numbers([volume], MO_TOC_TYPE_MARKERS)
+    assign_unified_numbers(
+        [volume],
+        MO_TOC_TYPE_MARKERS,
+        identifier_types=MO_TOC_IDENTIFIER_TYPES,
+        suffix_types=MO_TOC_SUFFIX_TYPES,
+    )
     raw_images = extract_images(source)
     images = write_thumbnails(raw_images, str(Path(output_dir) / "thumbnails"))
     images = match_images(images, captions, volume)

@@ -98,3 +98,61 @@ def test_position_above_nine_is_not_zero_padded():
     assign_unified_numbers(siblings, {"article": None})
 
     assert siblings[9].unified_number == "10"
+
+
+@dataclass
+class _StubIdentifierNode:
+    type: str
+    identifier: str = ""
+    children: list["_StubIdentifierNode"] = field(default_factory=list)
+    unified_number: str = ""
+
+
+def test_identifier_type_uses_identifier_instead_of_position():
+    division = _StubIdentifierNode(type="division", identifier="B")
+    volume = _StubIdentifierNode(type="volume", children=[division])
+    markers = {"volume": None, "division": None}
+
+    assign_unified_numbers([volume], markers, identifier_types=frozenset({"division"}))
+
+    assert volume.unified_number == "1"
+    assert division.unified_number == "1.B"
+
+
+def test_identifier_type_still_counts_positions_for_siblings():
+    division_a = _StubIdentifierNode(type="division", identifier="A")
+    division_b = _StubIdentifierNode(type="division", identifier="B")
+    markers = {"division": None}
+
+    assign_unified_numbers(
+        [division_a, division_b], markers, identifier_types=frozenset({"division"})
+    )
+
+    assert division_a.unified_number == "A"
+    assert division_b.unified_number == "B"
+
+
+def test_suffix_type_appends_identifier_without_a_dot():
+    sentence = _StubIdentifierNode(type="sentence", identifier="(1)")
+    article = _StubIdentifierNode(type="article", children=[sentence])
+    markers = {"article": None, "sentence": None}
+
+    assign_unified_numbers([article], markers, suffix_types=frozenset({"sentence"}))
+
+    assert article.unified_number == "1"
+    assert sentence.unified_number == "1(1)"
+
+
+def test_suffix_types_chain_without_dots_between_each_other():
+    subclause = _StubIdentifierNode(type="subclause", identifier="(i)")
+    clause = _StubIdentifierNode(type="clause", identifier="(a)", children=[subclause])
+    sentence = _StubIdentifierNode(type="sentence", identifier="(1)", children=[clause])
+    article = _StubIdentifierNode(type="article", children=[sentence])
+    markers = {"article": None, "sentence": None, "clause": None, "subclause": None}
+    suffix_types = frozenset({"sentence", "clause", "subclause"})
+
+    assign_unified_numbers([article], markers, suffix_types=suffix_types)
+
+    assert sentence.unified_number == "1(1)"
+    assert clause.unified_number == "1(1)(a)"
+    assert subclause.unified_number == "1(1)(a)(i)"

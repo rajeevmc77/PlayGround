@@ -1,4 +1,8 @@
-from mo_toc.parsing.numbering_config import MO_TOC_TYPE_MARKERS
+from mo_toc.parsing.numbering_config import (
+    MO_TOC_IDENTIFIER_TYPES,
+    MO_TOC_SUFFIX_TYPES,
+    MO_TOC_TYPE_MARKERS,
+)
 
 CANONICAL_LEVELS = [
     "Volume",
@@ -37,3 +41,11 @@ def test_non_level_types_map_to_short_markers():
 
 def test_table_has_exactly_the_expected_keys():
     assert set(MO_TOC_TYPE_MARKERS) == set(CANONICAL_LEVELS) | set(MARKER_TYPES)
+
+
+def test_division_and_sentence_are_the_identifier_types():
+    assert MO_TOC_IDENTIFIER_TYPES == frozenset({"Division", "Sentence"})
+
+
+def test_clause_and_subclause_are_the_suffix_types():
+    assert MO_TOC_SUFFIX_TYPES == frozenset({"Clause", "Subclause"})

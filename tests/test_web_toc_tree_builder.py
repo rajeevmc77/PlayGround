@@ -67,10 +67,27 @@ def test_build_tree_preserves_nested_children():
     assert section.identifier == "1.1"
 
 
-def test_build_tree_defaults_identifier_to_empty_string_when_number_missing():
+def test_build_tree_derives_division_identifier_letter_from_title():
     root = build_tree(_nav_fixture())
     division = root.children[0].children[0]
+    assert division.identifier == "A"
+
+
+def test_build_tree_defaults_division_identifier_to_empty_when_title_has_no_letter():
+    fixture = _nav_fixture()
+    fixture["tree"][0]["children"][0]["title"] = "Untitled Division"
+    root = build_tree(fixture)
+    division = root.children[0].children[0]
     assert division.identifier == ""
+
+
+def test_build_tree_defaults_identifier_to_empty_string_when_number_missing_on_non_division():
+    fixture = _nav_fixture()
+    del fixture["tree"][0]["children"][0]["children"][0]["number"]
+    root = build_tree(fixture)
+    part = root.children[0].children[0].children[0]
+    assert part.type == "part"
+    assert part.identifier == ""
 
 
 def test_build_tree_leaf_node_has_no_children():

@@ -1,4 +1,8 @@
+import re
+
 from web_toc.domain.models import WebNode
+
+_DIVISION_LETTER_RE = re.compile(r"Division\s+([A-Z])")
 
 
 def build_tree(nav_data: dict) -> WebNode:
@@ -12,10 +16,18 @@ def build_tree(nav_data: dict) -> WebNode:
     )
 
 
+def _identifier_for(raw: dict) -> str:
+    number = str(raw.get("number", ""))
+    if number or raw["type"] != "division":
+        return number
+    match = _DIVISION_LETTER_RE.search(raw.get("title", ""))
+    return match.group(1) if match else ""
+
+
 def _convert(raw: dict) -> WebNode:
     return WebNode(
         type=raw["type"],
-        identifier=str(raw.get("number", "")),
+        identifier=_identifier_for(raw),
         citation=raw["id"],
         title=raw.get("title", ""),
         path=raw.get("path", ""),

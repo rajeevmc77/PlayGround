@@ -4,7 +4,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from build_mo_toc import main, run
-from mo_toc.parsing.numbering_config import MO_TOC_TYPE_MARKERS
+from mo_toc.parsing.numbering_config import (
+    MO_TOC_IDENTIFIER_TYPES,
+    MO_TOC_SUFFIX_TYPES,
+    MO_TOC_TYPE_MARKERS,
+)
 
 
 @patch("build_mo_toc.write_markdown")
@@ -37,7 +41,12 @@ def test_run_wires_pipeline_in_order(
 
     mock_source_cls.assert_called_once_with("some.pdf")
     mock_build_tree.assert_called_once_with(mock_source)
-    mock_assign_numbers.assert_called_once_with(["VOLUME"], MO_TOC_TYPE_MARKERS)
+    mock_assign_numbers.assert_called_once_with(
+        ["VOLUME"],
+        MO_TOC_TYPE_MARKERS,
+        identifier_types=MO_TOC_IDENTIFIER_TYPES,
+        suffix_types=MO_TOC_SUFFIX_TYPES,
+    )
     mock_extract_images.assert_called_once_with(mock_source)
     mock_write_thumbs.assert_called_once_with(["RAW_IMAGE"], str(tmp_path / "thumbnails"))
     mock_match_images.assert_called_once_with(["IMAGE_ASSET"], ["CAPTION"], "VOLUME")

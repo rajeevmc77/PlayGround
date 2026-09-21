@@ -1,4 +1,8 @@
-from web_toc.parsing.numbering_config import WEB_TOC_TYPE_MARKERS
+from web_toc.parsing.numbering_config import (
+    WEB_TOC_IDENTIFIER_TYPES,
+    WEB_TOC_SUFFIX_TYPES,
+    WEB_TOC_TYPE_MARKERS,
+)
 
 CANONICAL_LEVELS = ["volume", "division", "part", "section", "subsection", "article"]
 
@@ -27,3 +31,11 @@ def test_table_has_exactly_the_expected_keys():
 
 def test_synthetic_root_type_is_not_in_the_table():
     assert "root" not in WEB_TOC_TYPE_MARKERS
+
+
+def test_division_is_the_only_identifier_type():
+    assert WEB_TOC_IDENTIFIER_TYPES == frozenset({"division"})
+
+
+def test_no_suffix_types_yet_web_toc_has_no_sentence_level_nodes():
+    assert WEB_TOC_SUFFIX_TYPES == frozenset()

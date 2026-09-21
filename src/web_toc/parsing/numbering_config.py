@@ -16,3 +16,9 @@ WEB_TOC_TYPE_MARKERS: dict[str, str | None] = {
     "conversions": "Conv",
     "spectables": "Spec",
 }
+
+# Division numbers by its lettered identifier (e.g. "B") instead of position.
+WEB_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"division"})
+
+# web_toc has no Sentence/Clause/Subclause-equivalent nodes today.
+WEB_TOC_SUFFIX_TYPES: frozenset[str] = frozenset()
