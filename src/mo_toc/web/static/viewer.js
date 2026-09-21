@@ -57,7 +57,7 @@ function renderImageRow(img, index, depth) {
   const row = document.createElement("div");
   row.className = "image-row node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.innerHTML = `<img src="/api/image/${index}/thumbnail"> ${imageLabel(img)}`;
+  row.innerHTML = `<img src="/api/image/${index}"> ${imageLabel(img)}`;
   row.addEventListener("click", () => goToLocation(img.page, img.bbox));
   return row;
 }
@@ -269,7 +269,7 @@ function renderComparePdfImage(img, index) {
   const container = document.getElementById("compare-pdf-content");
   container.innerHTML = "";
   const el = document.createElement("img");
-  el.src = `/api/image/${index}/thumbnail`;
+  el.src = `/api/image/${index}`;
   container.appendChild(el);
   const label = document.createElement("div");
   label.textContent = imageLabel(img);
@@ -300,7 +300,7 @@ function renderCompareImageRow(img, index, depth) {
   const row = document.createElement("div");
   row.className = "image-row node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.innerHTML = `<img src="/api/image/${index}/thumbnail"> ${imageLabel(img)}`;
+  row.innerHTML = `<img src="/api/image/${index}"> ${imageLabel(img)}`;
   row.addEventListener("click", () => showCompareImages(img, index));
   return row;
 }

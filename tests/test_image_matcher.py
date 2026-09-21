@@ -22,7 +22,7 @@ def _image(page, y0, y1, x0=100, x1=200):
         width=int(x1 - x0),
         height=int(y1 - y0),
         phash=None,
-        thumbnail_path=f"thumbnails/img_p{page}_{y0}.png",
+        image_path=f"images/img_p{page}_{y0}.png",
     )
 
 
@@ -182,7 +182,7 @@ def test_original_image_fields_are_preserved():
     image = _image(page=11, y0=100, y1=150)
     result = match_images([image], [], volume)
     assert result[0].width == image.width
-    assert result[0].thumbnail_path == image.thumbnail_path
+    assert result[0].image_path == image.image_path
 
 
 def test_empty_images_list_returns_empty_list():

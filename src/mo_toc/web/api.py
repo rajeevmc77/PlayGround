@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 def create_app(
     toc_json_path: str,
     pdf_path: str,
-    thumbnails_dir: str,
+    images_dir: str,
     web_toc_json_path: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="MO Package TOC Viewer")
@@ -36,14 +36,14 @@ def create_app(
     def get_pdf():
         return FileResponse(pdf_path, media_type="application/pdf")
 
-    @app.get("/api/image/{index}/thumbnail")
-    def get_thumbnail(index: int):
+    @app.get("/api/image/{index}")
+    def get_image(index: int):
         if index < 0 or index >= len(payload["images"]):
             raise HTTPException(status_code=404, detail="No such image")
-        rel_path = payload["images"][index]["thumbnail_path"]
-        file_path = Path(thumbnails_dir).parent / rel_path
+        rel_path = payload["images"][index]["image_path"]
+        file_path = Path(images_dir).parent / rel_path
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Thumbnail file missing")
+            raise HTTPException(status_code=404, detail="Image file missing")
         return FileResponse(str(file_path))
 
     @app.get("/api/web-image/{image_id}/thumbnail")

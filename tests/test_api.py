@@ -25,7 +25,7 @@ def _write_fixture_json(tmp_path):
                 "width": 5,
                 "height": 5,
                 "phash": "abc",
-                "thumbnail_path": "thumbnails/img_0.png",
+                "image_path": "images/img_0.png",
             }
         ],
     }
@@ -34,19 +34,19 @@ def _write_fixture_json(tmp_path):
     return str(path)
 
 
-def _make_client(tmp_path, pdf_path=None, create_thumbnail=True, web_toc_json_path=None):
+def _make_client(tmp_path, pdf_path=None, create_image=True, web_toc_json_path=None):
     json_path = _write_fixture_json(tmp_path)
-    thumbs_dir = tmp_path / "thumbnails"
-    thumbs_dir.mkdir()
-    if create_thumbnail:
-        (thumbs_dir / "img_0.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    if create_image:
+        (images_dir / "img_0.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
     if pdf_path is None:
         pdf_path = tmp_path / "sample.pdf"
         pdf_path.write_bytes(b"%PDF-1.4 fake")
     app = create_app(
         toc_json_path=json_path,
         pdf_path=str(pdf_path),
-        thumbnails_dir=str(thumbs_dir),
+        images_dir=str(images_dir),
         web_toc_json_path=web_toc_json_path,
     )
     return TestClient(app)
@@ -74,23 +74,23 @@ def test_get_pdf_streams_file(tmp_path):
     assert resp.content.startswith(b"%PDF")
 
 
-def test_get_thumbnail_by_index(tmp_path):
+def test_get_image_by_index(tmp_path):
     client = _make_client(tmp_path)
-    resp = client.get("/api/image/0/thumbnail")
+    resp = client.get("/api/image/0")
     assert resp.status_code == 200
 
 
-def test_get_thumbnail_out_of_range_returns_404(tmp_path):
+def test_get_image_out_of_range_returns_404(tmp_path):
     client = _make_client(tmp_path)
-    resp = client.get("/api/image/99/thumbnail")
+    resp = client.get("/api/image/99")
     assert resp.status_code == 404
 
 
-def test_get_thumbnail_missing_file_returns_404(tmp_path):
-    client = _make_client(tmp_path, create_thumbnail=False)
-    resp = client.get("/api/image/0/thumbnail")
+def test_get_image_missing_file_returns_404(tmp_path):
+    client = _make_client(tmp_path, create_image=False)
+    resp = client.get("/api/image/0")
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Thumbnail file missing"
+    assert resp.json()["detail"] == "Image file missing"
 
 
 def _write_web_toc_fixture(tmp_path, local_path=""):
