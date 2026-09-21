@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parses MO Package BCBC MRK signed.pdf into output/mo_toc.json
+"""Parses MO Package BCBC MRK signed.pdf into output/mo_pdf.json
 and every embedded raster and vector-drawn image under output/images/.
 
 Usage:
@@ -22,6 +22,7 @@ from mo_toc.parsing.numbering_config import (
     MO_TOC_TYPE_MARKERS,
 )
 from mo_toc.parsing.parallel_extraction import extract_all_pages
+from mo_toc.parsing.table_extractor import attach_tables, stitch_continuations
 from mo_toc.parsing.tree_builder import build_tree_from_lines
 from shared.numbering import assign_unified_numbers
 
@@ -30,9 +31,20 @@ DEFAULT_PDF = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 
 
+def _consumed_by_page(table_regions_by_page: list[list]) -> dict[int, set[int]]:
+    return {
+        page_index: {i for region in regions for i in region.consumed_line_indices}
+        for page_index, regions in enumerate(table_regions_by_page)
+        if regions
+    }
+
+
 def run(pdf_path: str, output_dir: str) -> None:
-    all_lines, raw_images = extract_all_pages(pdf_path)
-    volume, captions = build_tree_from_lines(all_lines, len(all_lines))
+    all_lines, raw_images, table_regions_by_page = extract_all_pages(pdf_path)
+    volume, captions = build_tree_from_lines(
+        all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
+    )
+    attach_tables(volume, stitch_continuations(table_regions_by_page))
     assign_unified_numbers(
         [volume],
         MO_TOC_TYPE_MARKERS,
@@ -41,7 +53,7 @@ def run(pdf_path: str, output_dir: str) -> None:
     )
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
-    write_json(volume, captions, images, str(Path(output_dir) / "mo_toc.json"))
+    write_json(volume, captions, images, str(Path(output_dir) / "mo_pdf.json"))
 
 
 def main() -> None:
@@ -53,7 +65,7 @@ def main() -> None:
         sys.exit(f"No such file: {args.pdf_path}")
     print(f"Parsing {args.pdf_path} ...", file=sys.stderr)
     run(args.pdf_path, args.output_dir)
-    print(f"Wrote {args.output_dir}/mo_toc.json, images/", file=sys.stderr)
+    print(f"Wrote {args.output_dir}/mo_pdf.json, images/", file=sys.stderr)
 
 
 if __name__ == "__main__":
