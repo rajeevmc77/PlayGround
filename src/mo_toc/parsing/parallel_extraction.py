@@ -37,6 +37,19 @@ def _extract_page(page_index: int) -> tuple[list[PageLine], list[RawImage], list
     return lines, raster + vector, table_regions
 
 
+def _unzip_results(
+    results: list[tuple[list[PageLine], list[RawImage], list[TableRegion]]],
+) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]]]:
+    all_lines: list[list[PageLine]] = []
+    all_images: list[RawImage] = []
+    all_table_regions: list[list[TableRegion]] = []
+    for lines, images, regions in results:
+        all_lines.append(lines)
+        all_images.extend(images)
+        all_table_regions.append(regions)
+    return all_lines, all_images, all_table_regions
+
+
 def extract_all_pages(
     pdf_path: str, max_workers: int | None = None
 ) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]]]:
@@ -46,7 +59,4 @@ def extract_all_pages(
         max_workers=workers, initializer=_init_worker, initargs=(pdf_path,)
     ) as executor:
         results = list(executor.map(_extract_page, range(page_count)))
-    all_lines = [lines for lines, _, _ in results]
-    all_images = [image for _, images, _ in results for image in images]
-    all_table_regions = [regions for _, _, regions in results]
-    return all_lines, all_images, all_table_regions
+    return _unzip_results(results)
