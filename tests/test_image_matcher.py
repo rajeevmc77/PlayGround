@@ -255,3 +255,63 @@ def test_small_ineligible_image_does_not_steal_a_caption_from_a_farther_real_fig
     assert by_y0[126].caption_identifier is None
     assert by_y0[248].caption_identifier == "A-1.1.1.1.-A"
     assert by_y0[248].caption_kind == "Figure"
+
+
+def test_image_owner_descends_into_sentence_when_positioned_after_it():
+    sentence = _node("Sentence", "(1)", "A-1.1.1.1.(1)", page=10, end_page=10)
+    sentence.bbox = BBox(0, 100, 0, 0)
+    article = _node("Article", "1.1.1.1.", "A-1.1.1.1.", page=10, end_page=12, children=[sentence])
+    part = _node("Part", "1", "A-1", page=7, end_page=20, children=[article])
+    division = _node("Division", "A", "A", page=6, end_page=30, children=[part])
+    volume = _node("Volume", "Volume", "Volume", page=1, end_page=30, children=[division])
+
+    image = _image(page=10, y0=150, y1=200)
+    result = match_images([image], [], volume)
+    assert result[0].owner_citation == "A-1.1.1.1.(1)"
+
+
+def test_image_owner_descends_into_clause_when_positioned_after_it():
+    clause = _node("Clause", "(a)", "A-1.1.1.1.(1)(a)", page=10, end_page=10)
+    clause.bbox = BBox(0, 200, 0, 0)
+    sentence = _node("Sentence", "(1)", "A-1.1.1.1.(1)", page=10, end_page=10, children=[clause])
+    sentence.bbox = BBox(0, 100, 0, 0)
+    article = _node("Article", "1.1.1.1.", "A-1.1.1.1.", page=10, end_page=12, children=[sentence])
+    part = _node("Part", "1", "A-1", page=7, end_page=20, children=[article])
+    division = _node("Division", "A", "A", page=6, end_page=30, children=[part])
+    volume = _node("Volume", "Volume", "Volume", page=1, end_page=30, children=[division])
+
+    formula_image = _image(page=10, y0=210, y1=225, x0=100, x1=140)  # small inline formula
+    result = match_images([formula_image], [], volume)
+    assert result[0].owner_citation == "A-1.1.1.1.(1)(a)"
+
+
+def test_image_owner_never_descends_into_table_row_or_cell():
+    cell = _node("Cell", "Col1", "Table:1.1.(1)-Row1-Col1", page=8, end_page=8)
+    cell.bbox = BBox(0, 300, 0, 0)
+    row = _node("Row", "Row1", "Table:1.1.(1)-Row1", page=8, end_page=8, children=[cell])
+    row.bbox = BBox(0, 250, 0, 0)
+    table = _node("Table", "1.1.(1)", "Table:1.1.(1)", page=8, end_page=8, children=[row])
+    table.bbox = BBox(0, 200, 0, 0)
+    article = _node("Article", "1.1.1.1.", "A-1.1.1.1.", page=8, end_page=9, children=[table])
+    part = _node("Part", "1", "A-1", page=7, end_page=20, children=[article])
+    division = _node("Division", "A", "A", page=6, end_page=30, children=[part])
+    volume = _node("Volume", "Volume", "Volume", page=1, end_page=30, children=[division])
+
+    image = _image(page=8, y0=350, y1=400)
+    result = match_images([image], [], volume)
+    assert result[0].owner_citation == "A-1.1.1.1."
+
+
+def test_image_title_combines_caption_kind_and_identifier_when_matched():
+    volume = _tree()
+    image = _image(page=11, y0=100, y1=150)
+    caption = _caption("Figure", "A-1.1.1.1.(6)", page=11, y0=155, y1=170)
+    result = match_images([image], [caption], volume)
+    assert result[0].title == "Figure A-1.1.1.1.(6)"
+
+
+def test_image_title_is_empty_when_no_caption_matched():
+    volume = _tree()
+    image = _image(page=11, y0=100, y1=150)
+    result = match_images([image], [], volume)
+    assert result[0].title == ""
