@@ -1,8 +1,9 @@
 import io
+from unittest.mock import MagicMock
 
 from PIL import Image
 
-from mo_toc.parsing.image_extractor import extract_images
+from mo_toc.parsing.image_extractor import extract_images, vector_images_on_page
 from mo_toc.parsing.pdf_source import ExtractedImage, PageImageInfo
 
 
@@ -109,3 +110,43 @@ def test_vector_cluster_overlapping_a_raster_image_is_not_duplicated():
 def test_thin_rule_lines_are_not_extracted_as_images():
     source = FakeImageSource({}, pages_drawings={0: [(0, 0, 400, 0.5)]})
     assert extract_images(source) == []
+
+
+def _fake_source(rendered_bbox_capture):
+    source = MagicMock()
+
+    def render_region(page_index, bbox):
+        rendered_bbox_capture.append(bbox)
+        return ExtractedImage(data=b"x", ext="png", width=1, height=1)
+
+    source.render_region.side_effect = render_region
+    return source
+
+
+def test_vector_images_on_page_excludes_table_bboxes():
+    # A vector cluster that exactly matches a detected table's outer bbox
+    # must not be rendered as a "figure" - it's a table border, not an image.
+    rects = [(90.0, 90.0, 90.5, 400.0), (90.0, 400.0, 500.0, 400.5)]  # forms a >400pt^2 cluster
+    rendered = []
+    source = _fake_source(rendered)
+    table_bboxes = [(85.0, 85.0, 505.0, 405.0)]  # overlaps the cluster fully
+
+    result = vector_images_on_page(
+        source, 0, raster_bboxes=[], drawing_rects=rects, table_bboxes=table_bboxes
+    )
+
+    assert result == []
+    assert rendered == []
+
+
+def test_vector_images_on_page_still_renders_clusters_outside_table_bboxes():
+    rects = [(90.0, 90.0, 90.5, 400.0), (90.0, 400.0, 500.0, 400.5)]
+    rendered = []
+    source = _fake_source(rendered)
+
+    result = vector_images_on_page(
+        source, 0, raster_bboxes=[], drawing_rects=rects, table_bboxes=[]
+    )
+
+    assert len(result) == 1
+    assert len(rendered) == 1

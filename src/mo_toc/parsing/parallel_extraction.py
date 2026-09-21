@@ -14,6 +14,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from mo_toc.parsing.image_extractor import RawImage, raster_images_on_page, vector_images_on_page
 from mo_toc.parsing.pdf_source import PageLine, PyMuPdfSource
+from mo_toc.parsing.table_extractor import TableRegion, detect_tables_on_page
 
 _worker_source: PyMuPdfSource | None = None
 
@@ -23,23 +24,29 @@ def _init_worker(pdf_path: str) -> None:
     _worker_source = PyMuPdfSource(pdf_path)
 
 
-def _extract_page(page_index: int) -> tuple[list[PageLine], list[RawImage]]:
+def _extract_page(page_index: int) -> tuple[list[PageLine], list[RawImage], list[TableRegion]]:
     assert _worker_source is not None
     lines = _worker_source.page_lines(page_index)
     raster = raster_images_on_page(_worker_source, page_index)
-    vector = vector_images_on_page(_worker_source, page_index, [r.bbox for r in raster])
-    return lines, raster + vector
+    rects = _worker_source.page_drawing_rects(page_index)
+    table_regions = detect_tables_on_page(lines, rects, page_number=page_index + 1)
+    table_bboxes = [r.outer_bbox.as_tuple() for r in table_regions]
+    vector = vector_images_on_page(
+        _worker_source, page_index, [r.bbox for r in raster], rects, table_bboxes
+    )
+    return lines, raster + vector, table_regions
 
 
 def extract_all_pages(
     pdf_path: str, max_workers: int | None = None
-) -> tuple[list[list[PageLine]], list[RawImage]]:
+) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]]]:
     page_count = PyMuPdfSource(pdf_path).page_count
     workers = max_workers or os.cpu_count() or 1
     with ProcessPoolExecutor(
         max_workers=workers, initializer=_init_worker, initargs=(pdf_path,)
     ) as executor:
         results = list(executor.map(_extract_page, range(page_count)))
-    all_lines = [lines for lines, _ in results]
-    all_images = [image for _, images in results for image in images]
-    return all_lines, all_images
+    all_lines = [lines for lines, _, _ in results]
+    all_images = [image for _, images, _ in results for image in images]
+    all_table_regions = [regions for _, _, regions in results]
+    return all_lines, all_images, all_table_regions

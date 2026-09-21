@@ -59,10 +59,15 @@ def raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
 
 
 def vector_images_on_page(
-    source: PdfSource, page_index: int, raster_bboxes: list[tuple[float, float, float, float]]
+    source: PdfSource,
+    page_index: int,
+    raster_bboxes: list[tuple[float, float, float, float]],
+    drawing_rects: list[tuple[float, float, float, float]] | None = None,
+    table_bboxes: list[tuple[float, float, float, float]] = (),
 ) -> list[RawImage]:
-    clusters = cluster_drawing_rects(source.page_drawing_rects(page_index))
-    clusters = exclude_overlapping_rects(clusters, raster_bboxes)
+    rects = drawing_rects if drawing_rects is not None else source.page_drawing_rects(page_index)
+    clusters = cluster_drawing_rects(rects)
+    clusters = exclude_overlapping_rects(clusters, list(raster_bboxes) + list(table_bboxes))
     images = []
     for bbox in clusters:
         extracted = source.render_region(page_index, bbox)
