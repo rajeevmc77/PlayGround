@@ -18,3 +18,4 @@ class WebImage:
     src: str
     alt_text: str
     owner_citation: str
+    local_path: str = ""

@@ -46,6 +46,18 @@ def create_app(
             raise HTTPException(status_code=404, detail="Thumbnail file missing")
         return FileResponse(str(file_path))
 
+    @app.get("/api/web-image/{image_id}/thumbnail")
+    def get_web_image(image_id: str):
+        if web_payload is None:
+            raise HTTPException(status_code=503, detail="Run src/build_web_toc.py first")
+        match = next((i for i in web_payload["images"] if i["id"] == image_id), None)
+        if match is None or not match["local_path"]:
+            raise HTTPException(status_code=404, detail="No cached image")
+        file_path = Path(web_toc_json_path).parent / match["local_path"]
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Cached image file missing")
+        return FileResponse(str(file_path))
+
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 

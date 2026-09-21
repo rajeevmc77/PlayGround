@@ -6,6 +6,7 @@ from web_toc.domain.models import WebNode
 
 
 @patch("build_web_toc.write_json")
+@patch("build_web_toc.download_images")
 @patch("build_web_toc.extract_images")
 @patch("build_web_toc.content_url")
 @patch("build_web_toc.collect_citations")
@@ -17,6 +18,7 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
     mock_collect_citations,
     mock_content_url,
     mock_extract_images,
+    mock_download_images,
     mock_write_json,
     tmp_path,
 ):
@@ -53,10 +55,14 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
         {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
     )
     expected_path = str(Path(tmp_path) / "web_toc.json")
+    mock_download_images.assert_called_once_with(
+        ["WEB_IMAGE"], mock_source, str(Path(tmp_path) / "web_images")
+    )
     mock_write_json.assert_called_once_with(root, ["WEB_IMAGE"], expected_path)
 
 
 @patch("build_web_toc.write_json")
+@patch("build_web_toc.download_images")
 @patch("build_web_toc.extract_images")
 @patch("build_web_toc.content_url")
 @patch("build_web_toc.collect_citations")
@@ -68,6 +74,7 @@ def test_run_skips_nodes_where_content_url_returns_none(
     mock_collect_citations,
     mock_content_url,
     mock_extract_images,
+    mock_download_images,
     mock_write_json,
     tmp_path,
 ):
@@ -83,10 +90,14 @@ def test_run_skips_nodes_where_content_url_returns_none(
 
     mock_source.fetch_content.assert_not_called()
     mock_extract_images.assert_not_called()
+    mock_download_images.assert_called_once_with(
+        [], mock_source, str(Path(tmp_path) / "web_images")
+    )
     mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "web_toc.json"))
 
 
 @patch("build_web_toc.write_json")
+@patch("build_web_toc.download_images")
 @patch("build_web_toc.extract_images")
 @patch("build_web_toc.content_url")
 @patch("build_web_toc.collect_citations")
@@ -98,6 +109,7 @@ def test_run_skips_nodes_where_fetch_content_returns_none(
     mock_collect_citations,
     mock_content_url,
     mock_extract_images,
+    mock_download_images,
     mock_write_json,
     tmp_path,
 ):
@@ -121,4 +133,7 @@ def test_run_skips_nodes_where_fetch_content_returns_none(
         "/data/2024/content/nbc-diva/part-1/section-1.json"
     )
     mock_extract_images.assert_not_called()
+    mock_download_images.assert_called_once_with(
+        [], mock_source, str(Path(tmp_path) / "web_images")
+    )
     mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "web_toc.json"))
