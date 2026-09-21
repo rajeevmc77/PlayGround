@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parses MO Package BCBC MRK signed.pdf into output/mo_toc.json + output/mo_toc.md
+"""Parses MO Package BCBC MRK signed.pdf into output/mo_toc.json
 and every embedded raster and vector-drawn image under output/images/.
 
 Usage:
@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mo_toc.output.image_writer import write_images
 from mo_toc.output.json_writer import write_json
-from mo_toc.output.markdown_writer import write_markdown
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.numbering_config import (
     MO_TOC_IDENTIFIER_TYPES,
@@ -43,7 +42,6 @@ def run(pdf_path: str, output_dir: str) -> None:
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
     write_json(volume, captions, images, str(Path(output_dir) / "mo_toc.json"))
-    write_markdown(volume, captions, str(Path(output_dir) / "mo_toc.md"))
 
 
 def main() -> None:
@@ -55,7 +53,7 @@ def main() -> None:
         sys.exit(f"No such file: {args.pdf_path}")
     print(f"Parsing {args.pdf_path} ...", file=sys.stderr)
     run(args.pdf_path, args.output_dir)
-    print(f"Wrote {args.output_dir}/mo_toc.json, mo_toc.md, images/", file=sys.stderr)
+    print(f"Wrote {args.output_dir}/mo_toc.json, images/", file=sys.stderr)
 
 
 if __name__ == "__main__":
