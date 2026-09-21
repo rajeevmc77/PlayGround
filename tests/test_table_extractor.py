@@ -1,5 +1,13 @@
+from mo_toc.domain.models import BBox, Node
 from mo_toc.parsing.pdf_source import PageLine
-from mo_toc.parsing.table_extractor import detect_tables_on_page, find_table_anchors
+from mo_toc.parsing.table_extractor import (
+    TableAnchor,
+    TableRegion,
+    attach_tables,
+    detect_tables_on_page,
+    find_table_anchors,
+    stitch_continuations,
+)
 
 CAPTION_FONT = "Arial-BoldMT"
 BODY_FONT = "ArialMT"
@@ -108,3 +116,232 @@ def test_cell_content_joins_multiple_physical_lines_in_one_cell():
     regions = detect_tables_on_page(lines, rects, page_number=7)
     data_row = regions[0].table_node.children[1]
     assert data_row.children[1].content == "First row content. continues wrapping."
+
+
+def _table_region(identifier, page, rows, has_bottom_border, outer_bbox, forming_part_of=None):
+    anchor = TableAnchor(page_index=page - 1, caption_line_idx=0, identifier=identifier)
+    table_node = Node(
+        type="Table",
+        identifier=identifier,
+        citation=f"Table:{identifier}",
+        title="",
+        page=page,
+        end_page=page,
+        bbox=outer_bbox,
+        children=rows,
+    )
+    return TableRegion(
+        anchor=anchor,
+        table_node=table_node,
+        forming_part_of=forming_part_of,
+        consumed_line_indices=set(),
+        has_bottom_border=has_bottom_border,
+        outer_bbox=outer_bbox,
+    )
+
+
+def _row(identifier, cells):
+    return Node(
+        type="Row",
+        identifier=identifier,
+        citation=f"r-{identifier}",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+        children=cells,
+    )
+
+
+def _cell(identifier, content):
+    return Node(
+        type="Cell",
+        identifier=identifier,
+        citation=f"c-{identifier}",
+        title="",
+        content=content,
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+
+
+def test_stitch_continuations_merges_open_table_across_pages():
+    row1 = _row("Row1", [_cell("Col1", "a"), _cell("Col2", "b")])
+    page1_region = _table_region(
+        "1.1.(1)", page=8, rows=[row1], has_bottom_border=False, outer_bbox=BBox(90, 400, 500, 700)
+    )
+    row2 = _row("Row1", [_cell("Col1", "c"), _cell("Col2", "d")])
+    page2_region = _table_region(
+        "1.1.(1)", page=9, rows=[row2], has_bottom_border=True, outer_bbox=BBox(90, 40, 500, 200)
+    )
+    stitched = stitch_continuations([[page1_region], [page2_region]])
+    assert len(stitched) == 1
+    table = stitched[0].table_node
+    assert len(table.children) == 2
+    assert table.children[1].identifier == "Row2"
+    assert table.children[1].children[0].citation == "Table:1.1.(1)-Row2-Col1"
+    assert table.end_page == 9
+
+
+def test_stitch_continuations_keeps_closed_table_separate_from_next_one():
+    row1 = _row("Row1", [_cell("Col1", "a")])
+    page1_region = _table_region(
+        "1.1.(1)", page=8, rows=[row1], has_bottom_border=True, outer_bbox=BBox(90, 400, 500, 700)
+    )
+    row2 = _row("Row1", [_cell("Col1", "x")])
+    page2_region = _table_region(
+        "1.1.(2)", page=9, rows=[row2], has_bottom_border=True, outer_bbox=BBox(90, 40, 500, 200)
+    )
+    stitched = stitch_continuations([[page1_region], [page2_region]])
+    assert len(stitched) == 2
+
+
+def test_attach_tables_resolves_owner_by_identifier_matching_a_citation():
+    sentence = Node(
+        type="Sentence",
+        identifier="(5)",
+        citation="A-1.1.1.1.(5)",
+        title="",
+        content="Sentence text.",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 100, 0, 0),
+    )
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+        children=[sentence],
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    region = _table_region(
+        "1.1.1.1.(5)",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    attach_tables(volume, [region])
+    assert len(sentence.children) == 1
+    assert sentence.children[0].citation == "Table:1.1.1.1.(5)"
+
+
+def test_attach_tables_falls_back_to_forming_part_of_line():
+    sentence = Node(
+        type="Sentence",
+        identifier="(5)",
+        citation="A-1.1.1.1.(5)",
+        title="",
+        content="Sentence text.",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 100, 0, 0),
+    )
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+        children=[sentence],
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    # identifier "1.1.(9)-A" doesn't match any citation directly - only the
+    # "Forming part of Sentence 1.1.1.1.(5)" line resolves the true owner.
+    region = _table_region(
+        "1.1.(9)-A",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+        forming_part_of=("Sentence", "1.1.1.1.(5)"),
+    )
+    attach_tables(volume, [region])
+    assert len(sentence.children) == 1
+
+
+def test_attach_tables_falls_back_to_position_when_neither_resolves():
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    region = _table_region(
+        "unresolvable-id",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    attach_tables(volume, [region])
+    assert len(article.children) == 1
+    assert article.children[0].citation == "Table:unresolvable-id"

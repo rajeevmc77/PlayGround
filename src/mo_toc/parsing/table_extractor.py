@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from mo_toc.domain.models import BBox, Node
 from mo_toc.parsing.heading_rules import classify_caption_line
+from mo_toc.parsing.image_matcher import assign_owner
 from mo_toc.parsing.pdf_source import PageLine
 
 RE_FORMING_PART_OF = re.compile(
@@ -254,3 +255,95 @@ def detect_tables_on_page(
         if region is not None:
             regions.append(region)
     return regions
+
+
+def _renumber_row(table_citation: str, row: Node, row_i: int) -> None:
+    row.identifier = f"Row{row_i + 1}"
+    row.citation = f"{table_citation}-{row.identifier}"
+    for cell in row.children:
+        cell.citation = f"{row.citation}-{cell.identifier}"
+
+
+def _continues_previous(prev: TableRegion, next_region: TableRegion) -> bool:
+    prev_cols = len(prev.table_node.children[0].children) if prev.table_node.children else 0
+    next_cols = (
+        len(next_region.table_node.children[0].children) if next_region.table_node.children else 0
+    )
+    same_x_range = (
+        abs(prev.outer_bbox.x0 - next_region.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
+        and abs(prev.outer_bbox.x1 - next_region.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
+    )
+    return not prev.has_bottom_border and prev_cols == next_cols and same_x_range
+
+
+def _merge_into(pending: TableRegion, region: TableRegion) -> None:
+    table_citation = pending.table_node.citation
+    start = len(pending.table_node.children)
+    for i, row in enumerate(region.table_node.children):
+        _renumber_row(table_citation, row, start + i)
+    pending.table_node.children.extend(region.table_node.children)
+    pending.table_node.end_page = region.table_node.page
+    pending.has_bottom_border = region.has_bottom_border
+
+
+def stitch_continuations(regions_by_page: list[list[TableRegion]]) -> list[TableRegion]:
+    stitched: list[TableRegion] = []
+    pending: TableRegion | None = None
+    for page_regions in regions_by_page:
+        for region in page_regions:
+            if pending is not None and _continues_previous(pending, region):
+                _merge_into(pending, region)
+                continue
+            if pending is not None:
+                stitched.append(pending)
+            pending = region
+    if pending is not None:
+        stitched.append(pending)
+    return stitched
+
+
+def _citation_index(volume: Node) -> dict[str, Node]:
+    index = {}
+
+    def walk(node: Node) -> None:
+        index[node.citation] = node
+        for child in node.children:
+            walk(child)
+
+    walk(volume)
+    return index
+
+
+def _division_for_page(volume: Node, page: int) -> str:
+    divisions = [c for c in volume.children if c.type == "Division"]
+    candidates = [d for d in divisions if d.page <= page]
+    chosen = (
+        max(candidates, key=lambda d: d.page)
+        if candidates
+        else (divisions[0] if divisions else None)
+    )
+    return chosen.identifier if chosen else ""
+
+
+def resolve_owner_citation(
+    region: TableRegion, division: str, index: dict[str, Node], volume: Node
+) -> str:
+    direct = index.get(f"{division}-{region.anchor.identifier}")
+    if direct is not None:
+        return direct.citation
+    if region.forming_part_of is not None:
+        _, ref = region.forming_part_of
+        by_ref = index.get(f"{division}-{ref}") or index.get(ref)
+        if by_ref is not None:
+            return by_ref.citation
+    return assign_owner(region.table_node, volume)
+
+
+def attach_tables(volume: Node, regions: list[TableRegion]) -> None:
+    index = _citation_index(volume)
+    for region in regions:
+        division = _division_for_page(volume, region.table_node.page)
+        owner_citation = resolve_owner_citation(region, division, index, volume)
+        owner = index[owner_citation]
+        owner.children.append(region.table_node)
+        index[region.table_node.citation] = region.table_node
