@@ -174,3 +174,28 @@ def test_end_page_never_precedes_start_page_for_siblings_sharing_a_page():
     assert article_1.page == article_2.page == 3
     assert article_1.end_page >= article_1.page
     assert article_2.end_page >= article_2.page
+
+
+def test_consumed_line_indices_are_excluded_from_article_body():
+    pages = [
+        [
+            line(50, 40, "Part 1", BLACK),
+            line(70, 40, "Compliance", BLACK),
+            line(90, 40, "Section  1.1.   General", BLACK),
+            line(110, 40, "1.1.1. Application", BLACK),
+            line(130, 40, "1.1.1.1. Application of this Code", BLACK),
+            line(150, 40, "1) Real sentence text.", BODY),
+            line(170, 40, "This line is inside a detected table.", BODY),
+        ],
+    ]
+    without_skip, _ = build_tree_from_lines(pages, len(pages))
+    with_skip, _ = build_tree_from_lines(pages, len(pages), consumed_by_page={0: {6}})
+
+    article_without = without_skip.children[0].children[0].children[0].children[0].children[0]
+    article_with = with_skip.children[0].children[0].children[0].children[0].children[0]
+
+    # Without the skip-set, the stray line still gets swept into the
+    # sentence's continuation content (the bug body_segmenter now fixes
+    # would otherwise hide this, so this test also guards Task 3's fix).
+    assert "detected table" in article_without.children[0].content
+    assert "detected table" not in article_with.children[0].content
