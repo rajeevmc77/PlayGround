@@ -66,3 +66,52 @@ def test_write_json_creates_parent_directories(tmp_path):
     out_path = tmp_path / "nested" / "out.json"
     write_json(root, [], [], str(out_path))
     assert out_path.exists()
+
+
+def test_write_json_drops_title_for_content_bearing_types(tmp_path):
+    sentence = Node(
+        type="Sentence",
+        identifier="(1)",
+        citation="A-1.1.1.1.(1)",
+        title="",
+        content="Full text.",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="A title",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+        children=[sentence],
+    )
+    out_path = tmp_path / "out.json"
+    write_json(article, [], [], str(out_path))
+    payload = json.loads(out_path.read_text())
+
+    sentence_json = payload["volume"]["children"][0]
+    assert "title" not in sentence_json
+    assert sentence_json["content"] == "Full text."
+    assert "content" not in payload["volume"]
+    assert payload["volume"]["title"] == "A title"
+
+
+def test_write_json_drops_both_title_and_content_for_row(tmp_path):
+    row = Node(
+        type="Row",
+        identifier="Row1",
+        citation="Table:1.1.(1)-Row1",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    out_path = tmp_path / "out.json"
+    write_json(row, [], [], str(out_path))
+    payload = json.loads(out_path.read_text())
+    assert "title" not in payload["volume"]
+    assert "content" not in payload["volume"]
