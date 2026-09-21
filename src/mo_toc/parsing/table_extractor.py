@@ -184,6 +184,25 @@ def _has_bottom_border(rects, row_bottom_y: float) -> bool:
     )
 
 
+def _build_rows(
+    row_ys: list[float],
+    col_xs: list[float],
+    cell_lines: dict[tuple[int, int], list[PageLine]],
+    table_citation: str,
+    page_number: int,
+) -> list[Node]:
+    rows = []
+    for row_i in range(len(row_ys) - 1):
+        cells = []
+        for col_i in range(len(col_xs) - 1):
+            in_cell = cell_lines.get((row_i, col_i), [])
+            fallback = BBox(col_xs[col_i], row_ys[row_i], col_xs[col_i + 1], row_ys[row_i + 1])
+            row_citation = f"{table_citation}-Row{row_i + 1}"
+            cells.append(_cell_node(row_citation, col_i, in_cell, fallback, page_number))
+        rows.append(_row_node(table_citation, row_i, page_number, cells))
+    return rows
+
+
 def build_table_region(
     anchor: TableAnchor,
     lines: list[PageLine],
@@ -202,15 +221,7 @@ def build_table_region(
         consumed.add(forming_idx)
 
     table_citation = f"Table:{anchor.identifier}"
-    rows = []
-    for row_i in range(len(row_ys) - 1):
-        cells = []
-        for col_i in range(len(col_xs) - 1):
-            in_cell = cell_lines.get((row_i, col_i), [])
-            fallback = BBox(col_xs[col_i], row_ys[row_i], col_xs[col_i + 1], row_ys[row_i + 1])
-            row_citation = f"{table_citation}-Row{row_i + 1}"
-            cells.append(_cell_node(row_citation, col_i, in_cell, fallback, page_number))
-        rows.append(_row_node(table_citation, row_i, page_number, cells))
+    rows = _build_rows(row_ys, col_xs, cell_lines, table_citation, page_number)
 
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
     table_node = Node(
