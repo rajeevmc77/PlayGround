@@ -143,3 +143,85 @@ def test_ambiguous_roman_without_threshold_falls_back_to_proximity():
     subclause = clause_a.children[0]
     assert subclause.type == "Subclause"
     assert subclause.identifier == "(v)"
+
+
+def test_sentence_content_is_marker_stripped():
+    body = [line(5, 100, 50, "1) Fire protection shall conform to NFPA 303.")]
+    sentences = segment_article_body(body, "B-2.16.2.1.", article_end_page=7)
+    assert sentences[0].content == "Fire protection shall conform to NFPA 303."
+    assert sentences[0].title == ""
+
+
+def test_clause_content_includes_wrapped_continuation_line():
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(
+            5,
+            112,
+            60,
+            "a) except as permitted by the Fire Code, the installation, replacement, or",
+        ),
+        line(5, 124, 60, "alteration of materials or equipment regulated by this Code,"),
+        line(5, 136, 60, "b) next clause,"),
+    ]
+    sentences = segment_article_body(body, "A-1.1.1.1.", article_end_page=7)
+    clause_a, clause_b = sentences[0].children
+    assert clause_a.content == (
+        "except as permitted by the Fire Code, the installation, replacement, or "
+        "alteration of materials or equipment regulated by this Code,"
+    )
+    assert clause_a.title == ""
+    assert clause_b.content == "next clause,"
+
+
+def test_clause_bbox_unions_continuation_line_on_same_page():
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 60, "a) first physical line"),
+        line(5, 124, 65, "second physical line, wider"),
+    ]
+    sentences = segment_article_body(body, "A-1.1.1.1.", article_end_page=7)
+    clause_a = sentences[0].children[0]
+    assert clause_a.bbox.y0 == 112
+    assert clause_a.bbox.y1 == 124 + 10  # line() gives each PageLine bbox height 10
+    assert clause_a.bbox.x0 == 60
+
+
+def test_continuation_line_on_a_later_page_extends_content_not_bbox():
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 60, "a) first physical line on page 6"),
+        line(6, 40, 60, "continues on the next page"),
+    ]
+    sentences = segment_article_body(body, "A-1.1.1.1.", article_end_page=8)
+    clause_a = sentences[0].children[0]
+    assert clause_a.content == "first physical line on page 6 continues on the next page"
+    assert clause_a.bbox.y0 == 112
+
+
+def test_sentence_own_continuation_line_before_first_clause_marker():
+    body = [
+        line(5, 100, 50, "1) This sentence wraps onto"),
+        line(5, 112, 50, "a second physical line before any clause starts,"),
+        line(5, 124, 60, "a) then the first clause."),
+    ]
+    sentences = segment_article_body(body, "A-1.1.1.1.", article_end_page=7)
+    sentence = sentences[0]
+    assert sentence.content == (
+        "This sentence wraps onto a second physical line before any clause starts,"
+    )
+    assert sentence.children[0].content == "then the first clause."
+
+
+def test_subclause_content_and_ownership_after_a_new_clause_resets():
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 60, "a) clause a"),
+        line(5, 124, 75, "iv) subclause under a"),
+        line(5, 136, 60, "b) clause b, no subclauses"),
+    ]
+    sentences = segment_article_body(body, "A-1.1.1.1.", article_end_page=7)
+    clause_a, clause_b = sentences[0].children
+    assert clause_a.children[0].content == "subclause under a"
+    assert clause_b.content == "clause b, no subclauses"
+    assert clause_b.children == []

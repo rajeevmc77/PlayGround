@@ -72,8 +72,24 @@ def _sentence_threshold(clause_x: list[float], subclause_x: list[float]) -> floa
     return (statistics.median(clause_x) + statistics.median(subclause_x)) / 2
 
 
+def _advance_clause_state(pline: PageLine, token: str, next_letter: str) -> tuple[str, float]:
+    if len(token) == 1:
+        next_letter = chr(ord(token.lower()) + 1)
+    return next_letter, pline.x0
+
+
+def _union_bbox(a: BBox, b: BBox) -> BBox:
+    return BBox(min(a.x0, b.x0), min(a.y0, b.y0), max(a.x1, b.x1), max(a.y1, b.y1))
+
+
 def _marker_node(
-    node_type: str, token: str, parent_citation: str, page_index: int, pline, end_page: int
+    node_type: str,
+    token: str,
+    content: str,
+    parent_citation: str,
+    page_index: int,
+    pline,
+    end_page: int,
 ) -> Node:
     identifier = f"({token.lower()})"
     page = page_index + 1
@@ -81,7 +97,8 @@ def _marker_node(
         type=node_type,
         identifier=identifier,
         citation=f"{parent_citation}{identifier}",
-        title=pline.text,
+        title="",
+        content=content,
         page=page,
         # end_page is inherited from the sentence/article boundary computed
         # before this marker's own page was known - clamp so it can't land
@@ -91,46 +108,52 @@ def _marker_node(
     )
 
 
-def _advance_clause_state(pline: PageLine, token: str, next_letter: str) -> tuple[str, float]:
-    if len(token) == 1:
-        next_letter = chr(ord(token.lower()) + 1)
-    return next_letter, pline.x0
+def _append_continuation(owner: Node, owner_start_page: int, page_index: int, pline) -> None:
+    owner.content = f"{owner.content} {pline.text}".strip()
+    if page_index == owner_start_page:
+        owner.bbox = _union_bbox(owner.bbox, BBox(*pline.bbox))
 
 
 def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: int) -> None:
     clause_x, subclause_x = _clause_subclause_x0s(group)
     threshold = _sentence_threshold(clause_x, subclause_x)
     next_letter, prev_clause_x0, cur_clause = "a", None, None
+    current_owner, current_owner_page = sentence, sentence.page - 1
 
     for page_index, pline in group[1:]:
         match = RE_MARKER.match(pline.text)
         if not match:
+            _append_continuation(current_owner, current_owner_page, page_index, pline)
             continue
         token, kind = match.group(1), classify_marker(match.group(1))
         kind = _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0)
         if kind == "clause":
             cur_clause = _marker_node(
-                "Clause", token, sentence.citation, page_index, pline, end_page
+                "Clause", token, match.group(2), sentence.citation, page_index, pline, end_page
             )
             sentence.children.append(cur_clause)
             next_letter, prev_clause_x0 = _advance_clause_state(pline, token, next_letter)
+            current_owner, current_owner_page = cur_clause, page_index
             continue
         if kind != "subclause" or cur_clause is None:
             continue
         subclause = _marker_node(
-            "Subclause", token, cur_clause.citation, page_index, pline, end_page
+            "Subclause", token, match.group(2), cur_clause.citation, page_index, pline, end_page
         )
         cur_clause.children.append(subclause)
+        current_owner, current_owner_page = subclause, page_index
 
 
 def _build_sentence(group: list[BodyLine], article_citation: str, end_page: int) -> Node:
     first_page_index, first_line = group[0]
-    token = RE_MARKER.match(first_line.text).group(1)
+    match = RE_MARKER.match(first_line.text)
+    token = match.group(1)
     sentence = Node(
         type="Sentence",
         identifier=f"({token})",
         citation=f"{article_citation}({token})",
-        title=first_line.text,
+        title="",
+        content=match.group(2),
         page=first_page_index + 1,
         end_page=end_page,
         bbox=BBox(*first_line.bbox),
