@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,11 +33,34 @@ DEFAULT_BASE_URL = "https://dev.buildingcode.gov.bc.ca"
 DEFAULT_VERSION = "2024"
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 
+# I/O-bound HTTP fetches, not CPU work - a small worker pool overlaps the
+# per-request latency without hammering the site with unbounded concurrency.
+CONTENT_FETCH_WORKERS = 8
+
 
 def _walk(node):
     yield node
     for child in node.children:
         yield from _walk(child)
+
+
+def _content_bearing_nodes(root, version):
+    for node in _walk(root):
+        url = content_url(node, version)
+        if url is not None:
+            yield node, url
+
+
+def _fetch_content(source, url):
+    print(f"Fetching {url} ...", file=sys.stderr)
+    return source.fetch_content(url)
+
+
+def _images_for(node, url, content, citations):
+    if content is None:
+        print(f"  skipped (no content at {url})", file=sys.stderr)
+        return []
+    return extract_images(content, citations, node.citation)
 
 
 def run(base_url: str, version: str, output_dir: str) -> None:
@@ -50,17 +74,13 @@ def run(base_url: str, version: str, output_dir: str) -> None:
     )
     citations = collect_citations(root)
 
+    targets = list(_content_bearing_nodes(root, version))
+    with ThreadPoolExecutor(max_workers=CONTENT_FETCH_WORKERS) as executor:
+        contents = list(executor.map(lambda t: _fetch_content(source, t[1]), targets))
+
     images = []
-    for node in _walk(root):
-        url = content_url(node, version)
-        if url is None:
-            continue
-        print(f"Fetching {url} ...", file=sys.stderr)
-        content = source.fetch_content(url)
-        if content is None:
-            print(f"  skipped (no content at {url})", file=sys.stderr)
-            continue
-        images.extend(extract_images(content, citations, node.citation))
+    for (node, url), content in zip(targets, contents, strict=True):
+        images.extend(_images_for(node, url, content, citations))
 
     download_images(images, source, str(Path(output_dir) / "web_images"))
     write_json(root, images, str(Path(output_dir) / "web_toc.json"))

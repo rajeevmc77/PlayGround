@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock
 
 from web_toc.domain.models import WebImage
@@ -61,3 +62,28 @@ def test_empty_list_writes_nothing(tmp_path):
     download_images([], source, str(output_dir))
 
     source.fetch_image.assert_not_called()
+
+
+def test_downloads_multiple_images_concurrently(tmp_path):
+    output_dir = tmp_path / "web_images"
+    source = MagicMock()
+
+    def _slow_fetch(src):
+        time.sleep(0.2)
+        return f"bytes-for-{src}".encode()
+
+    source.fetch_image.side_effect = _slow_fetch
+    images = [_image(id_=f"nbc.divA.part1.figure{n}", src=f"bc-graphics/g{n}") for n in range(6)]
+
+    start = time.monotonic()
+    download_images(images, source, str(output_dir))
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.2 * len(images), (
+        f"expected concurrent downloads to run faster than serial "
+        f"({0.2 * len(images)}s), took {elapsed}s"
+    )
+    for img in images:
+        expected_file = output_dir / f"{img.id}.jpg"
+        assert expected_file.read_bytes() == f"bytes-for-{img.src}".encode()
+        assert img.local_path == f"web_images/{img.id}.jpg"
