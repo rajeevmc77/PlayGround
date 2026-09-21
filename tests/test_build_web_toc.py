@@ -42,6 +42,7 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
 
     run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path))
 
+    assert leaf.unified_number == "1"
     mock_source_cls.assert_called_once_with("https://dev.buildingcode.gov.bc.ca", "2024")
     mock_build_tree.assert_called_once_with({"tree": []})
     mock_collect_citations.assert_called_once_with(root)

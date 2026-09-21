@@ -9,6 +9,7 @@ class WebNode:
     title: str
     path: str
     children: list["WebNode"] = field(default_factory=list)
+    unified_number: str = ""
 
 
 @dataclass

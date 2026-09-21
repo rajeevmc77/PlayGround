@@ -23,6 +23,29 @@ def test_web_node_children_are_independent_between_instances():
     assert b.children == []
 
 
+def test_web_node_unified_number_defaults_to_empty_string():
+    node = WebNode(
+        type="section",
+        identifier="1.1",
+        citation="nbc.divA.part1.sect1",
+        title="General",
+        path="/code/nbc.divA/1/1",
+    )
+    assert node.unified_number == ""
+
+
+def test_web_node_unified_number_can_be_set():
+    node = WebNode(
+        type="part",
+        identifier="1",
+        citation="nbc.divA.part1",
+        title="",
+        path="/code/nbc.divA/1",
+        unified_number="1.1",
+    )
+    assert node.unified_number == "1.1"
+
+
 def test_web_node_holds_nested_children():
     child = WebNode(
         type="article",

@@ -14,9 +14,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from shared.numbering import assign_unified_numbers
 from web_toc.output.json_writer import write_json
 from web_toc.parsing.content_url import content_url
 from web_toc.parsing.image_extractor import extract_images
+from web_toc.parsing.numbering_config import WEB_TOC_TYPE_MARKERS
 from web_toc.parsing.site_source import HttpxWebSource
 from web_toc.parsing.tree_builder import build_tree, collect_citations
 
@@ -35,6 +37,7 @@ def _walk(node):
 def run(base_url: str, version: str, output_dir: str) -> None:
     source = HttpxWebSource(base_url, version)
     root = build_tree(source.fetch_navigation_tree())
+    assign_unified_numbers(root.children, WEB_TOC_TYPE_MARKERS)
     citations = collect_citations(root)
 
     images = []

@@ -42,6 +42,33 @@ def test_node_children_are_independent_between_instances():
     assert b.children == []
 
 
+def test_node_unified_number_defaults_to_empty_string():
+    node = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=10,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    assert node.unified_number == ""
+
+
+def test_node_unified_number_can_be_set():
+    node = Node(
+        type="Part",
+        identifier="1",
+        citation="A-1",
+        title="",
+        page=7,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+        unified_number="1.1",
+    )
+    assert node.unified_number == "1.1"
+
+
 def test_caption_forming_part_of_can_be_none():
     cap = Caption(
         kind="Figure",
