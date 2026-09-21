@@ -9,6 +9,7 @@ Multi-page stitching and owner attachment are a separate pass (see
 stitch_continuations/attach_tables) since they need the full tree.
 """
 
+import itertools
 import re
 from dataclasses import dataclass
 
@@ -286,17 +287,22 @@ def _merge_into(pending: TableRegion, region: TableRegion) -> None:
     pending.has_bottom_border = region.has_bottom_border
 
 
+def _accumulate_region(
+    stitched: list[TableRegion], pending: TableRegion | None, region: TableRegion
+) -> TableRegion:
+    if pending is not None and _continues_previous(pending, region):
+        _merge_into(pending, region)
+        return pending
+    if pending is not None:
+        stitched.append(pending)
+    return region
+
+
 def stitch_continuations(regions_by_page: list[list[TableRegion]]) -> list[TableRegion]:
     stitched: list[TableRegion] = []
     pending: TableRegion | None = None
-    for page_regions in regions_by_page:
-        for region in page_regions:
-            if pending is not None and _continues_previous(pending, region):
-                _merge_into(pending, region)
-                continue
-            if pending is not None:
-                stitched.append(pending)
-            pending = region
+    for region in itertools.chain.from_iterable(regions_by_page):
+        pending = _accumulate_region(stitched, pending, region)
     if pending is not None:
         stitched.append(pending)
     return stitched
@@ -314,14 +320,16 @@ def _citation_index(volume: Node) -> dict[str, Node]:
     return index
 
 
+def _latest_division_at_or_before(divisions: list[Node], page: int) -> Node | None:
+    candidates = [d for d in divisions if d.page <= page]
+    if candidates:
+        return max(candidates, key=lambda d: d.page)
+    return divisions[0] if divisions else None
+
+
 def _division_for_page(volume: Node, page: int) -> str:
     divisions = [c for c in volume.children if c.type == "Division"]
-    candidates = [d for d in divisions if d.page <= page]
-    chosen = (
-        max(candidates, key=lambda d: d.page)
-        if candidates
-        else (divisions[0] if divisions else None)
-    )
+    chosen = _latest_division_at_or_before(divisions, page)
     return chosen.identifier if chosen else ""
 
 
