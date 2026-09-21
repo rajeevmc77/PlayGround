@@ -11,7 +11,6 @@ from mo_toc.parsing.numbering_config import (
 )
 
 
-@patch("build_mo_toc.write_markdown")
 @patch("build_mo_toc.write_json")
 @patch("build_mo_toc.match_images")
 @patch("build_mo_toc.write_images")
@@ -25,7 +24,6 @@ def test_run_wires_pipeline_in_order(
     mock_write_images,
     mock_match_images,
     mock_write_json,
-    mock_write_md,
     tmp_path,
 ):
     mock_extract_all_pages.return_value = (["PAGE0_LINES", "PAGE1_LINES"], ["RAW_IMAGE"])
@@ -48,7 +46,6 @@ def test_run_wires_pipeline_in_order(
     mock_write_json.assert_called_once_with(
         "VOLUME", ["CAPTION"], ["MATCHED_IMAGE_ASSET"], str(tmp_path / "mo_toc.json")
     )
-    mock_write_md.assert_called_once_with("VOLUME", ["CAPTION"], str(tmp_path / "mo_toc.md"))
 
 
 def test_main_exits_when_pdf_missing(tmp_path, monkeypatch):
