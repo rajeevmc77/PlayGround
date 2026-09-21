@@ -22,8 +22,11 @@ body { margin: 0; display: flex; height: 100vh; }
 }
 #web-image-detail img { max-width: 100%; display: block; margin-bottom: var(--gap); }
 #web-image-detail-close { float: right; border: none; background: none; cursor: pointer; font-size: 1.2em; }
-#compare { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; z-index: 2; }
-.compare-col { position: absolute; top: 0; bottom: 0; width: 50%; overflow-y: auto; padding: var(--gap); box-sizing: border-box; }
-.compare-col h3 { position: sticky; top: 0; background: #fff; margin: 0 0 var(--gap); padding-bottom: var(--gap); }
-#compare-pdf { left: 0; border-right: 1px solid #ccc; }
-#compare-web { right: 0; }
+#compare { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; z-index: 2; display: flex; }
+#compare-tree { width: 320px; flex-shrink: 0; overflow-y: auto; padding: var(--gap); box-sizing: border-box; border-right: 1px solid #ccc; }
+#compare-images { flex: 1; display: flex; overflow: hidden; }
+.compare-image-col { flex: 1; overflow-y: auto; padding: var(--gap); box-sizing: border-box; text-align: center; }
+.compare-image-col:first-child { border-right: 1px solid #ccc; }
+.compare-image-col h3 { position: sticky; top: 0; background: #fff; margin: 0 0 var(--gap); padding-bottom: var(--gap); }
+.compare-image-col img { max-width: 100%; }
+.compare-placeholder { color: #888; }

@@ -243,26 +243,78 @@ document.getElementById("web-image-detail-close").addEventListener("click", () =
   document.getElementById("web-image-detail").style.display = "none";
 });
 
-function webSiteUrl(node) {
-  return `https://dev.buildingcode.gov.bc.ca${node.path}?version=2024&date=2024-03-08`;
+let compareWebImages = [];
+
+function normalizeForMatch(value) {
+  return (value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function renderWebNode(node, depth) {
+function findMatchingWebImage(captionIdentifier, webImages) {
+  const needle = normalizeForMatch(captionIdentifier);
+  if (!needle) return null;
+  return webImages.find((img) => normalizeForMatch(img.src).includes(needle)) || null;
+}
+
+function renderComparePdfImage(img, index) {
+  const container = document.getElementById("compare-pdf-content");
+  container.innerHTML = "";
+  const el = document.createElement("img");
+  el.src = `/api/image/${index}/thumbnail`;
+  container.appendChild(el);
+  const label = document.createElement("div");
+  label.textContent = imageLabel(img);
+  container.appendChild(label);
+}
+
+function renderCompareWebImage(webImg) {
+  const container = document.getElementById("compare-web-content");
+  container.innerHTML = "";
+  if (!webImg) {
+    container.textContent = "No matching web image found.";
+    return;
+  }
+  const el = document.createElement("img");
+  el.src = webImageUrl(webImg);
+  container.appendChild(el);
+  const label = document.createElement("div");
+  label.textContent = webImg.alt_text || "(no description)";
+  container.appendChild(label);
+}
+
+function showCompareImages(img, index) {
+  renderComparePdfImage(img, index);
+  renderCompareWebImage(findMatchingWebImage(img.caption_identifier, compareWebImages));
+}
+
+function renderCompareImageRow(img, index, depth) {
+  const row = document.createElement("div");
+  row.className = "image-row node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.innerHTML = `<img src="/api/image/${index}/thumbnail"> ${imageLabel(img)}`;
+  row.addEventListener("click", () => showCompareImages(img, index));
+  return row;
+}
+
+function renderCompareImageTreeNode(node, depth) {
+  const relevantChildren = node.children.filter(subtreeHasImages);
+  const ownImages = node._images || [];
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  const hasChildren = node.children && node.children.length > 0;
-  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
+  row.textContent = `▸ ${formatNodeLabel(node)}`.trim();
+
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
 
   row.addEventListener("click", () => {
-    window.open(webSiteUrl(node), "_blank", "noopener");
-    if (!hasChildren) return;
     childrenBox.classList.toggle("expanded");
-    if (childrenBox.children.length === 0) {
-      node.children.forEach((child) => childrenBox.appendChild(renderWebNode(child, depth + 1)));
-    }
+    if (childrenBox.children.length > 0) return;
+    relevantChildren.forEach((child) => {
+      childrenBox.appendChild(renderCompareImageTreeNode(child, depth + 1));
+    });
+    ownImages.forEach(({ img, index }) => {
+      childrenBox.appendChild(renderCompareImageRow(img, index, depth + 1));
+    });
   });
 
   const wrapper = document.createElement("div");
@@ -272,15 +324,20 @@ function renderWebNode(node, depth) {
 }
 
 async function loadCompareTab() {
-  document.getElementById("compare-pdf").appendChild(renderNode(tocVolume, 0));
-  const webContainer = document.getElementById("compare-web");
+  const content = document.getElementById("compare-tree-content");
+  const declutter = document.getElementById("declutter-compare");
+
   const res = await fetch("/api/web-toc");
-  if (!res.ok) {
-    webContainer.append("Not built yet - run src/build_web_toc.py, then reload.");
-    return;
+  compareWebImages = res.ok ? (await res.json()).images : [];
+
+  function render() {
+    content.innerHTML = "";
+    attachImagesToOwners(declutter.checked ? 40 : 0);
+    if (!subtreeHasImages(tocVolume)) return;
+    content.appendChild(renderCompareImageTreeNode(tocVolume, 0));
   }
-  const { tree } = await res.json();
-  webContainer.appendChild(renderWebNode(tree, 0));
+  declutter.addEventListener("change", render);
+  render();
 }
 
 async function renderPage(pageNumber) {
@@ -328,12 +385,13 @@ const TAB_CONTENT_ID = {
   toc: "tree", images: "images", "image-tree": "image-tree", "web-images": "web-images",
   compare: "compare",
 };
+const TAB_ACTIVE_DISPLAY = { compare: "flex" };
 
 function switchTab(active) {
   TABS.forEach((name) => {
     document.getElementById(`tab-${name}`).classList.toggle("active", name === active);
     document.getElementById(TAB_CONTENT_ID[name]).style.display =
-      name === active ? "block" : "none";
+      name === active ? TAB_ACTIVE_DISPLAY[name] || "block" : "none";
   });
 }
 

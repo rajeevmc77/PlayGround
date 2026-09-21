@@ -43,13 +43,21 @@
     </div>
   </div>
   <div id="compare" style="display:none">
-    <div id="compare-pdf" class="compare-col">
-      <h3>PDF Table of Contents</h3>
+    <div id="compare-tree">
+      <label><input type="checkbox" id="declutter-compare" checked> Hide images under 40pt</label>
+      <div id="compare-tree-content"></div>
     </div>
-    <div id="compare-web" class="compare-col">
-      <h3>Web Table of Contents</h3>
+    <div id="compare-images">
+      <div class="compare-image-col">
+        <h3>PDF Image</h3>
+        <div id="compare-pdf-content" class="compare-placeholder">Click an image on the left to compare.</div>
+      </div>
+      <div class="compare-image-col">
+        <h3>Web Image</h3>
+        <div id="compare-web-content"></div>
+      </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=6"></script>
+  <script type="module" src="/static/viewer.js?v=7"></script>
 </body>
 </html>
