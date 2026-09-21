@@ -243,6 +243,46 @@ document.getElementById("web-image-detail-close").addEventListener("click", () =
   document.getElementById("web-image-detail").style.display = "none";
 });
 
+function webSiteUrl(node) {
+  return `https://dev.buildingcode.gov.bc.ca${node.path}?version=2024&date=2024-03-08`;
+}
+
+function renderWebNode(node, depth) {
+  const row = document.createElement("div");
+  row.className = "node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  const hasChildren = node.children && node.children.length > 0;
+  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
+  const childrenBox = document.createElement("div");
+  childrenBox.className = "node-children";
+
+  row.addEventListener("click", () => {
+    window.open(webSiteUrl(node), "_blank", "noopener");
+    if (!hasChildren) return;
+    childrenBox.classList.toggle("expanded");
+    if (childrenBox.children.length === 0) {
+      node.children.forEach((child) => childrenBox.appendChild(renderWebNode(child, depth + 1)));
+    }
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(row);
+  wrapper.appendChild(childrenBox);
+  return wrapper;
+}
+
+async function loadCompareTab() {
+  document.getElementById("compare-pdf").appendChild(renderNode(tocVolume, 0));
+  const webContainer = document.getElementById("compare-web");
+  const res = await fetch("/api/web-toc");
+  if (!res.ok) {
+    webContainer.append("Not built yet - run src/build_web_toc.py, then reload.");
+    return;
+  }
+  const { tree } = await res.json();
+  webContainer.appendChild(renderWebNode(tree, 0));
+}
+
 async function renderPage(pageNumber) {
   const page = await pdfDoc.getPage(pageNumber);
   const viewport = page.getViewport({ scale: 1.5 });
@@ -283,9 +323,10 @@ async function goToLocation(pageNumber, bbox) {
   showHighlight(viewport, bbox);
 }
 
-const TABS = ["toc", "images", "image-tree", "web-images"];
+const TABS = ["toc", "images", "image-tree", "web-images", "compare"];
 const TAB_CONTENT_ID = {
   toc: "tree", images: "images", "image-tree": "image-tree", "web-images": "web-images",
+  compare: "compare",
 };
 
 function switchTab(active) {
@@ -313,4 +354,5 @@ document.getElementById("next-page").addEventListener("click", () => {
   await loadImages();
   await loadImageTree();
   await loadWebToc();
+  await loadCompareTab();
 })();

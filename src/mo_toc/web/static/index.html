@@ -12,6 +12,7 @@
       <button id="tab-images">Images</button>
       <button id="tab-image-tree">Table of Images</button>
       <button id="tab-web-images">BC Code (Web)</button>
+      <button id="tab-compare">Compare</button>
     </div>
     <div id="tree"></div>
     <div id="images" style="display:none">
@@ -41,6 +42,14 @@
       <a id="web-image-detail-link" target="_blank" rel="noopener">View on official site &#8599;</a>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=5"></script>
+  <div id="compare" style="display:none">
+    <div id="compare-pdf" class="compare-col">
+      <h3>PDF Table of Contents</h3>
+    </div>
+    <div id="compare-web" class="compare-col">
+      <h3>Web Table of Contents</h3>
+    </div>
+  </div>
+  <script type="module" src="/static/viewer.js?v=6"></script>
 </body>
 </html>
