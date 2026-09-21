@@ -26,11 +26,11 @@ def _image(page, y0, y1, x0=100, x1=200):
     )
 
 
-def _caption(kind, identifier, page, y0, y1, x0=100, x1=200):
+def _caption(kind, identifier, page, y0, y1, x0=100, x1=200, title="Some title"):
     return Caption(
         kind=kind,
         identifier=identifier,
-        title="Some title",
+        title=title,
         page=page,
         bbox=BBox(x0, y0, x1, y1),
         owner_citation="",
@@ -100,7 +100,11 @@ def test_image_owner_picks_nearest_preceding_sibling_when_several_share_a_page()
     note_c = _node("Note", "A-1.4.1.2.(1)", "Note:A-1.4.1.2.(1)", page=37, end_page=37)
     note_c.bbox = BBox(0, 700, 0, 0)
     container = _node(
-        "NotesContainer", "1", "Notes-A-1", page=37, end_page=37,
+        "NotesContainer",
+        "1",
+        "Notes-A-1",
+        page=37,
+        end_page=37,
         children=[note_a, note_b, note_c],
     )
     volume = _node("Volume", "Volume", "Volume", page=1, end_page=37, children=[container])
@@ -113,10 +117,11 @@ def test_image_owner_picks_nearest_preceding_sibling_when_several_share_a_page()
 def test_image_matched_to_caption_directly_below_on_same_page():
     volume = _tree()
     image = _image(page=11, y0=100, y1=150)
-    caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=155, y1=170)
+    caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=155, y1=170, title="Flight")
     result = match_images([image], [caption], volume)
     assert result[0].caption_kind == "Figure"
     assert result[0].caption_identifier == "A-1.1.1.1.-A"
+    assert result[0].caption_title == "Flight"
 
 
 def test_image_matched_to_caption_above_when_no_caption_below():
@@ -135,6 +140,7 @@ def test_image_not_matched_to_caption_on_different_page():
     result = match_images([image], [caption], volume)
     assert result[0].caption_kind is None
     assert result[0].caption_identifier is None
+    assert result[0].caption_title is None
 
 
 def test_image_matched_to_caption_that_is_touching_or_slightly_overlapping():
@@ -165,9 +171,7 @@ def test_two_images_each_claim_their_own_nearest_caption():
     image_bottom = _image(page=11, y0=300, y1=350)
     caption_top = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=155, y1=170)
     caption_bottom = _caption("Figure", "A-1.1.1.1.-B", page=11, y0=355, y1=370)
-    result = match_images(
-        [image_top, image_bottom], [caption_top, caption_bottom], volume
-    )
+    result = match_images([image_top, image_bottom], [caption_top, caption_bottom], volume)
     by_y0 = {img.bbox.y0: img for img in result}
     assert by_y0[100].caption_identifier == "A-1.1.1.1.-A"
     assert by_y0[300].caption_identifier == "A-1.1.1.1.-B"

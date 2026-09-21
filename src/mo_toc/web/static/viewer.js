@@ -249,10 +249,19 @@ function normalizeForMatch(value) {
   return (value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function findMatchingWebImage(captionIdentifier, webImages) {
-  const needle = normalizeForMatch(captionIdentifier);
-  if (!needle) return null;
-  return webImages.find((img) => normalizeForMatch(img.src).includes(needle)) || null;
+function findMatchingWebImage(pdfImg, webImages) {
+  const identifierNeedle = normalizeForMatch(pdfImg.caption_identifier);
+  if (identifierNeedle) {
+    const bySrc = webImages.find((img) => normalizeForMatch(img.src).includes(identifierNeedle));
+    if (bySrc) return bySrc;
+  }
+  // Not every web src encodes the PDF's caption identifier - some are legacy
+  // drawing codes (e.g. "graphics/eg/013/eg01395a") unrelated to the figure
+  // number. The caption's own title text, though, mirrors the web image's
+  // alt_text almost verbatim, so it's a reliable fallback key.
+  const titleNeedle = normalizeForMatch(pdfImg.caption_title);
+  if (!titleNeedle) return null;
+  return webImages.find((img) => normalizeForMatch(img.alt_text) === titleNeedle) || null;
 }
 
 function renderComparePdfImage(img, index) {
@@ -283,7 +292,7 @@ function renderCompareWebImage(webImg) {
 
 function showCompareImages(img, index) {
   renderComparePdfImage(img, index);
-  renderCompareWebImage(findMatchingWebImage(img.caption_identifier, compareWebImages));
+  renderCompareWebImage(findMatchingWebImage(img, compareWebImages));
 }
 
 function renderCompareImageRow(img, index, depth) {
