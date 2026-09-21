@@ -1,5 +1,5 @@
 from mo_toc.parsing.pdf_source import PageLine
-from mo_toc.parsing.tree_builder import build_tree
+from mo_toc.parsing.tree_builder import build_tree, build_tree_from_lines
 
 
 class FakePdfSource:
@@ -57,6 +57,15 @@ def test_front_matter_precedes_first_division():
     root, _captions = build_tree(FakePdfSource(_document_fixture()))
     assert root.children[0].type == "FrontMatter"
     assert root.children[0].page == 1
+
+
+def test_build_tree_from_lines_matches_build_tree_for_the_same_document():
+    pages = _document_fixture()
+
+    from_source = build_tree(FakePdfSource(pages))
+    from_lines = build_tree_from_lines(pages, len(pages))
+
+    assert from_lines == from_source
 
 
 def test_division_part_section_subsection_article_nest_correctly():

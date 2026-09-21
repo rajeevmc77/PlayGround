@@ -16,15 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mo_toc.output.image_writer import write_images
 from mo_toc.output.json_writer import write_json
 from mo_toc.output.markdown_writer import write_markdown
-from mo_toc.parsing.image_extractor import extract_images
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.numbering_config import (
     MO_TOC_IDENTIFIER_TYPES,
     MO_TOC_SUFFIX_TYPES,
     MO_TOC_TYPE_MARKERS,
 )
-from mo_toc.parsing.pdf_source import PyMuPdfSource
-from mo_toc.parsing.tree_builder import build_tree
+from mo_toc.parsing.parallel_extraction import extract_all_pages
+from mo_toc.parsing.tree_builder import build_tree_from_lines
 from shared.numbering import assign_unified_numbers
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -33,15 +32,14 @@ DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 
 
 def run(pdf_path: str, output_dir: str) -> None:
-    source = PyMuPdfSource(pdf_path)
-    volume, captions = build_tree(source)
+    all_lines, raw_images = extract_all_pages(pdf_path)
+    volume, captions = build_tree_from_lines(all_lines, len(all_lines))
     assign_unified_numbers(
         [volume],
         MO_TOC_TYPE_MARKERS,
         identifier_types=MO_TOC_IDENTIFIER_TYPES,
         suffix_types=MO_TOC_SUFFIX_TYPES,
     )
-    raw_images = extract_images(source)
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
     write_json(volume, captions, images, str(Path(output_dir) / "mo_toc.json"))

@@ -4,6 +4,10 @@ the archived extract_figures.py, which only kept images matched to a genuine
 Figure caption above ~40pt) — this indexes every raster image in the document,
 including logos/icons/decorative graphics, plus a rendered crop for each
 distinct cluster of vector paths that isn't already covered by a raster image.
+
+raster_images_on_page/vector_images_on_page are public (not prefixed) because
+mo_toc.parsing.parallel_extraction also calls them directly, one page at a
+time, from inside a worker process.
 """
 
 import io
@@ -46,7 +50,7 @@ def _raw_image(page_index: int, bbox, extracted: ExtractedImage) -> RawImage:
     )
 
 
-def _raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
+def raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
     images = []
     for info in source.page_images(page_index):
         extracted = source.extract_image(info.xref)
@@ -54,7 +58,7 @@ def _raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]
     return images
 
 
-def _vector_images_on_page(
+def vector_images_on_page(
     source: PdfSource, page_index: int, raster_bboxes: list[tuple[float, float, float, float]]
 ) -> list[RawImage]:
     clusters = cluster_drawing_rects(source.page_drawing_rects(page_index))
@@ -69,7 +73,7 @@ def _vector_images_on_page(
 def extract_images(source: PdfSource) -> list[RawImage]:
     images = []
     for page_index in range(source.page_count):
-        raster = _raster_images_on_page(source, page_index)
+        raster = raster_images_on_page(source, page_index)
         images.extend(raster)
-        images.extend(_vector_images_on_page(source, page_index, [r.bbox for r in raster]))
+        images.extend(vector_images_on_page(source, page_index, [r.bbox for r in raster]))
     return images

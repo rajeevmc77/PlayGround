@@ -293,13 +293,25 @@ def _finalize_end_pages(node: Node, last_page: int) -> None:
 
 
 def build_tree(source: PdfSource) -> tuple[Node, list[Caption]]:
+    all_lines = [source.page_lines(i) for i in range(source.page_count)]
+    return build_tree_from_lines(all_lines, source.page_count)
+
+
+def build_tree_from_lines(
+    all_lines: list[list[PageLine]], page_count: int
+) -> tuple[Node, list[Caption]]:
+    """Same assembly as build_tree, but takes each page's lines pre-computed
+    instead of pulling them from a live PdfSource - lets build_mo_toc.py
+    extract every page's lines in parallel (the actual PyMuPDF work) and
+    then run this stateful, inherently-sequential assembly step once, in the
+    main process, over the results."""
     volume = Node(
         type="Volume",
         identifier="Volume",
         citation="Volume",
         title="",
         page=1,
-        end_page=source.page_count,
+        end_page=page_count,
         bbox=BBox(0, 0, 0, 0),
     )
     front_matter = Node(
@@ -314,10 +326,10 @@ def build_tree(source: PdfSource) -> tuple[Node, list[Caption]]:
     volume.children.append(front_matter)
     state = _BuildState(stack=[(0, volume), (1, front_matter)])
 
-    for page_index in range(source.page_count):
-        _process_page(source.page_lines(page_index), page_index, state)
+    for page_index, lines in enumerate(all_lines):
+        _process_page(lines, page_index, state)
 
-    _finalize_end_pages(volume, source.page_count)
+    _finalize_end_pages(volume, page_count)
     for article, body in state.article_bodies:
         article.children = segment_article_body(body, article.citation, article.end_page)
     return volume, state.captions
