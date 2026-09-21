@@ -109,6 +109,27 @@ def test_backmatter_opens_only_after_first_division_seen():
     assert root.children[-1].type == "BackMatter"
 
 
+def test_figure_caption_bbox_covers_full_title_block_not_just_identifier_line():
+    # Confirmed real-document case (Part 4 wind-load figures, e.g. Figure
+    # 4.1.7.6.-A on page 516): a caption's title routinely wraps across two
+    # or three lines below the "Figure ..." identifier line. If bbox stops
+    # at the identifier line alone, image_matcher measures the gap to the
+    # image from the wrong edge - 30-40pt too high up the page - and can
+    # push a genuinely close image past MAX_CAPTION_GAP.
+    pages = _document_fixture()
+    pages.append(
+        [
+            line(400, 40, "Figure 1.1.1.1.-B", BOLD),
+            line(420, 40, "First title line", BOLD),
+            line(440, 40, "Second title line", BOLD),
+        ]
+    )
+    _root, captions = build_tree(FakePdfSource(pages))
+    caption = captions[-1]
+    assert caption.identifier == "1.1.1.1.-B"
+    assert caption.bbox.y1 == 450  # bottom of "Second title line" (y0=440, +10), not 410
+
+
 def test_backmatter_marker_before_any_division_is_not_a_heading():
     pages = [
         [line(50, 40, "PROVINCE OF BRITISH COLUMBIA", BOLD)],
