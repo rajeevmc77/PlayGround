@@ -202,11 +202,23 @@ def _consume_caption_title(lines: list[PageLine], idx: int) -> tuple[str, int]:
     return " ".join(parts).strip(), idx
 
 
+def _caption_block_bbox(lines: list[PageLine], start_idx: int, end_idx: int) -> BBox:
+    """Spans from the identifier line down through the last consumed title
+    line, not just the identifier line alone - image_matcher measures the
+    gap to a nearby image from this bbox's bottom edge, so a caption whose
+    title wraps across several lines needs its bbox to reach that title's
+    own bottom edge or the gap is measured ~30-40pt too high up the page.
+    """
+    x0, y0, x1, y1 = lines[start_idx].bbox
+    last_line_y1 = lines[end_idx - 1].bbox[3]
+    return BBox(x0, y0, x1, max(y1, last_line_y1))
+
+
 def _open_caption(
     match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
 ) -> int:
-    bbox = BBox(*lines[idx].bbox)
     title, next_idx = _consume_caption_title(lines, idx + 1)
+    bbox = _caption_block_bbox(lines, idx, next_idx)
     owner = state.stack[-1][1].citation if len(state.stack) > 1 else ""
     state.captions.append(
         Caption(
