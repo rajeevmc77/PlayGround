@@ -74,3 +74,27 @@ def test_web_image_holds_graphic_and_owner_fields():
     )
     assert img.src == "bc-graphics/gg00556a"
     assert img.owner_citation == "nbc.divBV2.part9.sect23.subsect13.art7"
+
+
+def test_web_image_local_path_defaults_to_empty_string():
+    img = WebImage(
+        id="nbc.divBV2.part9.sect23.subsect13.art7.table1.row4.figure23",
+        src="bc-graphics/gg00556a",
+        alt_text="Three storey building configuration",
+        owner_citation="nbc.divBV2.part9.sect23.subsect13.art7",
+    )
+    assert img.local_path == ""
+
+
+def test_web_image_local_path_can_be_set():
+    img = WebImage(
+        id="nbc.divBV2.part9.sect23.subsect13.art7.table1.row4.figure23",
+        src="bc-graphics/gg00556a",
+        alt_text="Three storey building configuration",
+        owner_citation="nbc.divBV2.part9.sect23.subsect13.art7",
+        local_path="web_images/nbc.divBV2.part9.sect23.subsect13.art7.table1.row4.figure23.jpg",
+    )
+    assert (
+        img.local_path
+        == "web_images/nbc.divBV2.part9.sect23.subsect13.art7.table1.row4.figure23.jpg"
+    )

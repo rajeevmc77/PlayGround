@@ -46,3 +46,43 @@ def test_fetch_content_returns_none_for_html_fallback_response(mock_get):
     source = HttpxWebSource("https://dev.buildingcode.gov.bc.ca", "2024")
 
     assert source.fetch_content("/data/2024/content/bogus/nope.json") is None
+
+
+@patch("web_toc.parsing.site_source.httpx.get")
+def test_fetch_image_builds_url_and_returns_bytes(mock_get):
+    resp = MagicMock()
+    resp.content = b"\xff\xd8\xff\xe0fakejpegbytes"
+    resp.raise_for_status = MagicMock()
+    mock_get.return_value = resp
+    source = HttpxWebSource("https://dev.buildingcode.gov.bc.ca", "2024")
+
+    result = source.fetch_image("bc-graphics/gg00556a")
+
+    mock_get.assert_called_once_with(
+        "https://dev.buildingcode.gov.bc.ca/bc-graphics/gg00556a.jpg", timeout=30.0
+    )
+    assert result == b"\xff\xd8\xff\xe0fakejpegbytes"
+
+
+@patch("web_toc.parsing.site_source.httpx.get")
+def test_fetch_image_returns_none_on_http_error(mock_get):
+    import httpx
+
+    mock_get.side_effect = httpx.ConnectError("boom")
+    source = HttpxWebSource("https://dev.buildingcode.gov.bc.ca", "2024")
+
+    assert source.fetch_image("bc-graphics/missing") is None
+
+
+@patch("web_toc.parsing.site_source.httpx.get")
+def test_fetch_image_returns_none_on_error_status(mock_get):
+    import httpx
+
+    resp = MagicMock()
+    resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "404", request=MagicMock(), response=MagicMock()
+    )
+    mock_get.return_value = resp
+    source = HttpxWebSource("https://dev.buildingcode.gov.bc.ca", "2024")
+
+    assert source.fetch_image("bc-graphics/missing") is None

@@ -93,7 +93,7 @@ def test_get_thumbnail_missing_file_returns_404(tmp_path):
     assert resp.json()["detail"] == "Thumbnail file missing"
 
 
-def _write_web_toc_fixture(tmp_path):
+def _write_web_toc_fixture(tmp_path, local_path=""):
     payload = {
         "tree": {
             "type": "root",
@@ -104,7 +104,13 @@ def _write_web_toc_fixture(tmp_path):
             "children": [],
         },
         "images": [
-            {"id": "fig1", "src": "bc-graphics/x", "alt_text": "alt", "owner_citation": "root"}
+            {
+                "id": "fig1",
+                "src": "bc-graphics/x",
+                "alt_text": "alt",
+                "owner_citation": "root",
+                "local_path": local_path,
+            }
         ],
     }
     path = tmp_path / "web_toc.json"
@@ -123,4 +129,55 @@ def test_get_web_toc_returns_payload_when_present(tmp_path):
 def test_get_web_toc_returns_503_when_not_built(tmp_path):
     client = _make_client(tmp_path)
     resp = client.get("/api/web-toc")
+    assert resp.status_code == 503
+
+
+def test_get_web_image_by_id_returns_cached_file(tmp_path):
+    web_images_dir = tmp_path / "web_images"
+    web_images_dir.mkdir()
+    (web_images_dir / "fig1.jpg").write_bytes(b"\xff\xd8\xff\xe0fake")
+    web_toc_json_path = _write_web_toc_fixture(tmp_path, local_path="web_images/fig1.jpg")
+    client = _make_client(tmp_path, web_toc_json_path=web_toc_json_path)
+
+    resp = client.get("/api/web-image/fig1/thumbnail")
+
+    assert resp.status_code == 200
+    assert resp.content == b"\xff\xd8\xff\xe0fake"
+
+
+def test_get_web_image_with_no_local_path_returns_404(tmp_path):
+    web_toc_json_path = _write_web_toc_fixture(tmp_path, local_path="")
+    client = _make_client(tmp_path, web_toc_json_path=web_toc_json_path)
+
+    resp = client.get("/api/web-image/fig1/thumbnail")
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "No cached image"
+
+
+def test_get_web_image_unknown_id_returns_404(tmp_path):
+    web_toc_json_path = _write_web_toc_fixture(tmp_path, local_path="web_images/fig1.jpg")
+    client = _make_client(tmp_path, web_toc_json_path=web_toc_json_path)
+
+    resp = client.get("/api/web-image/no-such-id/thumbnail")
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "No cached image"
+
+
+def test_get_web_image_missing_file_returns_404(tmp_path):
+    web_toc_json_path = _write_web_toc_fixture(tmp_path, local_path="web_images/fig1.jpg")
+    client = _make_client(tmp_path, web_toc_json_path=web_toc_json_path)
+
+    resp = client.get("/api/web-image/fig1/thumbnail")
+
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Cached image file missing"
+
+
+def test_get_web_image_returns_503_when_web_toc_not_built(tmp_path):
+    client = _make_client(tmp_path)
+
+    resp = client.get("/api/web-image/fig1/thumbnail")
+
     assert resp.status_code == 503

@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from shared.numbering import assign_unified_numbers
+from web_toc.output.image_downloader import download_images
 from web_toc.output.json_writer import write_json
 from web_toc.parsing.content_url import content_url
 from web_toc.parsing.image_extractor import extract_images
@@ -52,6 +53,7 @@ def run(base_url: str, version: str, output_dir: str) -> None:
             continue
         images.extend(extract_images(content, citations, node.citation))
 
+    download_images(images, source, str(Path(output_dir) / "web_images"))
     write_json(root, images, str(Path(output_dir) / "web_toc.json"))
 
 

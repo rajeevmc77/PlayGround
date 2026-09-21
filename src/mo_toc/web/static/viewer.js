@@ -152,6 +152,7 @@ async function loadImageTree() {
 }
 
 function webImageUrl(img) {
+  if (img.local_path) return `/api/web-image/${encodeURIComponent(img.id)}/thumbnail`;
   return `https://dev.buildingcode.gov.bc.ca/${img.src}.jpg`;
 }
 

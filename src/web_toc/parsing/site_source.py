@@ -6,6 +6,7 @@ import httpx
 class WebSource(Protocol):
     def fetch_navigation_tree(self) -> dict: ...
     def fetch_content(self, path: str) -> dict | None: ...
+    def fetch_image(self, src: str) -> bytes | None: ...
 
 
 class HttpxWebSource:
@@ -25,3 +26,12 @@ class HttpxWebSource:
         if not response.text.strip().startswith("{"):
             return None
         return response.json()
+
+    def fetch_image(self, src: str) -> bytes | None:
+        url = f"{self._base_url}/{src}.jpg"
+        try:
+            response = httpx.get(url, timeout=30.0)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return None
+        return response.content
