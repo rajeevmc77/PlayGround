@@ -114,6 +114,33 @@ def _append_continuation(owner: Node, owner_start_page: int, page_index: int, pl
         owner.bbox = _union_bbox(owner.bbox, BBox(*pline.bbox))
 
 
+def _add_clause(
+    sentence: Node,
+    token: str,
+    content: str,
+    page_index: int,
+    pline,
+    end_page: int,
+    next_letter: str,
+) -> tuple[Node, str, float]:
+    cur_clause = _marker_node(
+        "Clause", token, content, sentence.citation, page_index, pline, end_page
+    )
+    sentence.children.append(cur_clause)
+    next_letter, prev_clause_x0 = _advance_clause_state(pline, token, next_letter)
+    return cur_clause, next_letter, prev_clause_x0
+
+
+def _add_subclause(
+    cur_clause: Node, token: str, content: str, page_index: int, pline, end_page: int
+) -> Node:
+    subclause = _marker_node(
+        "Subclause", token, content, cur_clause.citation, page_index, pline, end_page
+    )
+    cur_clause.children.append(subclause)
+    return subclause
+
+
 def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: int) -> None:
     clause_x, subclause_x = _clause_subclause_x0s(group)
     threshold = _sentence_threshold(clause_x, subclause_x)
@@ -128,19 +155,14 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
         token, kind = match.group(1), classify_marker(match.group(1))
         kind = _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0)
         if kind == "clause":
-            cur_clause = _marker_node(
-                "Clause", token, match.group(2), sentence.citation, page_index, pline, end_page
+            cur_clause, next_letter, prev_clause_x0 = _add_clause(
+                sentence, token, match.group(2), page_index, pline, end_page, next_letter
             )
-            sentence.children.append(cur_clause)
-            next_letter, prev_clause_x0 = _advance_clause_state(pline, token, next_letter)
             current_owner, current_owner_page = cur_clause, page_index
             continue
         if kind != "subclause" or cur_clause is None:
             continue
-        subclause = _marker_node(
-            "Subclause", token, match.group(2), cur_clause.citation, page_index, pline, end_page
-        )
-        cur_clause.children.append(subclause)
+        subclause = _add_subclause(cur_clause, token, match.group(2), page_index, pline, end_page)
         current_owner, current_owner_page = subclause, page_index
 
 
