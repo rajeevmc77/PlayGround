@@ -23,6 +23,7 @@ class Node:
     bbox: BBox
     children: list["Node"] = field(default_factory=list)
     unified_number: str = ""
+    content: str = ""
 
 
 @dataclass
@@ -49,3 +50,4 @@ class ImageAsset:
     caption_kind: str | None = None
     caption_identifier: str | None = None
     caption_title: str | None = None
+    title: str = ""
