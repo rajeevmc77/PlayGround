@@ -5,12 +5,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from build_mo_toc import build_document
+from build_mo_toc import build_document, drop_images_over_tables
 from mo_toc.output.image_writer import write_images
 from mo_toc.parsing.image_extractor import extract_images
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.parallel_extraction import extract_all_pages
 from mo_toc.parsing.pdf_source import PyMuPdfSource
+from mo_toc.parsing.table_extractor import fill_continuation_gaps
 from mo_toc.parsing.tree_builder import build_tree
 
 PDF_PATH = Path(__file__).resolve().parent.parent / "data" / "MO Package BCBC MRK signed.pdf"
@@ -205,6 +206,33 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     # leak honestly rather than letting it silently regress further or be
     # silently claimed as fixed.
     assert "Part 6 and Part 7" in sentence.content
+
+
+@pytest.mark.slow
+def test_table_1_1_1_1_5_continuation_tail_on_page_12_is_not_rendered_as_an_image():
+    # Confirmed real bug (mo_toc viewer screenshot): the same page-12 gap
+    # documented in test_table_1_1_1_1_5_continuation_rows_are_captured_and_
+    # do_not_leak above (rows 34-37 sit above Table 1.1.1.1.(6)'s own
+    # caption/grid, with no TableRegion of their own) also has a purely
+    # geometric consequence: their gridline rects clustered into a lone
+    # >400pt^2 vector-drawing region that nothing excluded, so it got
+    # rendered and indexed as a standalone "figure" - then
+    # image_matcher.assign_owner attached it to Sentence A-1.1.1.1.(5),
+    # making a genuine text table show up in the viewer as if it were an
+    # equation/figure, with (correctly) no matching web image to compare
+    # against. Confirmed directly against this real PDF before the fix:
+    # exactly one page-12 vector image, bbox (90.0, 72.0, 550.9, 273.4),
+    # rendered at 1383x605px.
+    all_lines, raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(
+        str(PDF_PATH)
+    )
+    table_regions_by_page = fill_continuation_gaps(
+        all_lines, all_drawing_rects, table_regions_by_page
+    )
+    raw_images = drop_images_over_tables(raw_images, table_regions_by_page)
+
+    page_12_vectors = [img for img in raw_images if img.page == 12 and img.kind == "vector"]
+    assert page_12_vectors == []
 
 
 @pytest.mark.slow

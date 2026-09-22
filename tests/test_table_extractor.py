@@ -10,6 +10,7 @@ from mo_toc.parsing.table_extractor import (
     detect_tables_on_page,
     fill_continuation_gaps,
     find_table_anchors,
+    rects_form_a_grid,
     stitch_continuations,
 )
 from mo_toc.parsing.tree_builder import build_tree_from_lines
@@ -830,3 +831,39 @@ def test_fill_continuation_gaps_corrects_pending_border_when_page_box_closed_per
     stitched = stitch_continuations(filled)
     assert len(stitched) == 1
     assert len(stitched[0].table_node.children) == 2
+
+
+def _grid_rects(n_rows, n_cols, x0=90.0, y0=72.0, col_width=100.0, row_height=20.0):
+    x1 = x0 + n_cols * col_width
+    y1 = y0 + n_rows * row_height
+    rects = []
+    for row in range(n_rows + 1):
+        y = y0 + row * row_height
+        rects.append((x0, y, x1, y + 0.4))
+    for col in range(n_cols + 1):
+        x = x0 + col * col_width
+        rects.append((x, y0, x + 0.4, y1))
+    return rects
+
+
+def test_rects_form_a_grid_true_for_a_real_multi_row_multi_col_grid():
+    # Mirrors the real bug (Table 1.1.1.1.(5)'s continuation tail, page 12):
+    # a caption-less cluster of thin gridline rects with no text at all can
+    # still be recognized as "table-shaped" from geometry alone.
+    assert rects_form_a_grid(_grid_rects(n_rows=4, n_cols=3)) is True
+
+
+def test_rects_form_a_grid_false_for_a_plain_rectangle_outline():
+    # A simple 4-sided box (a diagram border, or a single-cell frame) has
+    # only one row-band and one column-band - not a grid.
+    outline = [
+        (90.0, 72.0, 260.0, 72.4),
+        (90.0, 150.0, 260.0, 150.4),
+        (90.0, 72.0, 90.4, 150.0),
+        (259.6, 72.0, 260.0, 150.0),
+    ]
+    assert rects_form_a_grid(outline) is False
+
+
+def test_rects_form_a_grid_false_for_empty_rects():
+    assert rects_form_a_grid([]) is False
