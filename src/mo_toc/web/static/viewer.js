@@ -9,7 +9,8 @@ let tocVolume = null;
 let allImages = null;
 
 function formatNodeLabel(node) {
-  return [node.unified_number, node.type, node.identifier, node.title].filter(Boolean).join(" ");
+  const text = node.title || node.content;
+  return [node.unified_number, node.type, node.identifier, text].filter(Boolean).join(" ");
 }
 
 async function loadToc() {
