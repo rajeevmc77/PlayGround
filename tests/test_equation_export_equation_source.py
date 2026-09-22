@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from equation_export.parsing.equation_source import HttpxEquationSource
+from equation_export.parsing.equation_source import HttpxEquationSource, _normalize_latex
 
 
 def _fake_response(payload: dict):
@@ -77,6 +77,51 @@ def test_fetch_equations_collapses_double_escaped_backslashes(mock_client_cls):
     result = _run(scenario())
 
     assert result[0].latex == "A_{C}=A+(A_{F}\\times F_{EO})"
+
+
+def test_normalize_latex_inserts_space_after_times_glued_to_a_letter():
+    assert _normalize_latex("Area=0.24(2\\timesLD-1.2)^{2}") == "Area=0.24(2\\times LD-1.2)^{2}"
+
+
+def test_normalize_latex_inserts_space_after_leq_glued_to_a_letter():
+    assert _normalize_latex("C\\leqC_{max}") == "C\\leq C_{max}"
+
+
+def test_normalize_latex_inserts_space_after_sum_glued_to_a_letter():
+    assert _normalize_latex("\\sumh_{i}w_{i}") == "\\sum h_{i}w_{i}"
+
+
+def test_normalize_latex_fixes_every_occurrence_in_the_same_string():
+    assert (
+        _normalize_latex("SensibleHeat=0.00123\\timesQ\\times(T_{e}-T_{o})")
+        == "SensibleHeat=0.00123\\times Q\\times(T_{e}-T_{o})"
+    )
+
+
+def test_normalize_latex_leaves_already_spaced_commands_untouched():
+    assert _normalize_latex("A_{C}=A+(A_{F}\\times F_{EO})") == "A_{C}=A+(A_{F}\\times F_{EO})"
+
+
+def test_normalize_latex_leaves_commands_followed_by_non_letters_untouched():
+    assert _normalize_latex("\\sum_{i}h_{i}") == "\\sum_{i}h_{i}"
+    assert _normalize_latex("a\\times(b)") == "a\\times(b)"
+    assert _normalize_latex("a\\times2") == "a\\times2"
+
+
+@patch("equation_export.parsing.equation_source.httpx.AsyncClient")
+def test_fetch_equations_fixes_glued_commands_in_the_fetched_latex(mock_client_cls):
+    mock_client = _mock_client(mock_client_cls)
+    mock_client.get.return_value = _fake_response(
+        {"eg02500a": {"id": "eg02500a", "latex": "Area=0.24(2\\timesLD-1.2)^{2}"}}
+    )
+
+    async def scenario():
+        async with HttpxEquationSource("https://dev.buildingcode.gov.bc.ca", "2024") as source:
+            return await source.fetch_equations()
+
+    result = _run(scenario())
+
+    assert result[0].latex == "Area=0.24(2\\times LD-1.2)^{2}"
 
 
 @patch("equation_export.parsing.equation_source.httpx.AsyncClient")
