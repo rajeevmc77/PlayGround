@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from image_compare.analysis.similarity import compare
 from image_compare.domain.models import ComparisonResult, PairingResult
+from image_compare.parsing.autocrop import autocrop_to_content
 from image_compare.parsing.pair_finder import find_pairs
 from image_compare.parsing.phash import compute_phash
 
@@ -34,8 +35,8 @@ def build_comparison(pdf_dir: Path, web_dir: Path) -> tuple[PairingResult, list[
     results = [
         compare(
             pair.stem,
-            compute_phash((pdf_dir / pair.pdf_filename).read_bytes()),
-            compute_phash((web_dir / pair.web_filename).read_bytes()),
+            compute_phash(autocrop_to_content((pdf_dir / pair.pdf_filename).read_bytes())),
+            compute_phash(autocrop_to_content((web_dir / pair.web_filename).read_bytes())),
         )
         for pair in pairing.matched
     ]

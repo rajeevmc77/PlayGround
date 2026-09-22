@@ -36,6 +36,8 @@ def test_build_comparison_against_the_real_sample_folder():
     assert pairing.pdf_only == []
     assert pairing.web_only == []
     by_stem = {result.stem: result for result in results}
-    assert by_stem["nbc.divA.part1.appendix.appnote2b.figure1"].hash_distance == 26
+    # appnote2b's PDF render carries ~65px of whitespace padding the web JPEG
+    # doesn't; autocropping to content before hashing corrects for it (was 26).
+    assert by_stem["nbc.divA.part1.appendix.appnote2b.figure1"].hash_distance == 12
     assert by_stem["nbc.divA.part1.appendix.appnote6.figure1"].hash_distance == 2
     assert by_stem["nbc.divA.part1.appendix.appnote7.div18.figure1"].hash_distance == 2
