@@ -26,6 +26,7 @@ MARKER_TYPES = {
     "NotesContainer": "Notes",
     "Note": "Note",
     "TableGroup": "Tbl",
+    "Table": "Tbl",
 }
 
 
@@ -44,8 +45,14 @@ def test_table_has_exactly_the_expected_keys():
 
 
 def test_division_and_sentence_are_the_identifier_types():
-    assert MO_TOC_IDENTIFIER_TYPES == frozenset({"Division", "Sentence"})
+    assert MO_TOC_IDENTIFIER_TYPES == frozenset({"Division", "Sentence", "Row", "Cell"})
 
 
 def test_clause_and_subclause_are_the_suffix_types():
     assert MO_TOC_SUFFIX_TYPES == frozenset({"Clause", "Subclause"})
+
+
+def test_table_row_cell_are_configured_for_numbering():
+    assert MO_TOC_TYPE_MARKERS["Table"] == "Tbl"
+    assert "Row" in MO_TOC_IDENTIFIER_TYPES
+    assert "Cell" in MO_TOC_IDENTIFIER_TYPES

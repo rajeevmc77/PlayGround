@@ -20,12 +20,14 @@ MO_TOC_TYPE_MARKERS: dict[str, str | None] = {
     "NotesContainer": "Notes",
     "Note": "Note",
     "TableGroup": "Tbl",
+    "Table": "Tbl",
 }
 
 # Division numbers by its lettered identifier (e.g. "B") instead of position;
 # Sentence numbers by its own display label (e.g. "(1)") the same way, still
 # dot-joined onto its parent Article - e.g. "...6.5.(1)".
-MO_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"Division", "Sentence"})
+# Row and Cell number by their own identifier (e.g. "Row1", "Cell1") directly.
+MO_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"Division", "Sentence", "Row", "Cell"})
 
 # Clause/Subclause already carry their display label - "(a)", "(i)" - in
 # Node.identifier; append it directly with no dot, run onto the Sentence
