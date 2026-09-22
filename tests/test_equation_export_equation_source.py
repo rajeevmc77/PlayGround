@@ -124,6 +124,32 @@ def test_fetch_equations_fixes_glued_commands_in_the_fetched_latex(mock_client_c
     assert result[0].latex == "Area=0.24(2\\times LD-1.2)^{2}"
 
 
+def test_normalize_latex_replaces_text_command_with_mathrm():
+    # matplotlib's mathtext has no \text command and prints it literally
+    # (visible backslash and braces) instead of raising - \mathrm is the
+    # closest supported equivalent (upright, non-italic) for these short
+    # annotations like [f], [a], units, or punctuation.
+    assert _normalize_latex("\\text{[f]}\\text{[a]}N") == "\\mathrm{[f]}\\mathrm{[a]}N"
+
+
+def test_normalize_latex_escapes_a_bare_percent_sign():
+    # matplotlib's mathtext treats an unescaped % as a comment start, same as
+    # real TeX, silently truncating everything after it.
+    assert _normalize_latex("\\text{%}") == "\\mathrm{\\%}"
+
+
+def test_normalize_latex_leaves_an_already_escaped_percent_untouched():
+    assert _normalize_latex("a\\%b") == "a\\%b"
+
+
+def test_normalize_latex_replaces_private_use_parenthesis_glyphs():
+    # Confirmed by comparing eg02650a (uses these glyphs) against eg02652a,
+    # the identical equation spelled with real parentheses in the site's own
+    # data: / stand in for "(" and ")" and have no glyph in any
+    # real font, so matplotlib would otherwise draw a missing-glyph box.
+    assert _normalize_latex("C_{a}x") == "C_{a}(x)"
+
+
 @patch("equation_export.parsing.equation_source.httpx.AsyncClient")
 def test_fetch_equations_captures_the_mathml_field(mock_client_cls):
     mock_client = _mock_client(mock_client_cls)
