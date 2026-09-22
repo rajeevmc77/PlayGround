@@ -118,18 +118,24 @@ def test_table_1_1_1_1_5_is_attached_as_a_sentence_child_with_rows_and_cells():
     table = tables[0]
     # Confirmed real-document text (page 8): the "Table 1.1.1.1.(5)" caption
     # is immediately followed by the descriptive title line "Alternate
-    # Compliance Methods for Heritage Buildings". table_extractor.py's own
-    # build_table_region always hard-codes title="" on the Table node
-    # (confirmed at src/mo_toc/parsing/table_extractor.py:233, and matches
-    # every Task 5/6 fixture) and nothing downstream (attach_tables,
-    # json_writer.write_json) ever copies the matching
-    # Caption(kind="Table").title captured by tree_builder's
-    # _open_caption/_consume_caption_title back onto the Table node - even
-    # though json_writer._prune_node deliberately keeps "title" for Table
-    # nodes (unlike Row/Cell/Sentence/Clause/Subclause), implying it was
-    # meant to carry this text. This assertion documents that real gap
-    # rather than being weakened to match the current empty-string output.
+    # Compliance Methods for Heritage Buildings". table_extractor.py now
+    # captures that title itself (_consume_table_title) and copies it onto
+    # the Table node's own title (build_table_region), and separately
+    # attach_tables can also pick it up from a matching Caption when one
+    # exists - both fixed after this was found to always be "".
     assert table.title == "Alternate Compliance Methods for Heritage Buildings"
+    # Confirmed real bug this also fixes: the sentence's own genuine prose
+    # legitimately mentions this exact phrase once ("...the Alternate
+    # Compliance Methods for Heritage Buildings in Table 1.1.1.1.(5) may be
+    # substituted..."), so a blanket "not in" check would be wrong. Before
+    # _consume_table_title's line range was added to build_table_region's
+    # consumed_line_indices, the caption's own title line ALSO fell through
+    # tree_builder's _append_to_current_article and got appended as a
+    # second, standalone duplicate of this same phrase right after "(See
+    # Note A-1.1.1.1.(5).)" - confirmed by direct inspection: this count
+    # was 2 before the fix (the legitimate occurrence plus the leaked
+    # duplicate) and is 1 after it.
+    assert sentence.content.count("Alternate Compliance Methods for Heritage Buildings") == 1
     first_row = table.children[0]
     assert [c.content for c in first_row.children] == [
         "No.",

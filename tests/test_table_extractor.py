@@ -8,9 +8,11 @@ from mo_toc.parsing.table_extractor import (
     find_table_anchors,
     stitch_continuations,
 )
+from mo_toc.parsing.tree_builder import build_tree_from_lines
 
 CAPTION_FONT = "Arial-BoldMT"
 BODY_FONT = "ArialMT"
+HEADING_FONT = "Arial-Black"
 
 
 def pline(x0, y0, x1, y1, text, font=BODY_FONT):
@@ -77,10 +79,59 @@ def test_detect_tables_on_page_assigns_citations_by_position():
 def test_detect_tables_on_page_marks_consumed_line_indices():
     lines, rects = _minimal_grid_fixture()
     regions = detect_tables_on_page(lines, rects, page_number=7)
-    # caption trigger (0) + the 4 cell-content lines (2,3,4,5); the
-    # descriptive title line (1) is already excluded by tree_builder's
-    # existing caption-title consumption, not by table_extractor.
-    assert regions[0].consumed_line_indices == {0, 2, 3, 4, 5}
+    # caption trigger (0) + the descriptive title line (1) + the 4
+    # cell-content lines (2,3,4,5). Corrected from an earlier assumption
+    # that tree_builder's own caption dispatch would separately exclude the
+    # title line (1) - it never does, because the caption trigger line (0)
+    # is already consumed by the time tree_builder sees it, so
+    # tree_builder._process_page skips straight past it without ever
+    # calling _open_caption. table_extractor.py must consume the title
+    # line itself, or it leaks into whatever Sentence/Clause/Subclause is
+    # currently open as body content (see
+    # test_detect_tables_on_page_does_not_leak_title_into_consumed_content
+    # below for the direct proof).
+    assert regions[0].consumed_line_indices == {0, 1, 2, 3, 4, 5}
+
+
+def _heading_lines_opening_a_sentence():
+    # Mirrors test_tree_builder.py's own Part/Compliance/Section/Subsection/
+    # Article/marker-line shape (test_consumed_line_indices_are_excluded_
+    # from_article_body), placed at y-coordinates well above the table
+    # grid's own row band (45-90) so none of them are ever miscounted as
+    # table cell content by _assign_lines_to_cells.
+    return [
+        pline(40, -300, 340, -290, "Part 1", HEADING_FONT),
+        pline(40, -280, 340, -270, "Compliance", HEADING_FONT),
+        pline(40, -260, 340, -250, "Section  1.1.   General", HEADING_FONT),
+        pline(40, -240, 340, -230, "1.1.1. Application", HEADING_FONT),
+        pline(40, -220, 340, -210, "1.1.1.1. Application of this Code", HEADING_FONT),
+        pline(40, -200, 340, -190, "1) Real sentence text.", BODY_FONT),
+    ]
+
+
+def test_detect_tables_on_page_does_not_leak_title_into_consumed_content():
+    # Direct, cross-module proof that the leak the dispatcher flagged is
+    # closed: feeds detect_tables_on_page's own consumed_line_indices
+    # (which now include the title line) into tree_builder.build_tree_from_
+    # lines, the same wiring build_mo_toc.py's run() uses, and confirms the
+    # table's descriptive title text never reaches the Sentence that's open
+    # when the table's caption appears.
+    table_lines, rects = _minimal_grid_fixture()
+    lines = _heading_lines_opening_a_sentence() + table_lines
+
+    regions = detect_tables_on_page(lines, rects, page_number=1)
+    assert len(regions) == 1
+
+    volume, _captions = build_tree_from_lines(
+        [lines], 1, consumed_by_page={0: regions[0].consumed_line_indices}
+    )
+    article = volume.children[0].children[0].children[0].children[0].children[0]
+    sentence = article.children[0]
+    assert sentence.type == "Sentence"
+    assert "Real sentence text." in sentence.content
+    assert "Sample Title" not in sentence.content
+    assert "No." not in sentence.content
+    assert "First row content." not in sentence.content
 
 
 def test_detect_tables_on_page_returns_nothing_below_minimum_grid_size():

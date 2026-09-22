@@ -205,20 +205,24 @@ def _build_rows(
     return rows
 
 
-def _consume_table_title(lines: list[PageLine], caption_idx: int, grid_top_y: float) -> str:
+def _consume_table_title(
+    lines: list[PageLine], caption_idx: int, grid_top_y: float
+) -> tuple[str, int]:
     """Mirrors tree_builder._consume_caption_title's own bold-font-gated,
     up-to-3-line reading of a caption's descriptive title - but bounded above
     by the grid's own top edge, since a Table caption's title (when present)
     sits between the caption trigger line and the grid, in the same bold
-    caption font as the anchor line itself. Deliberately read-only: unlike
-    the caption trigger and "Forming part of" lines, this title's own line
-    index is NOT added to build_table_region's consumed set below - table
-    caption title consumption in the live tree walk (tree_builder.py's
-    _open_caption) never runs for this line anyway, because the caption
-    trigger line itself is already consumed by the time tree_builder sees
-    it, so there both never was and never will be a competing double-consume
-    to avoid; capturing the text here without marking it consumed keeps
-    build_table_region's own consumed_line_indices contract unchanged.
+    caption font as the anchor line itself.
+
+    tree_builder's own _open_caption/_consume_caption_title never runs for
+    this line: the caption trigger line is always in build_table_region's
+    consumed set below, so tree_builder._process_page skips it before ever
+    reaching the classify_caption_line check that would call _open_caption.
+    table_extractor.py therefore owns this title's text AND its line
+    indices exclusively - returning next_idx lets the caller add
+    range(caption_idx + 1, next_idx) to consumed, so this text is never
+    also picked up by _append_to_current_article as body content of
+    whatever Sentence/Clause/Subclause happens to be open on the page.
     """
     parts = []
     idx = caption_idx + 1
@@ -228,7 +232,7 @@ def _consume_table_title(lines: list[PageLine], caption_idx: int, grid_top_y: fl
             break
         parts.append(pline.text)
         idx += 1
-    return " ".join(parts).strip()
+    return " ".join(parts).strip(), idx
 
 
 def build_table_region(
@@ -242,10 +246,11 @@ def build_table_region(
     if len(row_ys) - 1 < MIN_TABLE_ROWS or len(col_xs) - 1 < MIN_TABLE_COLS:
         return None
 
-    title = _consume_table_title(lines, anchor.caption_line_idx, row_ys[0])
+    title, title_end_idx = _consume_table_title(lines, anchor.caption_line_idx, row_ys[0])
     forming_idx, forming_part_of = _forming_part_of_above(lines, anchor.caption_line_idx, row_ys[0])
     cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
     consumed.add(anchor.caption_line_idx)
+    consumed.update(range(anchor.caption_line_idx + 1, title_end_idx))
     if forming_idx is not None:
         consumed.add(forming_idx)
 
