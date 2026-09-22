@@ -1,4 +1,4 @@
-from mo_toc.domain.models import BBox, Node
+from mo_toc.domain.models import BBox, Caption, Node
 from mo_toc.parsing.pdf_source import PageLine
 from mo_toc.parsing.table_extractor import (
     TableAnchor,
@@ -345,3 +345,110 @@ def test_attach_tables_falls_back_to_position_when_neither_resolves():
     attach_tables(volume, [region])
     assert len(article.children) == 1
     assert article.children[0].citation == "Table:unresolvable-id"
+
+
+def _table_caption(identifier, title):
+    return Caption(
+        kind="Table",
+        identifier=identifier,
+        title=title,
+        page=8,
+        bbox=BBox(0, 0, 0, 0),
+        owner_citation="",
+        forming_part_of=None,
+        continuation=False,
+    )
+
+
+def test_attach_tables_sets_title_from_matching_caption():
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    region = _table_region(
+        "1.1.1.1.(5)",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    caption = _table_caption("1.1.1.1.(5)", "Alternate Compliance Methods for Heritage Buildings")
+    attach_tables(volume, [region], [caption])
+    assert article.children[0].title == "Alternate Compliance Methods for Heritage Buildings"
+
+
+def test_attach_tables_leaves_title_empty_when_no_caption_matches():
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    region = _table_region(
+        "1.1.1.1.(5)",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    other_caption = _table_caption("9.9.(9)", "Unrelated Table")
+    attach_tables(volume, [region], [other_caption])
+    assert article.children[0].title == ""
+    # also confirm the no-captions-arg call path keeps working unchanged
+    region2 = _table_region(
+        "1.1.1.1.(5)",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    attach_tables(volume, [region2])
+    assert article.children[1].title == ""

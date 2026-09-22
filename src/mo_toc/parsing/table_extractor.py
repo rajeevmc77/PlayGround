@@ -13,8 +13,8 @@ import itertools
 import re
 from dataclasses import dataclass
 
-from mo_toc.domain.models import BBox, Node
-from mo_toc.parsing.heading_rules import classify_caption_line
+from mo_toc.domain.models import BBox, Caption, Node
+from mo_toc.parsing.heading_rules import classify_caption_line, is_caption_font
 from mo_toc.parsing.image_matcher import assign_owner
 from mo_toc.parsing.pdf_source import PageLine
 
@@ -205,6 +205,32 @@ def _build_rows(
     return rows
 
 
+def _consume_table_title(lines: list[PageLine], caption_idx: int, grid_top_y: float) -> str:
+    """Mirrors tree_builder._consume_caption_title's own bold-font-gated,
+    up-to-3-line reading of a caption's descriptive title - but bounded above
+    by the grid's own top edge, since a Table caption's title (when present)
+    sits between the caption trigger line and the grid, in the same bold
+    caption font as the anchor line itself. Deliberately read-only: unlike
+    the caption trigger and "Forming part of" lines, this title's own line
+    index is NOT added to build_table_region's consumed set below - table
+    caption title consumption in the live tree walk (tree_builder.py's
+    _open_caption) never runs for this line anyway, because the caption
+    trigger line itself is already consumed by the time tree_builder sees
+    it, so there both never was and never will be a competing double-consume
+    to avoid; capturing the text here without marking it consumed keeps
+    build_table_region's own consumed_line_indices contract unchanged.
+    """
+    parts = []
+    idx = caption_idx + 1
+    while idx < len(lines) and len(parts) < 3:
+        pline = lines[idx]
+        if pline.bbox[1] >= grid_top_y or not is_caption_font(pline.font):
+            break
+        parts.append(pline.text)
+        idx += 1
+    return " ".join(parts).strip()
+
+
 def build_table_region(
     anchor: TableAnchor,
     lines: list[PageLine],
@@ -216,6 +242,7 @@ def build_table_region(
     if len(row_ys) - 1 < MIN_TABLE_ROWS or len(col_xs) - 1 < MIN_TABLE_COLS:
         return None
 
+    title = _consume_table_title(lines, anchor.caption_line_idx, row_ys[0])
     forming_idx, forming_part_of = _forming_part_of_above(lines, anchor.caption_line_idx, row_ys[0])
     cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
     consumed.add(anchor.caption_line_idx)
@@ -230,7 +257,7 @@ def build_table_region(
         type="Table",
         identifier=anchor.identifier,
         citation=table_citation,
-        title="",
+        title=title,
         page=page_number,
         end_page=page_number,
         bbox=outer_bbox,
@@ -347,7 +374,14 @@ def resolve_owner_citation(
     return assign_owner(region.table_node, volume)
 
 
-def attach_tables(volume: Node, regions: list[TableRegion]) -> None:
+def _matching_caption(region: TableRegion, captions: list[Caption]) -> Caption | None:
+    return next(
+        (c for c in captions if c.kind == "Table" and c.identifier == region.anchor.identifier),
+        None,
+    )
+
+
+def attach_tables(volume: Node, regions: list[TableRegion], captions: list[Caption] = ()) -> None:
     index = _citation_index(volume)
     for region in regions:
         division = _division_for_page(volume, region.table_node.page)
@@ -355,3 +389,6 @@ def attach_tables(volume: Node, regions: list[TableRegion]) -> None:
         owner = index[owner_citation]
         owner.children.append(region.table_node)
         index[region.table_node.citation] = region.table_node
+        caption = _matching_caption(region, captions)
+        if caption is not None:
+            region.table_node.title = caption.title

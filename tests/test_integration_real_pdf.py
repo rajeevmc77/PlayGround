@@ -31,7 +31,7 @@ def _build_real_tree_with_tables():
     volume, captions = build_tree_from_lines(
         all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
     )
-    attach_tables(volume, stitch_continuations(table_regions_by_page))
+    attach_tables(volume, stitch_continuations(table_regions_by_page), captions)
     return volume, captions
 
 
