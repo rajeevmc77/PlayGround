@@ -22,7 +22,11 @@ from mo_toc.parsing.numbering_config import (
     MO_TOC_TYPE_MARKERS,
 )
 from mo_toc.parsing.parallel_extraction import extract_all_pages
-from mo_toc.parsing.table_extractor import attach_tables, stitch_continuations
+from mo_toc.parsing.table_extractor import (
+    attach_tables,
+    fill_continuation_gaps,
+    stitch_continuations,
+)
 from mo_toc.parsing.tree_builder import build_tree_from_lines
 from shared.numbering import assign_unified_numbers
 
@@ -40,7 +44,10 @@ def _consumed_by_page(table_regions_by_page: list[list]) -> dict[int, set[int]]:
 
 
 def run(pdf_path: str, output_dir: str) -> None:
-    all_lines, raw_images, table_regions_by_page = extract_all_pages(pdf_path)
+    all_lines, raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(pdf_path)
+    table_regions_by_page = fill_continuation_gaps(
+        all_lines, all_drawing_rects, table_regions_by_page
+    )
     volume, captions = build_tree_from_lines(
         all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
     )

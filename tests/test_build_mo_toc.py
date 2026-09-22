@@ -14,7 +14,7 @@ from build_mo_toc import main, run
 def test_run_writes_mo_pdf_json_not_mo_toc_json(tmp_path):
     fake_lines = [[]]
     with (
-        patch("build_mo_toc.extract_all_pages", return_value=(fake_lines, [], [[]])),
+        patch("build_mo_toc.extract_all_pages", return_value=(fake_lines, [], [[]], [[]])),
         patch("build_mo_toc.write_images", return_value=[]),
     ):
         run(pdf_path="unused.pdf", output_dir=str(tmp_path))

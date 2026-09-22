@@ -7,7 +7,11 @@ from mo_toc.parsing.image_extractor import extract_images
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.parallel_extraction import extract_all_pages
 from mo_toc.parsing.pdf_source import PyMuPdfSource
-from mo_toc.parsing.table_extractor import attach_tables, stitch_continuations
+from mo_toc.parsing.table_extractor import (
+    attach_tables,
+    fill_continuation_gaps,
+    stitch_continuations,
+)
 from mo_toc.parsing.tree_builder import build_tree, build_tree_from_lines
 
 PDF_PATH = Path(__file__).resolve().parent.parent / "data" / "MO Package BCBC MRK signed.pdf"
@@ -27,7 +31,12 @@ def _build_real_tree_with_tables():
     # that's a separate extract_all_pages + attach_tables/stitch_continuations
     # step that build_mo_toc.py wires together. A table-attachment assertion
     # needs the real pipeline, not just build_tree.
-    all_lines, _raw_images, table_regions_by_page = extract_all_pages(str(PDF_PATH))
+    all_lines, _raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(
+        str(PDF_PATH)
+    )
+    table_regions_by_page = fill_continuation_gaps(
+        all_lines, all_drawing_rects, table_regions_by_page
+    )
     volume, captions = build_tree_from_lines(
         all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
     )
@@ -142,6 +151,53 @@ def test_table_1_1_1_1_5_is_attached_as_a_sentence_child_with_rows_and_cells():
         "Code Requirement in Division B",
         "Alternate Compliance Method",
     ]
+
+
+@pytest.mark.slow
+def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
+    # Confirmed real-document fact (corrected from Task 14's brief, whose
+    # illustrative "37 rows" / "'Part 6 and Part 7' not in sentence.content"
+    # numbers the brief itself flagged as unverified): Table 1.1.1.1.(5) is
+    # a genuinely multi-page table spanning pages 8-11, with its 3-column
+    # header ("No.", "Code Requirement in Division B", "Alternate
+    # Compliance Method") plus 33 sequentially-numbered data rows (1
+    # through 33) - 35 Table children in total, versus just 5 (header +
+    # rows 1-4) before this task's fix, when only page 8's own
+    # caption-anchored grid was ever detected and pages 9-11 (which have no
+    # "Table X" caption of their own) produced zero TableRegions.
+    volume, _captions = _build_real_tree_with_tables()
+    sentence = _find_by_citation(volume, "A-1.1.1.1.(5)")
+    table = next(c for c in sentence.children if c.type == "Table")
+    assert len(table.children) == 35
+    assert table.page == 8
+    assert table.end_page == 11
+
+    last_row = table.children[-1]
+    assert last_row.children[0].content == "33"
+    assert "Height of Rooms" in last_row.children[1].content
+    assert "Existing rooms are not required to comply" in last_row.children[2].content
+
+    # A representative middle row (page 9 - previously an empty page slot,
+    # since it has no caption of its own) is now a proper structured
+    # Row/Cell instead of loose text folded into the Sentence's own content.
+    row_five = table.children[5]
+    assert row_five.children[0].content == "5"
+    assert "Rating of Supporting Construction" in row_five.children[1].content
+
+    # Known, documented residual limitation (see task-14-report.md): rows
+    # 34-37 sit on page 12, ABOVE Table 1.1.1.1.(6)'s own caption/grid on
+    # that same page - a page that already has its own anchor-detected
+    # region. A first attempt to capture that shared-page leading fragment
+    # (bounding the rect scan to "everything above the next anchor's own
+    # grid top") was reverted after real-PDF verification showed it
+    # silently misfiled Sentence 1.1.1.1.(6)'s own introductory prose as
+    # fake Table 1.1.1.1.(5) rows - a worse failure than the leak it
+    # targeted, since there is no geometric signal in this document
+    # distinguishing "one more continuation row" from "ordinary body text
+    # sitting in the same gap". This assertion documents that residual
+    # leak honestly rather than letting it silently regress further or be
+    # silently claimed as fixed.
+    assert "Part 6 and Part 7" in sentence.content
 
 
 @pytest.mark.slow

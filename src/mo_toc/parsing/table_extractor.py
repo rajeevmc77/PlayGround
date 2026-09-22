@@ -386,6 +386,142 @@ def _matching_caption(region: TableRegion, captions: list[Caption]) -> Caption |
     )
 
 
+def build_continuation_region(
+    lines: list[PageLine],
+    drawing_rects: list[tuple[float, float, float, float]],
+    page_number: int,
+    pending: TableRegion,
+) -> TableRegion | None:
+    """Detects a continuation page's grid WITHOUT a caption anchor: a page
+    whose own detect_tables_on_page pass found nothing (no "Table X" line)
+    can still hold rows of a still-open (no bottom border) table from a
+    preceding page. Matched purely by column count and x-range against
+    `pending` - the discriminator against false positives, since there's no
+    caption trigger line to anchor on here.
+    """
+    row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=0.0)
+    if len(row_ys) - 1 < 1 or len(col_xs) - 1 < MIN_TABLE_COLS:
+        return None
+    expected_cols = len(pending.table_node.children[-1].children)
+    outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
+    same_shape = len(col_xs) - 1 == expected_cols and (
+        abs(outer_bbox.x0 - pending.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
+        and abs(outer_bbox.x1 - pending.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
+    )
+    if not same_shape:
+        return None
+
+    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
+    rows = _build_rows(row_ys, col_xs, cell_lines, pending.table_node.citation, page_number)
+    table_node = Node(
+        type="Table",
+        identifier=pending.table_node.identifier,
+        citation=pending.table_node.citation,
+        title="",
+        page=page_number,
+        end_page=page_number,
+        bbox=outer_bbox,
+        children=rows,
+    )
+    return TableRegion(
+        anchor=pending.anchor,
+        table_node=table_node,
+        forming_part_of=None,
+        consumed_line_indices=consumed,
+        has_bottom_border=_has_bottom_border(drawing_rects, row_ys[-1]),
+        outer_bbox=outer_bbox,
+    )
+
+
+def _next_pending(regions: list[TableRegion]) -> TableRegion | None:
+    """Returns the last region on a page as the shape reference to check
+    against the following (caption-less) page, regardless of has_bottom_
+    border.
+
+    Deviates from the brief's own illustrative code, which gated this on
+    `not regions[-1].has_bottom_border` ("pending" = "still open"). Real-PDF
+    verification (Step 4) showed that assumption false for this document:
+    Table 1.1.1.1.(5)'s own page-8 fragment has a genuine closing bottom
+    border - the source PDF redraws a fully-bordered box per page for
+    whatever rows fit, even mid-table, so has_bottom_border reflects only
+    "this page's box is visually closed," never "the logical table ends
+    here." Gating on it made continuation detection never fire for the
+    exact case this task exists to fix.
+
+    column-count-and-x-range matching in build_continuation_region is left
+    as the sole discriminator, exactly as the brief itself already
+    describes it - fill_continuation_gaps only ever calls it on a page
+    that produced zero of its own anchor-detected regions, so a page with
+    a genuine new "Table X" caption (even one sharing the same column
+    count/x-range, confirmed on page 12's Table 1.1.1.1.(6) here) is never
+    mistaken for a continuation: it already has its own region and short-
+    circuits back to the `if regions:` branch above.
+    """
+    return regions[-1] if regions else None
+
+
+def _fill_one_gap(
+    lines: list[PageLine],
+    drawing_rects: list[tuple[float, float, float, float]],
+    page_number: int,
+    pending: TableRegion,
+) -> TableRegion | None:
+    synthesized = build_continuation_region(lines, drawing_rects, page_number, pending)
+    if synthesized is not None:
+        # Ground-truth correction: `pending` genuinely continues (we just
+        # matched its shape on the very next page), so whatever
+        # has_bottom_border its OWN page-local grid computed was a false
+        # signal - see build_continuation_region's docstring and
+        # _next_pending's comment for why. stitch_continuations/
+        # _continues_previous stay untouched; this only corrects the data
+        # they read, so they merge these rows using their own existing,
+        # unmodified rule.
+        pending.has_bottom_border = False
+    return synthesized
+
+
+def fill_continuation_gaps(
+    all_lines: list[list[PageLine]],
+    all_drawing_rects: list[list[tuple[float, float, float, float]]],
+    regions_by_page: list[list[TableRegion]],
+) -> list[list[TableRegion]]:
+    """Sequential pass, run AFTER all pages are extracted: fills in the
+    previously-empty page slots left by a multi-page table's continuation
+    pages (which have no caption trigger line, so detect_tables_on_page
+    finds nothing there). The synthesized region is inserted straight into
+    regions_by_page, and the existing stitch_continuations machinery
+    consumes it unchanged - it doesn't know or care whether a region came
+    from a caption anchor or from this continuation synthesis.
+
+    Deliberately does NOT also handle a continuation fragment that shares a
+    page with the NEXT table's own anchor (confirmed on the real document:
+    Table 1.1.1.1.(5)'s final rows sit above Table 1.1.1.1.(6)'s own
+    caption, both on page 12) - an earlier attempt at that bounded the rect
+    scan to "everything above the next anchor's own grid top," but the real
+    document has ordinary sentence body text (Sentence 1.1.1.1.(6)'s own
+    prose) sitting in that same gap, with no geometric signal separating it
+    from a genuine continuation row. That attempt silently misfiled that
+    prose as fake table rows - a worse failure than the leak it was meant
+    to close - so it was reverted rather than shipped. See task-14-report.md
+    for the full investigation; this is a confirmed, documented residual
+    limitation, not an oversight.
+    """
+    filled = [list(regions) for regions in regions_by_page]
+    pending: TableRegion | None = None
+    for page_index, regions in enumerate(filled):
+        if regions:
+            pending = _next_pending(regions)
+            continue
+        if pending is None:
+            continue
+        synthesized = _fill_one_gap(
+            all_lines[page_index], all_drawing_rects[page_index], page_index + 1, pending
+        )
+        filled[page_index] = [synthesized] if synthesized else []
+        pending = _next_pending(filled[page_index])
+    return filled
+
+
 def attach_tables(volume: Node, regions: list[TableRegion], captions: list[Caption] = ()) -> None:
     index = _citation_index(volume)
     for region in regions:

@@ -24,7 +24,12 @@ def _init_worker(pdf_path: str) -> None:
     _worker_source = PyMuPdfSource(pdf_path)
 
 
-def _extract_page(page_index: int) -> tuple[list[PageLine], list[RawImage], list[TableRegion]]:
+RectList = list[tuple[float, float, float, float]]
+
+
+def _extract_page(
+    page_index: int,
+) -> tuple[list[PageLine], list[RawImage], list[TableRegion], RectList]:
     assert _worker_source is not None
     lines = _worker_source.page_lines(page_index)
     raster = raster_images_on_page(_worker_source, page_index)
@@ -34,25 +39,33 @@ def _extract_page(page_index: int) -> tuple[list[PageLine], list[RawImage], list
     vector = vector_images_on_page(
         _worker_source, page_index, [r.bbox for r in raster], rects, table_bboxes
     )
-    return lines, raster + vector, table_regions
+    return lines, raster + vector, table_regions, rects
+
+
+def _unzip_one(
+    accum: tuple[list, list, list, list],
+    result: tuple[list[PageLine], list[RawImage], list[TableRegion], RectList],
+) -> None:
+    all_lines, all_images, all_table_regions, all_rects = accum
+    lines, images, regions, rects = result
+    all_lines.append(lines)
+    all_images.extend(images)
+    all_table_regions.append(regions)
+    all_rects.append(rects)
 
 
 def _unzip_results(
-    results: list[tuple[list[PageLine], list[RawImage], list[TableRegion]]],
-) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]]]:
-    all_lines: list[list[PageLine]] = []
-    all_images: list[RawImage] = []
-    all_table_regions: list[list[TableRegion]] = []
-    for lines, images, regions in results:
-        all_lines.append(lines)
-        all_images.extend(images)
-        all_table_regions.append(regions)
-    return all_lines, all_images, all_table_regions
+    results: list[tuple[list[PageLine], list[RawImage], list[TableRegion], RectList]],
+) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]], list[RectList]]:
+    accum: tuple[list, list, list, list] = ([], [], [], [])
+    for result in results:
+        _unzip_one(accum, result)
+    return accum
 
 
 def extract_all_pages(
     pdf_path: str, max_workers: int | None = None
-) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]]]:
+) -> tuple[list[list[PageLine]], list[RawImage], list[list[TableRegion]], list[RectList]]:
     page_count = PyMuPdfSource(pdf_path).page_count
     workers = max_workers or os.cpu_count() or 1
     with ProcessPoolExecutor(

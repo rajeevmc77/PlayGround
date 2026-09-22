@@ -4,7 +4,9 @@ from mo_toc.parsing.table_extractor import (
     TableAnchor,
     TableRegion,
     attach_tables,
+    build_continuation_region,
     detect_tables_on_page,
+    fill_continuation_gaps,
     find_table_anchors,
     stitch_continuations,
 )
@@ -503,3 +505,124 @@ def test_attach_tables_leaves_title_empty_when_no_caption_matches():
     )
     attach_tables(volume, [region2])
     assert article.children[1].title == ""
+
+
+def _pending_region(cols=2, x_range=(90.0, 260.0), has_bottom_border=False):
+    cells = [_cell(f"Col{i + 1}", f"v{i}") for i in range(cols)]
+    row = _row("Row1", cells)
+    anchor = TableAnchor(page_index=6, caption_line_idx=0, identifier="1.1.(1)")
+    table_node = Node(
+        type="Table",
+        identifier="1.1.(1)",
+        citation="Table:1.1.(1)",
+        title="",
+        page=7,
+        end_page=7,
+        bbox=BBox(x_range[0], 400, x_range[1], 700),
+        children=[row],
+    )
+    return TableRegion(
+        anchor=anchor,
+        table_node=table_node,
+        forming_part_of=None,
+        consumed_line_indices=set(),
+        has_bottom_border=has_bottom_border,
+        outer_bbox=BBox(x_range[0], 400, x_range[1], 700),
+    )
+
+
+def _continuation_grid_fixture(x0=90.0, x1=260.0, div_x=175.0, closing=True):
+    lines = [
+        pline(x0 + 10, 50, x0 + 40, 60, "continued row 1 col a"),
+        pline(div_x + 10, 50, x1 - 10, 60, "continued row 1 col b"),
+    ]
+    bottom_y = 70.0
+    rects = [
+        (x0, 45.0, x1, 45.4),
+        (x0, 45.0, x0 + 0.4, bottom_y),
+        (x1 - 0.4, 45.0, x1, bottom_y),
+        (div_x, 45.0, div_x + 0.4, bottom_y),
+    ]
+    if closing:
+        rects.append((x0, bottom_y - 0.4, x1, bottom_y))
+    return lines, rects
+
+
+def test_build_continuation_region_matches_pending_shape_and_x_range():
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region is not None
+    assert len(region.table_node.children) == 1
+    assert [c.content for c in region.table_node.children[0].children] == [
+        "continued row 1 col a",
+        "continued row 1 col b",
+    ]
+    assert region.has_bottom_border is True
+
+
+def test_build_continuation_region_rejects_when_no_grid_present():
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines = [pline(100, 50, 200, 60, "just some ordinary body text")]
+    assert build_continuation_region(lines, [], page_number=8, pending=pending) is None
+
+
+def test_build_continuation_region_rejects_column_count_mismatch():
+    pending = _pending_region(cols=3, x_range=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()  # only 2 columns
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_build_continuation_region_rejects_x_range_mismatch():
+    # different table, elsewhere on the page
+    pending = _pending_region(cols=2, x_range=(300.0, 470.0))
+    lines, rects = _continuation_grid_fixture()  # x0=90, x1=260
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_fill_continuation_gaps_synthesizes_into_empty_page_slot():
+    pending = _pending_region(has_bottom_border=False)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], []]
+    )
+    assert len(filled[1]) == 1
+    assert filled[1][0].has_bottom_border is True
+
+
+def test_fill_continuation_gaps_leaves_empty_page_alone_when_nothing_pending():
+    filled = fill_continuation_gaps(all_lines=[[]], all_drawing_rects=[[]], regions_by_page=[[]])
+    assert filled == [[]]
+
+
+def test_stitch_continuations_after_fill_continuation_gaps_merges_all_rows():
+    pending = _pending_region(has_bottom_border=False)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], []]
+    )
+    stitched = stitch_continuations(filled)
+    assert len(stitched) == 1
+    table = stitched[0].table_node
+    assert len(table.children) == 2  # original Row1 + the continuation's Row2
+    assert table.children[1].citation == "Table:1.1.(1)-Row2"
+
+
+def test_fill_continuation_gaps_corrects_pending_border_when_page_box_closed_per_page():
+    # Real-PDF-confirmed case (Table 1.1.1.1.(5), page 8): the source PDF
+    # redraws a fully bordered box around each page's own fragment of a
+    # still-continuing table, so a page-local has_bottom_border=True does
+    # NOT mean the logical table closed there. fill_continuation_gaps must
+    # correct the earlier region's has_bottom_border once a continuation is
+    # confirmed on the very next page, since the existing (unmodified)
+    # stitch_continuations/_continues_previous still gates purely on that
+    # flag and would otherwise wrongly treat the table as already closed.
+    pending = _pending_region(has_bottom_border=True)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], []]
+    )
+    assert pending.has_bottom_border is False
+    stitched = stitch_continuations(filled)
+    assert len(stitched) == 1
+    assert len(stitched[0].table_node.children) == 2
