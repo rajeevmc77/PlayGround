@@ -665,6 +665,35 @@ def test_fill_continuation_gaps_leaves_empty_page_alone_when_nothing_pending():
     assert filled == [[]]
 
 
+def test_fill_continuation_gaps_rejects_candidate_when_preceding_page_has_an_orphaned_anchor():
+    # Real-PDF-confirmed case (page 916): the preceding page (915) carries
+    # TWO table captions, but only the first's grid actually fits there -
+    # the second's caption/title/header appear, but its real data grid
+    # does not, so detect_tables_on_page returns only 1 region there even
+    # though find_table_anchors finds 2 anchors. That orphaned second
+    # table's own grid then lands on the NEXT (candidate) page with
+    # nothing of its own for _forming_part_of_conflicts or
+    # _has_leading_title_block to see - it must be rejected regardless of
+    # whether its shape happens to coincidentally match whatever else was
+    # pending.
+    minimal_lines, minimal_rects = _minimal_grid_fixture()
+    orphan_caption = pline(200, 100, 300, 110, "Table 9.9.(9)", CAPTION_FONT)
+    preceding_page_lines = [*minimal_lines, orphan_caption]
+    preceding_page_regions = detect_tables_on_page(
+        preceding_page_lines, minimal_rects, page_number=1
+    )
+    assert len(preceding_page_regions) == 1  # only "Table 1.1.(1)" got a region
+    assert len(find_table_anchors(preceding_page_lines, page_index=0)) == 2
+
+    candidate_lines, candidate_rects = _continuation_grid_fixture()  # same 2-col, x=90-260 shape
+    filled = fill_continuation_gaps(
+        all_lines=[preceding_page_lines, candidate_lines],
+        all_drawing_rects=[minimal_rects, candidate_rects],
+        regions_by_page=[preceding_page_regions, []],
+    )
+    assert filled[1] == []
+
+
 def test_stitch_continuations_after_fill_continuation_gaps_merges_all_rows():
     pending = _pending_region(has_bottom_border=False)
     lines, rects = _continuation_grid_fixture(closing=True)

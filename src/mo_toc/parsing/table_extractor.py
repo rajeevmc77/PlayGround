@@ -386,49 +386,57 @@ def _matching_caption(region: TableRegion, captions: list[Caption]) -> Caption |
     )
 
 
-def _own_forming_part_of_reference(lines: list[PageLine]) -> str | None:
-    """Deliberately UNBOUNDED (whole page, not bounded above the candidate's
-    own grid top) - confirmed by direct, whole-document experiment to be
-    the correct choice for this specific signal, even though it looks like
-    an asymmetry against _forming_part_of_above's bounded scan on an
-    anchored page.
+def _own_forming_part_of_reference(lines: list[PageLine], grid_top_y: float) -> str | None:
+    """Bounded above the candidate's own grid top, mirroring
+    _forming_part_of_above's bound between an anchor's caption and its
+    grid.
 
-    A bounded version was tried and reverted: real page 926 has a
-    combined, single detected grid (via _grid_boundaries, which has no
-    concept of "this is actually two tables' worth of rects, separated by
-    an intervening 'Notes to Table ...:' heading") that spans BOTH a
-    genuine continuation of a preceding table AND, further down the SAME
-    page, past that Notes heading, a second, unrelated table's own
-    "Forming Part of Sentence 9.24.2.5.(1)" line - which sits BELOW this
-    combined grid's own top edge. Bounding the scan to "above the grid top"
-    excludes that line entirely, silently re-absorbing page 926 as fake
-    continuation rows (confirmed: a controlled instrument run over all
-    1685 pages showed the bounded scan's accepted-page set differs from
-    the unbounded scan's by EXACTLY one page - 926 - with zero other
-    differences anywhere in the document). The reviewer's own concern
-    (a later table's forming-part-of line polluting an earlier, genuine
-    continuation's check) is a real theoretical risk, but the same
-    whole-document run found zero confirmed instances of it actually
-    happening - so leaving the scan unbounded is a net improvement here,
-    not a compromise.
+    CORRECTED after a factual misdiagnosis in an earlier round: that round
+    left this scan unbounded, reasoning (wrongly) that real page 926's
+    detected grid spanned all the way down to a "Forming Part of Sentence
+    9.24.2.5.(1)" line found on that page. Direct re-inspection shows this
+    was false - page 926's real, genuine-continuation grid runs only
+    y=72.36-243.12 (10 real data rows of Table 9.24.2.1., e.g. "600"/"2.7",
+    "300"/"4.4", "32 x 64"/"400"/"4.0", matching Table 9.24.2.1.'s own
+    column count and shape exactly), while that forming-part-of line sits
+    at y=692 - hundreds of points below the grid's own bottom, part of an
+    entirely unrelated later table (9.24.2.5.) introduced by ordinary body
+    prose ("9.24.2.5. Size and Spacing of Studs in Exterior Walls...")
+    further down the SAME page. An unbounded scan wrongly let that distant,
+    unrelated line reject page 926 as a false positive, when it is in fact
+    a genuine continuation - the exact opposite of a fix. Bounding the scan
+    to strictly above the grid's own top (where this document's genuine
+    continuation pages have nothing at all, and a genuinely new table's own
+    caption/title/forming-part-of block - see page 835 in
+    _has_leading_title_block, or pages 170/185's own captions - does sit)
+    is correct after all.
     """
     for pline in lines:
+        if pline.bbox[1] >= grid_top_y:
+            continue
         match = RE_FORMING_PART_OF.match(pline.text)
         if match:
             return match.group(2).strip()
     return None
 
 
-def _forming_part_of_conflicts(lines: list[PageLine], pending: TableRegion) -> bool:
+def _forming_part_of_conflicts(
+    lines: list[PageLine], pending: TableRegion, grid_top_y: float
+) -> bool:
     """A genuinely new, unrelated table can coincidentally share `pending`'s
     column count and x-range (this document uses consistent margins across
     all its tables) even on a page where detect_tables_on_page found no
-    "Table X" caption trigger for it - confirmed on 4 real pages (170, 185,
-    835, 926), each absorbed as fake continuation rows of a preceding,
-    unrelated table before this guard existed. Such a page's own "Forming
-    part of ..." line, when present, points somewhere else - a cheap, strong
+    "Table X" caption trigger for it - confirmed on 3 real pages (170, 185,
+    835), each absorbed as fake continuation rows of a preceding, unrelated
+    table before this guard existed. Such a page's own "Forming part of
+    ..." line, when present, points somewhere else - a cheap, strong
     signal this is not really a continuation of `pending`, even when the
     shape happens to match.
+
+    (Page 926, once believed to be a 4th such case, is NOT one - see
+    _own_forming_part_of_reference's docstring for the correction; it is a
+    genuine continuation, correctly accepted once this scan is properly
+    bounded above the candidate's own grid.)
 
     Compares reference-to-reference whenever possible: `pending.forming_
     part_of` is now propagated through the whole continuation chain (see
@@ -437,12 +445,12 @@ def _forming_part_of_conflicts(lines: list[PageLine], pending: TableRegion) -> b
     genuinely never had a forming-part-of line at all - not, as an earlier
     round of this fix relied on by accident, whenever `pending` happened to
     be a synthesized region. Comparing a table's own identifier against a
-    forming-part-of reference is a different namespace in general (e.g.
-    identifier "9.24.2.1." vs. reference "9.24.2.1.(1)"); it is used here
-    only as a last-resort, best-effort signal when no real reference is
-    available to compare against.
+    forming-part-of reference is a different namespace in general (e.g. a
+    hypothetical identifier "X.Y.Z." vs. a reference "X.Y.Z.(1)"); it is
+    used here only as a last-resort, best-effort signal when no real
+    reference is available to compare against.
     """
-    candidate_ref = _own_forming_part_of_reference(lines)
+    candidate_ref = _own_forming_part_of_reference(lines, grid_top_y)
     if candidate_ref is None:
         return False
     expected_ref = (
@@ -516,7 +524,7 @@ def build_continuation_region(
     same_shape = _continuation_shape_matches(outer_bbox, len(col_xs) - 1, expected_cols, pending)
     rejected = (
         not same_shape
-        or _forming_part_of_conflicts(lines, pending)
+        or _forming_part_of_conflicts(lines, pending, row_ys[0])
         or _has_leading_title_block(lines, row_ys[0])
     )
     if rejected:
@@ -597,6 +605,56 @@ def _fill_one_gap(
     return synthesized
 
 
+def _preceding_page_has_orphaned_anchor(
+    lines: list[PageLine], regions: list[TableRegion], page_index: int
+) -> bool:
+    """True when the immediately preceding page introduced a table via its
+    own "Table X" caption trigger, but that caption's own grid did not fit
+    on that page (find_table_anchors found MORE anchors there than detect_
+    tables_on_page produced regions for - i.e. build_table_region returned
+    None for at least one of them).
+
+    Confirmed real case (page 916): page 915 carries TWO anchors, "Table
+    9.23.13.11.-C" and "Table 9.23.13.11.-D", but only ONE region (C's
+    grid fit on page 915; D's caption, title, and header row are there too,
+    but D's actual data grid did not fit and spills onto the next page).
+    Page 916 itself then carries only D's bare data grid - no caption, no
+    title, no forming-part-of line of its own, so neither
+    _forming_part_of_conflicts nor _has_leading_title_block (which only
+    ever inspect the CANDIDATE page) has anything to see there. When this
+    is true, the CURRENT (candidate) page is that orphaned table's own
+    real first grid - not a continuation of whatever else was pending -
+    regardless of whether its shape happens to match.
+    """
+    anchors = find_table_anchors(lines, page_index)
+    return len(anchors) > len(regions)
+
+
+def _handle_gap_page(
+    all_lines: list[list[PageLine]],
+    all_drawing_rects: list[list[tuple[float, float, float, float]]],
+    regions_by_page: list[list[TableRegion]],
+    filled: list[list[TableRegion]],
+    page_index: int,
+    pending: TableRegion | None,
+) -> TableRegion | None:
+    """Processes one caption-less candidate page, mutating filled[page_index]
+    in place, and returns the pending state to carry into the next page.
+    """
+    if pending is None:
+        return None
+    if page_index > 0 and _preceding_page_has_orphaned_anchor(
+        all_lines[page_index - 1], regions_by_page[page_index - 1], page_index - 1
+    ):
+        filled[page_index] = []
+        return None
+    synthesized = _fill_one_gap(
+        all_lines[page_index], all_drawing_rects[page_index], page_index + 1, pending
+    )
+    filled[page_index] = [synthesized] if synthesized else []
+    return _next_pending(filled[page_index])
+
+
 def fill_continuation_gaps(
     all_lines: list[list[PageLine]],
     all_drawing_rects: list[list[tuple[float, float, float, float]]],
@@ -630,6 +688,11 @@ def fill_continuation_gaps(
     to close - so it was reverted rather than shipped. See task-14-report.md
     for the full investigation; this is a confirmed, documented residual
     limitation, not an oversight.
+
+    Also rejects a candidate page outright, without even attempting a
+    shape/forming-part-of/title-block match, when the immediately
+    preceding page holds an anchor that produced no region of its own -
+    see _preceding_page_has_orphaned_anchor.
     """
     filled = [list(regions) for regions in regions_by_page]
     pending: TableRegion | None = None
@@ -637,13 +700,9 @@ def fill_continuation_gaps(
         if regions:
             pending = _next_pending(regions)
             continue
-        if pending is None:
-            continue
-        synthesized = _fill_one_gap(
-            all_lines[page_index], all_drawing_rects[page_index], page_index + 1, pending
+        pending = _handle_gap_page(
+            all_lines, all_drawing_rects, regions_by_page, filled, page_index, pending
         )
-        filled[page_index] = [synthesized] if synthesized else []
-        pending = _next_pending(filled[page_index])
     return filled
 
 

@@ -270,28 +270,55 @@ def test_table_9_15_4_5_b_does_not_absorb_a_sibling_tables_own_title_page():
 
 
 @pytest.mark.slow
-def test_table_9_24_2_1_does_not_absorb_the_next_tables_own_forming_part_of_line():
-    # Reviewer-confirmed false positive, found only by whole-document
-    # instrumentation (fixed by keeping _own_forming_part_of_reference's
-    # scan UNBOUNDED, after an earlier attempt to bound it - mirroring the
-    # anchored path's _forming_part_of_above - regressed this exact page:
-    # page 926's combined detected grid spans both a genuine continuation
-    # of Table 9.24.2.1. AND, further down the SAME page past an
-    # intervening "Notes to Table 9.24.2.1.:" heading, a second, unrelated
-    # Table 9.24.2.5.'s own "Forming Part of Sentence 9.24.2.5.(1))" line -
-    # which sits BELOW the combined grid's own top edge and so would be
-    # invisible to a bounded scan. A controlled instrument run over all
-    # 1685 pages confirmed the bounded scan's accepted-page set differs
-    # from the unbounded scan's by exactly this one page, with zero other
-    # differences anywhere in the document - so the scan stays unbounded.
+def test_table_9_24_2_1_correctly_merges_its_genuine_continuation_on_page_926():
+    # CORRECTED from an earlier round's factual misdiagnosis: that round
+    # believed page 926 was a 4th false positive and reverted a scan bound
+    # to "fix" it. Direct re-inspection (confirmed by the reviewer, then
+    # re-confirmed here) shows page 926 is NOT a false positive at all - it
+    # is a genuine continuation of Table 9.24.2.1., with 10 real data rows
+    # matching the table's own 3-column shape exactly ("600"/"2.7",
+    # "300"/"4.4", "32 x 64"/"400"/"4.0", etc.). The earlier round's
+    # "Forming Part of Sentence 9.24.2.5.(1)" concern was a real line, but
+    # it sits at y=692 - hundreds of points below page 926's own grid,
+    # which ends at y=243.12 - as part of an entirely unrelated later
+    # table's own caption introduced by ordinary body prose further down
+    # the SAME page. Bounding _own_forming_part_of_reference's scan to
+    # strictly above the candidate's own grid top (as _forming_part_of_
+    # above already does on an anchored page) correctly excludes that
+    # distant, irrelevant line, so this genuine continuation is now
+    # correctly accepted - restoring the originally-intended, and correct,
+    # bounded behavior.
     volume, _captions = _build_real_tree_with_tables()
     table = _find_by_citation(volume, "Table:9.24.2.1.")
     assert table is not None
-    assert len(table.children) == 2
+    assert len(table.children) == 12
     assert table.page == 925
-    assert table.end_page == 925
+    assert table.end_page == 926
+    assert [c.content for c in table.children[1].children] == ["32 × 41", "400", "3.0"]
     last_row = table.children[-1]
-    assert [c.content for c in last_row.children] == ["32 × 41", "400", "3.0"]
+    assert [c.content for c in last_row.children] == ["", "600", "4.9"]
+    assert all(row.page == 925 for row in table.children[:2])
+    assert all(row.page == 926 for row in table.children[2:])
+
+
+@pytest.mark.slow
+def test_table_9_23_13_11_c_does_not_absorb_the_next_tables_orphaned_grid():
+    # Reviewer-confirmed 5th false-merge shape (fixed by
+    # _preceding_page_has_orphaned_anchor): page 915 carries TWO table
+    # captions, "Table 9.23.13.11.-C" and "Table 9.23.13.11.-D" - but only
+    # C's grid fits there. D's own caption, title, forming-part-of line,
+    # AND header row are all on page 915 too, but D's actual multi-row data
+    # grid does not fit and spills onto page 916 with nothing of D's own
+    # left there for _forming_part_of_conflicts or _has_leading_title_block
+    # to see (both only ever inspect the CANDIDATE page, never the
+    # preceding one). Before this guard, page 916 was silently absorbed as
+    # fake continuation rows of Table 9.23.13.11.-C.
+    volume, _captions = _build_real_tree_with_tables()
+    table = _find_by_citation(volume, "Table:9.23.13.11.-C")
+    assert table is not None
+    assert len(table.children) == 8
+    assert table.page == 915
+    assert table.end_page == 915
 
 
 @pytest.mark.slow
