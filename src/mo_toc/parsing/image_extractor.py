@@ -14,7 +14,7 @@ import io
 from dataclasses import dataclass
 
 from mo_toc.parsing.pdf_source import ExtractedImage, PdfSource
-from mo_toc.parsing.table_extractor import detect_tables_on_page
+from mo_toc.parsing.table_extractor import detect_tables_on_page, rects_form_a_grid
 from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
 
 
@@ -67,6 +67,16 @@ def raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
     return images
 
 
+def _contains(bbox: tuple[float, float, float, float], rect, margin: float) -> bool:
+    x0, y0, x1, y1 = bbox
+    rx0, ry0, rx1, ry1 = rect
+    return x0 - margin <= rx0 and rx1 <= x1 + margin and y0 - margin <= ry0 and ry1 <= y1 + margin
+
+
+def _rects_within(bbox: tuple[float, float, float, float], rects) -> list:
+    return [r for r in rects if _contains(bbox, r, margin=0.5)]
+
+
 def vector_images_on_page(
     source: PdfSource,
     page_index: int,
@@ -77,6 +87,7 @@ def vector_images_on_page(
     rects = drawing_rects if drawing_rects is not None else source.page_drawing_rects(page_index)
     clusters = cluster_drawing_rects(rects)
     clusters = exclude_overlapping_rects(clusters, list(raster_bboxes) + list(table_bboxes))
+    clusters = [c for c in clusters if not rects_form_a_grid(_rects_within(c, rects))]
     images = []
     for bbox in clusters:
         extracted = source.render_region(page_index, bbox)

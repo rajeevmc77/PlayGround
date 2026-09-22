@@ -193,3 +193,45 @@ def test_extract_images_excludes_a_detected_table_region_from_vector_clustering(
     images = extract_images(source)
 
     assert images == []
+
+
+def _caption_less_grid_rects():
+    # Real-document shape (Table 1.1.1.1.(5)'s continuation tail, page 12):
+    # a multi-row, multi-column grid of thin gridline rects with NO "Table X"
+    # caption line anywhere on the page, so detect_tables_on_page finds zero
+    # anchors/regions here - table_bboxes is empty, unlike
+    # test_extract_images_excludes_a_detected_table_region_from_vector_clustering.
+    rects = []
+    for row_y in (45.0, 65.0, 85.0, 105.0):
+        rects.append((90.0, row_y, 260.0, row_y + 0.4))
+    for col_x in (90.0, 175.0, 260.0):
+        rects.append((col_x, 45.0, col_x + 0.4, 105.0))
+    return rects
+
+
+def test_vector_images_on_page_excludes_a_caption_less_table_grid():
+    rects = _caption_less_grid_rects()
+    rendered = []
+    source = _fake_source(rendered)
+
+    result = vector_images_on_page(
+        source, 0, raster_bboxes=[], drawing_rects=rects, table_bboxes=[]
+    )
+
+    assert result == []
+    assert rendered == []
+
+
+def test_extract_images_excludes_a_caption_less_table_grid_end_to_end():
+    # Confirmed real bug: Table 1.1.1.1.(5)'s continuation tail has no
+    # caption of its own (it shares page 12 with Table 1.1.1.1.(6)'s
+    # caption instead - see table_extractor.fill_continuation_gaps's
+    # docstring), so it was never excluded by the table-bbox check alone
+    # and leaked through as a spurious vector "figure" attached to a
+    # sentence in the viewer.
+    rects = _caption_less_grid_rects()
+    source = FakeImageSource({}, pages_drawings={0: rects}, pages_lines={0: []})
+
+    images = extract_images(source)
+
+    assert images == []

@@ -95,6 +95,25 @@ def _grid_boundaries(
     return _merge_boundaries(row_ys), _merge_boundaries(col_xs)
 
 
+def rects_form_a_grid(rects: list[tuple[float, float, float, float]]) -> bool:
+    """True when a set of drawing rects, on their own, describe a real table
+    grid (>=MIN_TABLE_ROWS x >=MIN_TABLE_COLS cells) - the same purely-
+    geometric row/column-boundary count detect_tables_on_page itself gates
+    on, but usable without a caption anchor.
+
+    Lets image_extractor.vector_images_on_page recognize a caption-less
+    table fragment as "not a diagram" - e.g. Table 1.1.1.1.(5)'s
+    continuation tail, which shares page 12 with Table 1.1.1.1.(6)'s own
+    caption and so never becomes a TableRegion of its own (see fill_
+    continuation_gaps's docstring) - without attempting the text-to-row
+    reconstruction that was reverted there as unreliable: this looks only
+    at rects, never at text, so it doesn't run into the prose-vs-row
+    ambiguity that sank that earlier attempt.
+    """
+    row_ys, col_xs = _grid_boundaries(rects, below_y=0.0)
+    return len(row_ys) - 1 >= MIN_TABLE_ROWS and len(col_xs) - 1 >= MIN_TABLE_COLS
+
+
 def _band_index(value: float, boundaries: list[float]) -> int | None:
     for i in range(len(boundaries) - 1):
         if boundaries[i] - BOUNDARY_MERGE_TOLERANCE <= value < boundaries[i + 1]:
