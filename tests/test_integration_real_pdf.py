@@ -161,7 +161,9 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     # a genuinely multi-page table spanning pages 8-11, with its 3-column
     # header ("No.", "Code Requirement in Division B", "Alternate
     # Compliance Method") plus 33 sequentially-numbered data rows (1
-    # through 33) - 35 Table children in total, versus just 5 (header +
+    # through 33) plus one cosmetic blank row-band (index 15, page 10 -
+    # likely a spurious extra divider rect _grid_boundaries picked up) -
+    # 35 Table children in total (1 + 33 + 1), versus just 5 (header +
     # rows 1-4) before this task's fix, when only page 8's own
     # caption-anchored grid was ever detected and pages 9-11 (which have no
     # "Table X" caption of their own) produced zero TableRegions.
@@ -171,6 +173,23 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     assert len(table.children) == 35
     assert table.page == 8
     assert table.end_page == 11
+
+    # Locks in the known cosmetic extra row-band's actual content, so a
+    # future regression is caught here instead of silently passing on a
+    # merely higher row count. Correction from an earlier, less careful
+    # inspection (this task's own first report draft called this row
+    # "fully blank, both cells ''"): direct re-inspection shows only the
+    # first two cells are empty - the third genuinely contains real text,
+    # a wrapped continuation of the PRECEDING row's own "Alternate
+    # Compliance Method" cell that _grid_boundaries mistakenly split off
+    # into its own row-band (a pre-existing row/column-band imprecision in
+    # the geometry heuristic, not a new corruption introduced by this
+    # task's continuation detection).
+    spurious_row = table.children[15]
+    assert len(spurious_row.children) == 3
+    assert spurious_row.children[0].content == ""
+    assert spurious_row.children[1].content == ""
+    assert spurious_row.children[2].content != ""
 
     last_row = table.children[-1]
     assert last_row.children[0].content == "33"
@@ -198,6 +217,32 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     # leak honestly rather than letting it silently regress further or be
     # silently claimed as fixed.
     assert "Part 6 and Part 7" in sentence.content
+
+
+@pytest.mark.slow
+def test_table_3_2_2_53_does_not_absorb_the_next_unrelated_table_as_fake_continuation_rows():
+    # Reviewer-confirmed false positive (fixed by _forming_part_of_conflicts):
+    # page 170 has zero of its own anchor-detected TableRegions (its own
+    # "Table 3.2.2.54." caption trigger was never matched by
+    # find_table_anchors - a separate, pre-existing gap this task does not
+    # attempt to fix), yet its grid coincidentally shares Table 3.2.2.53.'s
+    # column count and x-range (this document uses consistent margins
+    # across all its tables). Before the forming-part-of guard, page 170
+    # was silently absorbed as fake continuation rows of Table 3.2.2.53.
+    # (confirmed: its own header row "No. of Storeys, Maximum Area, m2..."
+    # would have been swallowed as a data row under the WRONG table's
+    # citation). Table 3.2.2.53.'s own page carries "Forming Part of
+    # Sentence 3.2.2.53.(1)"; page 170 carries a disagreeing "Forming Part
+    # of Sentence 3.2.2.54.(1)" - the signal that now correctly rejects the
+    # match.
+    volume, _captions = _build_real_tree_with_tables()
+    table = _find_by_citation(volume, "Table:3.2.2.53.")
+    assert table is not None
+    assert len(table.children) == 5
+    assert table.page == 169
+    assert table.end_page == 169
+    last_row = table.children[-1]
+    assert [c.content for c in last_row.children] == ["3", "800", "1000", "1200"]
 
 
 @pytest.mark.slow

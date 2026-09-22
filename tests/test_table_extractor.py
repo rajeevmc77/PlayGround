@@ -580,6 +580,32 @@ def test_build_continuation_region_rejects_x_range_mismatch():
     assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
 
 
+def test_build_continuation_region_rejects_when_candidate_has_a_conflicting_forming_part_of_line():
+    # Real-PDF-confirmed case (pages 169/170): Table 3.2.2.53.'s own anchor
+    # page carries "Forming Part of Sentence 3.2.2.53.(1)". Page 170 - a
+    # genuinely different, unrelated Table 3.2.2.54. whose own "Table X"
+    # caption trigger detect_tables_on_page missed - nonetheless matches
+    # 3.2.2.53.'s column count and x-range (this document uses consistent
+    # margins across all its tables), but carries its OWN "Forming Part of
+    # Sentence 3.2.2.54.(1)" line. That disagreeing reference is a strong,
+    # cheap signal this is a new table, not a continuation, even though the
+    # shape coincidentally matches.
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    pending.forming_part_of = ("Sentence", "1.1.(1)")
+    lines, rects = _continuation_grid_fixture()
+    lines = [pline(100, 20, 300, 30, "Forming part of Sentence 9.9.(9)"), *lines]
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_build_continuation_region_accepts_when_forming_part_of_agrees():
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    pending.forming_part_of = ("Sentence", "1.1.(1)")
+    lines, rects = _continuation_grid_fixture()
+    lines = [pline(100, 20, 300, 30, "Forming part of Sentence 1.1.(1)"), *lines]
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region is not None
+
+
 def test_fill_continuation_gaps_synthesizes_into_empty_page_slot():
     pending = _pending_region(has_bottom_border=False)
     lines, rects = _continuation_grid_fixture(closing=True)

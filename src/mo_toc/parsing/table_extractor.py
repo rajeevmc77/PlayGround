@@ -386,6 +386,43 @@ def _matching_caption(region: TableRegion, captions: list[Caption]) -> Caption |
     )
 
 
+def _own_forming_part_of_reference(lines: list[PageLine]) -> str | None:
+    for pline in lines:
+        match = RE_FORMING_PART_OF.match(pline.text)
+        if match:
+            return match.group(2).strip()
+    return None
+
+
+def _forming_part_of_conflicts(lines: list[PageLine], pending: TableRegion) -> bool:
+    """A genuinely new, unrelated table can coincidentally share `pending`'s
+    column count and x-range (this document uses consistent margins across
+    all its tables) even on a page where detect_tables_on_page found no
+    "Table X" caption trigger for it - confirmed on 4 real pages (170, 185,
+    835, 926), each absorbed as fake continuation rows of a preceding,
+    unrelated table before this guard existed. Such a page's own "Forming
+    part of ..." line, when present, points somewhere else - a cheap, strong
+    signal this is not really a continuation of `pending`, even when the
+    shape happens to match.
+    """
+    candidate_ref = _own_forming_part_of_reference(lines)
+    if candidate_ref is None:
+        return False
+    expected_ref = (
+        pending.forming_part_of[1] if pending.forming_part_of else pending.table_node.identifier
+    )
+    return candidate_ref != expected_ref
+
+
+def _continuation_shape_matches(
+    outer_bbox: BBox, col_count: int, expected_cols: int, pending: TableRegion
+) -> bool:
+    return col_count == expected_cols and (
+        abs(outer_bbox.x0 - pending.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
+        and abs(outer_bbox.x1 - pending.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
+    )
+
+
 def build_continuation_region(
     lines: list[PageLine],
     drawing_rects: list[tuple[float, float, float, float]],
@@ -395,20 +432,17 @@ def build_continuation_region(
     """Detects a continuation page's grid WITHOUT a caption anchor: a page
     whose own detect_tables_on_page pass found nothing (no "Table X" line)
     can still hold rows of a still-open (no bottom border) table from a
-    preceding page. Matched purely by column count and x-range against
-    `pending` - the discriminator against false positives, since there's no
-    caption trigger line to anchor on here.
+    preceding page. Matched by column count and x-range against `pending`,
+    guarded against a coincidental shape match to a genuinely different
+    table by _forming_part_of_conflicts.
     """
     row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=0.0)
     if len(row_ys) - 1 < 1 or len(col_xs) - 1 < MIN_TABLE_COLS:
         return None
     expected_cols = len(pending.table_node.children[-1].children)
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
-    same_shape = len(col_xs) - 1 == expected_cols and (
-        abs(outer_bbox.x0 - pending.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
-        and abs(outer_bbox.x1 - pending.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
-    )
-    if not same_shape:
+    same_shape = _continuation_shape_matches(outer_bbox, len(col_xs) - 1, expected_cols, pending)
+    if not same_shape or _forming_part_of_conflicts(lines, pending):
         return None
 
     cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
@@ -492,6 +526,14 @@ def fill_continuation_gaps(
     regions_by_page, and the existing stitch_continuations machinery
     consumes it unchanged - it doesn't know or care whether a region came
     from a caption anchor or from this continuation synthesis.
+
+    NOTE - not a pure "list in, list out" function despite the signature:
+    when a continuation is confirmed, it also mutates the PRECEDING
+    TableRegion object it was given in `regions_by_page` in place (via
+    _fill_one_gap's `pending.has_bottom_border = False` correction - see
+    that function's own docstring for why). Callers that keep their own
+    reference to the `regions_by_page` argument after calling this will see
+    that correction reflected in those same objects too.
 
     Deliberately does NOT also handle a continuation fragment that shares a
     page with the NEXT table's own anchor (confirmed on the real document:
