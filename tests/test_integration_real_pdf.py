@@ -1,46 +1,34 @@
+import sys
 from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from build_mo_toc import build_document
 from mo_toc.output.image_writer import write_images
 from mo_toc.parsing.image_extractor import extract_images
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.parallel_extraction import extract_all_pages
 from mo_toc.parsing.pdf_source import PyMuPdfSource
-from mo_toc.parsing.table_extractor import (
-    attach_tables,
-    fill_continuation_gaps,
-    stitch_continuations,
-)
-from mo_toc.parsing.tree_builder import build_tree, build_tree_from_lines
+from mo_toc.parsing.tree_builder import build_tree
 
 PDF_PATH = Path(__file__).resolve().parent.parent / "data" / "MO Package BCBC MRK signed.pdf"
 
 
-def _consumed_by_page(table_regions_by_page):
-    return {
-        page_index: {i for region in regions for i in region.consumed_line_indices}
-        for page_index, regions in enumerate(table_regions_by_page)
-        if regions
-    }
-
-
 def _build_real_tree_with_tables():
-    # Mirrors build_mo_toc.run's own orchestration: build_tree alone (as the
-    # other tests in this file use) never runs table detection/attachment -
-    # that's a separate extract_all_pages + attach_tables/stitch_continuations
-    # step that build_mo_toc.py wires together. A table-attachment assertion
-    # needs the real pipeline, not just build_tree.
+    # Mirrors build_mo_toc.run's own orchestration via the shared
+    # build_document() helper: build_tree alone (as the other tests in this
+    # file use) never runs table detection/attachment - that's the separate
+    # extract_all_pages + build_document step that build_mo_toc.py's run()
+    # wires together. A table-attachment assertion needs the real pipeline,
+    # not just build_tree.
     all_lines, _raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(
         str(PDF_PATH)
     )
-    table_regions_by_page = fill_continuation_gaps(
-        all_lines, all_drawing_rects, table_regions_by_page
+    volume, captions, _table_regions_by_page = build_document(
+        all_lines, table_regions_by_page, all_drawing_rects
     )
-    volume, captions = build_tree_from_lines(
-        all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
-    )
-    attach_tables(volume, stitch_continuations(table_regions_by_page), captions)
     return volume, captions
 
 
