@@ -148,6 +148,36 @@ def test_detect_tables_on_page_returns_nothing_below_minimum_grid_size():
     assert detect_tables_on_page(lines, rects, page_number=7) == []
 
 
+def _header_only_grid_fixture():
+    # Mirrors the real document's page-794 Table 9.10.14.5.-A: the anchor
+    # page holds only a header band bordered top and bottom - a single
+    # row-boundary pair, no internal row divider - because the data rows
+    # continue on the next page under a caption-less grid of their own.
+    lines = [
+        pline(200, 10, 300, 20, "Table 1.1.(1)", CAPTION_FONT),
+        pline(90, 50, 110, 60, "No.", CAPTION_FONT),
+        pline(120, 50, 250, 60, "Description", CAPTION_FONT),
+    ]
+    rects = [
+        (90.0, 45.0, 260.0, 45.4),  # top border
+        (90.0, 45.0, 90.4, 65.0),  # left border
+        (259.6, 45.0, 260.0, 65.0),  # right border
+        (90.0, 64.6, 260.0, 65.0),  # bottom border
+        (114.6, 45.0, 115.0, 65.0),  # column divider
+    ]
+    return lines, rects
+
+
+def test_detect_tables_on_page_accepts_header_only_single_row_grid_on_anchor_page():
+    lines, rects = _header_only_grid_fixture()
+    regions = detect_tables_on_page(lines, rects, page_number=794)
+    assert len(regions) == 1
+    table = regions[0].table_node
+    assert len(table.children) == 1
+    header = table.children[0]
+    assert [c.content for c in header.children] == ["No.", "Description"]
+
+
 def test_detect_tables_on_page_captures_forming_part_of_line():
     lines, rects = _minimal_grid_fixture()
     lines.insert(2, pline(150, 34, 350, 44, "Forming part of Sentence 1.1.1.1.(1)", BODY_FONT))
