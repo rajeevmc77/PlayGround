@@ -128,3 +128,46 @@ def test_image_asset_owner_and_caption_fields_can_be_set():
     assert img.caption_kind == "Figure"
     assert img.caption_identifier == "A-1.3.3.4.(2)"
     assert img.caption_title == "Flight"
+
+
+def test_node_content_defaults_to_empty_string():
+    node = Node(
+        type="Sentence",
+        identifier="(1)",
+        citation="A-1.1.1.1.(1)",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    assert node.content == ""
+
+
+def test_node_content_can_be_set():
+    node = Node(
+        type="Sentence",
+        identifier="(1)",
+        citation="A-1.1.1.1.(1)",
+        title="",
+        content="Full sentence text.",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    assert node.content == "Full sentence text."
+
+
+def test_image_asset_title_defaults_to_empty_string():
+    image = ImageAsset(
+        page=1, bbox=BBox(0, 0, 5, 5), width=5, height=5, phash=None,
+        image_path="images/img_0.png",
+    )
+    assert image.title == ""
+
+
+def test_image_asset_title_can_be_set():
+    image = ImageAsset(
+        page=1, bbox=BBox(0, 0, 5, 5), width=5, height=5, phash=None,
+        image_path="images/img_0.png", title="Figure A-1.1.1.1.(6)",
+    )
+    assert image.title == "Figure A-1.1.1.1.(6)"

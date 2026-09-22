@@ -22,7 +22,7 @@ def _write_fixture_json(tmp_path):
         "captions": [],
         "images": [],
     }
-    path = tmp_path / "mo_toc.json"
+    path = tmp_path / "mo_pdf.json"
     path.write_text(json.dumps(payload))
     return str(path)
 
@@ -43,7 +43,7 @@ def _make_client(tmp_path):
 
 def test_app_serves_index_page(tmp_path):
     # Built from a local fixture via create_app, not the real module-level
-    # `serve_mo_toc.app` - that object reads the real output/mo_toc.json,
+    # `serve_mo_toc.app` - that object reads the real output/mo_pdf.json,
     # a generated file .gitignore excludes, which wouldn't exist yet on a
     # fresh checkout and would break test collection.
     client = _make_client(tmp_path)

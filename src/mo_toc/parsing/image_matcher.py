@@ -19,12 +19,13 @@ MAX_CAPTION_GAP = 50.0  # pt; beyond this a caption is presumed unrelated
 # larger figure gets a chance at it.
 MIN_CAPTION_ELIGIBLE_DIM = 40.0
 
-# Sentence/Clause/Subclause are never pushed onto tree_builder's own open-node
-# stack (only Division/Part/.../Article/Note/... are), so a caption's
-# owner_citation never descends past Article/Note either - image ownership
-# mirrors that same granularity rather than attributing images to individual
-# sentences.
-_NON_OWNER_TYPES = {"Sentence", "Clause", "Subclause"}
+# Table/Row/Cell are never pushed as position-walkable owners - an image is
+# never attributed to a specific table cell, matching how images are never
+# themselves parsed as table content. Sentence/Clause/Subclause, by
+# contrast, ARE valid owners now that body_segmenter gives them accurate
+# per-node bboxes - an inline formula image inside a single Clause resolves
+# to that Clause, not the enclosing Article.
+_NON_OWNER_TYPES = {"Table", "Row", "Cell"}
 
 
 def _structural_children(node: Node) -> list[Node]:
@@ -119,6 +120,7 @@ def match_images(
     for image in images:
         owner_citation = assign_owner(image, volume)
         caption = _claim_caption(image, captions, claimed_ids)
+        title = f"{caption.kind} {caption.identifier}" if caption else ""
         enriched.append(
             dataclasses.replace(
                 image,
@@ -126,6 +128,7 @@ def match_images(
                 caption_kind=caption.kind if caption else None,
                 caption_identifier=caption.identifier if caption else None,
                 caption_title=caption.title if caption else None,
+                title=title,
             )
         )
     return enriched

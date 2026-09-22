@@ -258,9 +258,14 @@ def _append_to_current_article(pline: PageLine, page_index: int, state: _BuildSt
     state.current_body.append((page_index, pline))
 
 
-def _process_page(lines: list[PageLine], page_index: int, state: _BuildState) -> None:
+def _process_page(
+    lines: list[PageLine], page_index: int, state: _BuildState, consumed: set[int]
+) -> None:
     idx = 0
     while idx < len(lines):
+        if idx in consumed:
+            idx += 1
+            continue
         pline = lines[idx]
         cap_match = classify_caption_line(pline.text, pline.font)
         if cap_match:
@@ -292,19 +297,27 @@ def _finalize_end_pages(node: Node, last_page: int) -> None:
         _finalize_end_pages(child, child.end_page)
 
 
-def build_tree(source: PdfSource) -> tuple[Node, list[Caption]]:
+def build_tree(
+    source: PdfSource, consumed_by_page: dict[int, set[int]] | None = None
+) -> tuple[Node, list[Caption]]:
     all_lines = [source.page_lines(i) for i in range(source.page_count)]
-    return build_tree_from_lines(all_lines, source.page_count)
+    return build_tree_from_lines(all_lines, source.page_count, consumed_by_page)
 
 
 def build_tree_from_lines(
-    all_lines: list[list[PageLine]], page_count: int
+    all_lines: list[list[PageLine]],
+    page_count: int,
+    consumed_by_page: dict[int, set[int]] | None = None,
 ) -> tuple[Node, list[Caption]]:
     """Same assembly as build_tree, but takes each page's lines pre-computed
     instead of pulling them from a live PdfSource - lets build_mo_toc.py
     extract every page's lines in parallel (the actual PyMuPDF work) and
     then run this stateful, inherently-sequential assembly step once, in the
-    main process, over the results."""
+    main process, over the results. consumed_by_page maps a page index to the
+    set of that page's line indices already claimed by a detected table
+    region (see table_extractor.py) - those lines are skipped entirely here
+    so they never leak into a Sentence/Clause's body text."""
+    consumed_by_page = consumed_by_page or {}
     volume = Node(
         type="Volume",
         identifier="Volume",
@@ -327,7 +340,7 @@ def build_tree_from_lines(
     state = _BuildState(stack=[(0, volume), (1, front_matter)])
 
     for page_index, lines in enumerate(all_lines):
-        _process_page(lines, page_index, state)
+        _process_page(lines, page_index, state, consumed_by_page.get(page_index, set()))
 
     _finalize_end_pages(volume, page_count)
     for article, body in state.article_bodies:

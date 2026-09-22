@@ -29,7 +29,7 @@ def _write_fixture_json(tmp_path):
             }
         ],
     }
-    path = tmp_path / "mo_toc.json"
+    path = tmp_path / "mo_pdf.json"
     path.write_text(json.dumps(payload))
     return str(path)
 
@@ -181,3 +181,34 @@ def test_get_web_image_returns_503_when_web_toc_not_built(tmp_path):
     resp = client.get("/api/web-image/fig1/thumbnail")
 
     assert resp.status_code == 503
+
+
+def test_create_app_works_with_a_file_literally_named_mo_pdf_json(tmp_path):
+    payload = {
+        "volume": {
+            "type": "Volume",
+            "identifier": "Volume",
+            "citation": "Volume",
+            "title": "",
+            "page": 1,
+            "end_page": 10,
+            "bbox": {"x0": 0, "y0": 0, "x1": 0, "y1": 0},
+            "children": [],
+        },
+        "captions": [],
+        "images": [],
+    }
+    toc_path = tmp_path / "mo_pdf.json"
+    toc_path.write_text(json.dumps(payload))
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    app = create_app(
+        toc_json_path=str(toc_path),
+        pdf_path=str(pdf_path),
+        images_dir=str(images_dir),
+    )
+    client = TestClient(app)
+    response = client.get("/api/toc")
+    assert response.json()["type"] == "Volume"
