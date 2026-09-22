@@ -1895,3 +1895,278 @@ Commit any fixes as a final `chore(mo_toc): definition-of-done cleanup` commit i
 **Spec coverage:** Task 1 → schema additions. Task 2 → title/content pruning. Task 3 → Sentence/Clause/Subclause full-content fix. Task 4 → image ownership descent + title formatting. Tasks 5-6 → table detection, stitching, owner resolution (identifier match → Forming-part-of → position fallback). Task 7 → table-line exclusion from Article body. Task 8 → table-border-as-image fix. Task 9 → `mo_pdf.json` rename + orchestration. Task 10 → server path update. Task 11 → numbering. Task 12 → viewer fallback. Task 13 → real-PDF verification of the three concrete examples this design was grounded in. Every spec section has a task.
 
 **Known follow-ups intentionally left out of this plan** (per the spec's "Out of scope" section): merged/spanning table cells, and any further disambiguation of image ownership beyond the existing nearest-preceding-sibling walk.
+
+---
+
+## Task 14: Multi-page table continuation detection (added post-Task-13)
+
+**Why this task exists:** Task 13's real-PDF run confirmed Table `1.1.1.1.(5)` is a genuinely multi-page table (37+ rows) whose continuation pages have no repeated `"Table X"` caption line at all. `find_table_anchors`/`detect_tables_on_page` are anchored strictly on a page's own caption trigger line, so a continuation page produces zero `TableRegion`s — `stitch_continuations` never sees anything to merge, and that page's entire row content leaks into whatever Sentence/Clause/Subclause is open there. This is exactly the risk the design spec flagged as needing real-PDF validation; validation now shows it doesn't just need tuning, it doesn't work at all. The user explicitly asked for this to be fixed now rather than shipped as a documented limitation.
+
+**Design, reusing every existing helper unchanged:** a continuation page's grid is detected WITHOUT a caption anchor — instead by scanning the whole page's drawing rects for a grid whose column count and x-range match the *pending* (still-open, no bottom border) table from a preceding page. The synthesized region is inserted into the previously-empty page slot in `regions_by_page`, and the *existing*, already-reviewed `stitch_continuations`/`_continues_previous`/`_merge_into` machinery consumes it with zero changes — it doesn't know or care whether a region came from an anchor or a continuation-page synthesis.
+
+**Explicitly out of scope (accepted, documented residual limitation):** a continuation page's grid will still render as a "vector image" in both `extract_images()` and the parallel per-page workers, since table-bbox exclusion for images happens per-page at extraction time, before continuation regions are known (they're only synthesized in a later, sequential pass over the full `regions_by_page`). This is a smaller, cosmetic gap (an extra unwanted image, not corrupted text) — parity between parallel/sequential paths is unaffected since both are equally wrong here, so Task 8's fix still holds. Not fixing this now; flagging clearly instead of silently leaving it undocumented.
+
+### Files
+
+- Modify: `src/mo_toc/parsing/table_extractor.py` (new functions, nothing existing changed)
+- Modify: `src/mo_toc/parsing/parallel_extraction.py` (`_extract_page`/`_unzip_results`/`extract_all_pages` gain a 4th return value: `all_drawing_rects`)
+- Modify: `src/build_mo_toc.py` (`run()` calls the new `fill_continuation_gaps` before building `consumed_by_page` and before `stitch_continuations`)
+- Modify: `tests/test_table_extractor.py`, `tests/test_parallel_extraction.py`, `tests/test_build_mo_toc.py`, `tests/test_integration_real_pdf.py`
+
+### Step 1: `table_extractor.py` — `build_continuation_region` and `fill_continuation_gaps`
+
+Append to `src/mo_toc/parsing/table_extractor.py`:
+
+```python
+def build_continuation_region(
+    lines: list[PageLine],
+    drawing_rects: list[tuple[float, float, float, float]],
+    page_number: int,
+    pending: TableRegion,
+) -> TableRegion | None:
+    row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=0.0)
+    if len(row_ys) - 1 < 1 or len(col_xs) - 1 < MIN_TABLE_COLS:
+        return None
+    expected_cols = len(pending.table_node.children[-1].children)
+    outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
+    same_shape = len(col_xs) - 1 == expected_cols and (
+        abs(outer_bbox.x0 - pending.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
+        and abs(outer_bbox.x1 - pending.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
+    )
+    if not same_shape:
+        return None
+
+    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
+    rows = _build_rows(row_ys, col_xs, cell_lines, pending.table_node.citation, page_number)
+    table_node = Node(
+        type="Table", identifier=pending.table_node.identifier, citation=pending.table_node.citation,
+        title="", page=page_number, end_page=page_number, bbox=outer_bbox, children=rows,
+    )
+    return TableRegion(
+        anchor=pending.anchor, table_node=table_node, forming_part_of=None,
+        consumed_line_indices=consumed, has_bottom_border=_has_bottom_border(drawing_rects, row_ys[-1]),
+        outer_bbox=outer_bbox,
+    )
+
+
+def _next_pending(regions: list[TableRegion]) -> TableRegion | None:
+    return regions[-1] if regions and not regions[-1].has_bottom_border else None
+
+
+def fill_continuation_gaps(
+    all_lines: list[list[PageLine]],
+    all_drawing_rects: list[list[tuple[float, float, float, float]]],
+    regions_by_page: list[list[TableRegion]],
+) -> list[list[TableRegion]]:
+    filled = [list(regions) for regions in regions_by_page]
+    pending: TableRegion | None = None
+    for page_index, regions in enumerate(filled):
+        if regions:
+            pending = _next_pending(regions)
+            continue
+        if pending is None:
+            continue
+        synthesized = build_continuation_region(
+            all_lines[page_index], all_drawing_rects[page_index], page_index + 1, pending
+        )
+        filled[page_index] = [synthesized] if synthesized else []
+        pending = _next_pending(filled[page_index])
+    return filled
+```
+
+Note: `build_continuation_region` deliberately does NOT require `MIN_TABLE_ROWS` (a continuation page can have as few as 1 row) — the column-count-and-x-range match against `pending` is the discriminator against false positives here, not a minimum row count.
+
+**Tests to add to `tests/test_table_extractor.py`** (write these first, verify RED, then implement):
+
+```python
+def _pending_region(cols=2, x_range=(90.0, 260.0), has_bottom_border=False):
+    cells = [_cell(f"Col{i+1}", f"v{i}") for i in range(cols)]
+    row = _row("Row1", cells)
+    anchor = TableAnchor(page_index=6, caption_line_idx=0, identifier="1.1.(1)")
+    table_node = Node(
+        type="Table", identifier="1.1.(1)", citation="Table:1.1.(1)", title="",
+        page=7, end_page=7, bbox=BBox(x_range[0], 400, x_range[1], 700), children=[row],
+    )
+    return TableRegion(
+        anchor=anchor, table_node=table_node, forming_part_of=None,
+        consumed_line_indices=set(), has_bottom_border=has_bottom_border,
+        outer_bbox=BBox(x_range[0], 400, x_range[1], 700),
+    )
+
+
+def _continuation_grid_fixture(x0=90.0, x1=260.0, div_x=175.0, closing=True):
+    lines = [
+        pline(x0 + 10, 50, x0 + 40, 60, "continued row 1 col a"),
+        pline(div_x + 10, 50, x1 - 10, 60, "continued row 1 col b"),
+    ]
+    bottom_y = 70.0
+    rects = [
+        (x0, 45.0, x1, 45.4),
+        (x0, 45.0, x0 + 0.4, bottom_y),
+        (x1 - 0.4, 45.0, x1, bottom_y),
+        (div_x, 45.0, div_x + 0.4, bottom_y),
+    ]
+    if closing:
+        rects.append((x0, bottom_y - 0.4, x1, bottom_y))
+    return lines, rects
+
+
+def test_build_continuation_region_matches_pending_shape_and_x_range():
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region is not None
+    assert len(region.table_node.children) == 1
+    assert [c.content for c in region.table_node.children[0].children] == [
+        "continued row 1 col a", "continued row 1 col b",
+    ]
+    assert region.has_bottom_border is True
+
+
+def test_build_continuation_region_rejects_column_count_mismatch():
+    pending = _pending_region(cols=3, x_range=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()  # only 2 columns
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_build_continuation_region_rejects_x_range_mismatch():
+    pending = _pending_region(cols=2, x_range=(300.0, 470.0))  # different table, elsewhere on the page
+    lines, rects = _continuation_grid_fixture()  # x0=90, x1=260
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_fill_continuation_gaps_synthesizes_into_empty_page_slot():
+    pending = _pending_region(has_bottom_border=False)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], []],
+    )
+    assert len(filled[1]) == 1
+    assert filled[1][0].has_bottom_border is True
+
+
+def test_fill_continuation_gaps_leaves_empty_page_alone_when_nothing_pending():
+    filled = fill_continuation_gaps(all_lines=[[]], all_drawing_rects=[[]], regions_by_page=[[]])
+    assert filled == [[]]
+
+
+def test_stitch_continuations_after_fill_continuation_gaps_merges_all_rows():
+    pending = _pending_region(has_bottom_border=False)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], []],
+    )
+    stitched = stitch_continuations(filled)
+    assert len(stitched) == 1
+    table = stitched[0].table_node
+    assert len(table.children) == 2  # original Row1 + the continuation's Row2
+    assert table.children[1].citation == "Table:1.1.(1)-Row2"
+```
+
+(`_pending_region`/`_continuation_grid_fixture` are new helpers alongside this file's existing `_row`/`_cell`/`_table_region` helpers from Task 6 — reuse those, don't duplicate.)
+
+- [ ] Write the 6 tests above (RED)
+- [ ] Implement `build_continuation_region`/`_next_pending`/`fill_continuation_gaps` (GREEN)
+- [ ] Run `pytest tests/test_table_extractor.py -v` — all pass, zero regressions among the pre-existing tests
+
+### Step 2: `parallel_extraction.py` — thread `all_drawing_rects` through
+
+Replace `_extract_page`/`_unzip_results`/`extract_all_pages`:
+
+```python
+def _extract_page(
+    page_index: int,
+) -> tuple[list[PageLine], list[RawImage], list[TableRegion], list[tuple[float, float, float, float]]]:
+    assert _worker_source is not None
+    lines = _worker_source.page_lines(page_index)
+    raster = raster_images_on_page(_worker_source, page_index)
+    rects = _worker_source.page_drawing_rects(page_index)
+    table_regions = detect_tables_on_page(lines, rects, page_number=page_index + 1)
+    table_bboxes = [r.outer_bbox.as_tuple() for r in table_regions]
+    vector = vector_images_on_page(
+        _worker_source, page_index, [r.bbox for r in raster], rects, table_bboxes
+    )
+    return lines, raster + vector, table_regions, rects
+
+
+def _unzip_results(results):
+    all_lines, all_images, all_table_regions, all_rects = [], [], [], []
+    for lines, images, regions, rects in results:
+        all_lines.append(lines)
+        all_images.extend(images)
+        all_table_regions.append(regions)
+        all_rects.append(rects)
+    return all_lines, all_images, all_table_regions, all_rects
+
+
+def extract_all_pages(pdf_path: str, max_workers: int | None = None):
+    page_count = PyMuPdfSource(pdf_path).page_count
+    workers = max_workers or os.cpu_count() or 1
+    with ProcessPoolExecutor(
+        max_workers=workers, initializer=_init_worker, initargs=(pdf_path,)
+    ) as executor:
+        results = list(executor.map(_extract_page, range(page_count)))
+    return _unzip_results(results)
+```
+
+(Type annotations on `_unzip_results`/`extract_all_pages` follow the same style as the existing file — add the full 4-tuple type hints matching `_extract_page`'s return type.)
+
+- [ ] Update `tests/test_parallel_extraction.py`'s existing tests that unpack `_extract_page`/`extract_all_pages` results to the new 4-tuple (adding an assertion on the 4th element — drawing rects — not just discarding it), following the same pattern Task 8 used for the 2-tuple→3-tuple change
+- [ ] Run `pytest tests/test_parallel_extraction.py -v` (fast tests only) — zero regressions
+- [ ] Check function complexity (`radon cc -s -n B`) — `_unzip_results ` gained a 4th field; verify it's still ≤6/≤20 lines, extract a helper if not (same pattern as Task 8's own fix round)
+
+### Step 3: `build_mo_toc.py` — call `fill_continuation_gaps`
+
+```python
+from mo_toc.parsing.table_extractor import attach_tables, fill_continuation_gaps, stitch_continuations
+
+def run(pdf_path: str, output_dir: str) -> None:
+    all_lines, raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(pdf_path)
+    table_regions_by_page = fill_continuation_gaps(all_lines, all_drawing_rects, table_regions_by_page)
+    volume, captions = build_tree_from_lines(
+        all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
+    )
+    attach_tables(volume, stitch_continuations(table_regions_by_page), captions)
+    assign_unified_numbers(
+        [volume], MO_TOC_TYPE_MARKERS,
+        identifier_types=MO_TOC_IDENTIFIER_TYPES, suffix_types=MO_TOC_SUFFIX_TYPES,
+    )
+    images = write_images(raw_images, str(Path(output_dir) / "images"))
+    images = match_images(images, captions, volume)
+    write_json(volume, captions, images, str(Path(output_dir) / "mo_pdf.json"))
+```
+
+- [ ] Update `tests/test_build_mo_toc.py`'s mocked `extract_all_pages` return value to the new 4-tuple (add an empty `all_drawing_rects` list matching the mocked lines' shape)
+- [ ] Run `pytest tests/test_build_mo_toc.py -v` — passes
+
+### Step 4: Real-PDF verification (extend `tests/test_integration_real_pdf.py`)
+
+Add a `@pytest.mark.slow` test proving the actual, real multi-page table is now fully captured and the leak is closed:
+
+```python
+@pytest.mark.slow
+def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
+    volume, captions = _build_real_tree_with_tables()
+    sentence = _find_by_citation(volume, "A-1.1.1.1.(5)")
+    table = next(c for c in sentence.children if c.type == "Table")
+    # Confirmed real-document fact: this table has 37 numbered rows plus a
+    # header row - previously only the header + page-8 rows were captured,
+    # with the remaining rows' text leaking into sentence.content instead.
+    assert len(table.children) > 2
+    assert "37" in table.children[-1].children[0].content
+    assert "Part 6 and Part 7" not in sentence.content
+```
+
+(Adjust the exact expected row count/content once you've run this against the real PDF and inspected the actual structure — the brief's own example numbers here are illustrative based on Task 6's fix-round diagnostic notes, not independently re-verified against the live document by the plan author; confirm and correct against the real output before finalizing this assertion, the same way every other real-PDF assertion in this file was grounded in direct inspection.)
+
+- [ ] Run `pytest tests/test_integration_real_pdf.py -m slow -v` (full slow file) — all pass, zero regressions
+- [ ] Run the fast suite (`pytest --tb=short`) — zero regressions, exact count in report
+
+### Step 5: Commit and quality gates
+
+```bash
+git add src/mo_toc/parsing/table_extractor.py src/mo_toc/parsing/parallel_extraction.py src/build_mo_toc.py tests/test_table_extractor.py tests/test_parallel_extraction.py tests/test_build_mo_toc.py tests/test_integration_real_pdf.py
+git commit -m "feat(mo_toc): detect multi-page table continuations without a caption anchor"
+```
+
+Run `ruff check --fix`/`ruff format`, `radon cc -s -n B`, `vulture` on all touched files per the Global Constraints.
