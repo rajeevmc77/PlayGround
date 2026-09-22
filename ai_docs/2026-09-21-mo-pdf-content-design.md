@@ -335,6 +335,23 @@ Article `1.1.1.1.` today (abbreviated), showing the new shape:
   nearest-preceding-sibling walk (see accepted risk above).
 - **Renaming `src/mo_toc/` itself**, its classes, or CLI entry points beyond
   the output artifact's filename.
+- **Two confirmed, deliberately-unfixed table-content gaps found during
+  real-PDF validation (Task 14)**, both accepted as leaks (visible, in body
+  text) rather than risking silent misattribution under a wrong table
+  citation:
+  - Table `1.1.1.1.(5)`'s last ~4 rows (of 37) share page 12 with the next
+    table's own caption, with no geometric or font signal distinguishing
+    them from ordinary body prose in between — a heuristic built for this
+    case was found to silently misfile unrelated sentence prose as fake
+    table rows and was reverted.
+  - Document-wide, roughly 22-30 pages carry a table caption whose grid
+    never fit on that page (an "orphaned anchor") or a top-of-page grid
+    with no preceding table to continue — this table content is currently
+    captured nowhere (leaks as body text, same as before this feature),
+    rather than being guessed at and risking a wrong attribution. This is
+    broader than just the Table `1.1.1.1.(5)` case above; a real fix would
+    need to detect and index these tables as their own new anchors, not a
+    continuation-detection concern.
 
 ## Files affected
 
