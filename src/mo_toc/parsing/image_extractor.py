@@ -14,6 +14,7 @@ import io
 from dataclasses import dataclass
 
 from mo_toc.parsing.pdf_source import ExtractedImage, PdfSource
+from mo_toc.parsing.table_extractor import detect_tables_on_page
 from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
 
 
@@ -75,10 +76,23 @@ def vector_images_on_page(
     return images
 
 
+def _table_bboxes_on_page(
+    source: PdfSource, page_index: int, rects: list[tuple[float, float, float, float]]
+) -> list[tuple[float, float, float, float]]:
+    lines = source.page_lines(page_index)
+    table_regions = detect_tables_on_page(lines, rects, page_number=page_index + 1)
+    return [r.outer_bbox.as_tuple() for r in table_regions]
+
+
 def extract_images(source: PdfSource) -> list[RawImage]:
     images = []
     for page_index in range(source.page_count):
         raster = raster_images_on_page(source, page_index)
         images.extend(raster)
-        images.extend(vector_images_on_page(source, page_index, [r.bbox for r in raster]))
+        rects = source.page_drawing_rects(page_index)
+        table_bboxes = _table_bboxes_on_page(source, page_index, rects)
+        vector = vector_images_on_page(
+            source, page_index, [r.bbox for r in raster], rects, table_bboxes
+        )
+        images.extend(vector)
     return images
