@@ -98,8 +98,10 @@ def test_run_wires_pipeline_in_order(
     ]
 
 
-def _raw_image(page, bbox):
-    return RawImage(page=page, bbox=bbox, width=10, height=10, data=b"", ext="png", phash=None)
+def _raw_image(page, bbox, kind="vector"):
+    return RawImage(
+        page=page, bbox=bbox, width=10, height=10, data=b"", ext="png", phash=None, kind=kind
+    )
 
 
 def _table_region_on_page(page_index, outer_bbox):
@@ -140,6 +142,25 @@ def test_drop_images_over_tables_drops_image_overlapping_a_continuation_table():
     kept = drop_images_over_tables([overlapping_image, unrelated_image], table_regions_by_page)
 
     assert kept == [unrelated_image]
+
+
+def test_drop_images_over_tables_keeps_a_raster_image_but_drops_a_vector_one():
+    # Reviewer-confirmed regression: the original fix dropped ANY image
+    # (raster or vector) overlapping a table bbox, but a genuine embedded
+    # raster image (an equation, a diagram, a photo) can legitimately sit
+    # inside/near a table's own bbox - only a vector-cluster-derived crop is
+    # ever a table-gridline artifact worth dropping. Measured on the real
+    # document: the over-broad filter silently discarded 154 genuine raster
+    # images across 81 pages (e.g. page 502, 897, 1260).
+    table_bbox = BBox(90.0, 90.0, 310.0, 310.0)
+    raster_image = _raw_image(page=527, bbox=(100.0, 100.0, 300.0, 300.0), kind="raster")
+    vector_image = _raw_image(page=527, bbox=(100.0, 100.0, 300.0, 300.0), kind="vector")
+    table_regions_by_page = [[] for _ in range(527)]
+    table_regions_by_page[526] = [_table_region_on_page(526, table_bbox)]
+
+    kept = drop_images_over_tables([raster_image, vector_image], table_regions_by_page)
+
+    assert kept == [raster_image]
 
 
 def test_drop_images_over_tables_keeps_non_overlapping_image_on_a_table_page():

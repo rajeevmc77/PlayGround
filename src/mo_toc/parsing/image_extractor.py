@@ -27,6 +27,13 @@ class RawImage:
     data: bytes
     ext: str
     phash: str | None
+    # "raster" (an embedded image XObject) or "vector" (a rendered crop of a
+    # clustered vector-drawing region). Lets a later pass (drop_images_over_
+    # tables in build_mo_toc.py) exclude only vector-derived table-gridline
+    # artifacts from a table-bbox overlap, never a genuine embedded raster
+    # image - see that function's own docstring for the bug this guards
+    # against.
+    kind: str = "raster"
 
 
 def _phash(data: bytes) -> str | None:
@@ -39,7 +46,7 @@ def _phash(data: bytes) -> str | None:
         return None
 
 
-def _raw_image(page_index: int, bbox, extracted: ExtractedImage) -> RawImage:
+def _raw_image(page_index: int, bbox, extracted: ExtractedImage, kind: str = "raster") -> RawImage:
     return RawImage(
         page=page_index + 1,
         bbox=bbox,
@@ -48,6 +55,7 @@ def _raw_image(page_index: int, bbox, extracted: ExtractedImage) -> RawImage:
         data=extracted.data,
         ext=extracted.ext,
         phash=_phash(extracted.data),
+        kind=kind,
     )
 
 
@@ -55,7 +63,7 @@ def raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
     images = []
     for info in source.page_images(page_index):
         extracted = source.extract_image(info.xref)
-        images.append(_raw_image(page_index, info.bbox, extracted))
+        images.append(_raw_image(page_index, info.bbox, extracted, kind="raster"))
     return images
 
 
@@ -72,7 +80,7 @@ def vector_images_on_page(
     images = []
     for bbox in clusters:
         extracted = source.render_region(page_index, bbox)
-        images.append(_raw_image(page_index, bbox, extracted))
+        images.append(_raw_image(page_index, bbox, extracted, kind="vector"))
     return images
 
 

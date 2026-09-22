@@ -604,6 +604,12 @@ def test_attach_tables_raises_on_duplicate_table_citation_in_one_call():
     )
     with pytest.raises(ValueError, match="Table:1.1.1.1.\\(5\\)"):
         attach_tables(volume, [region1, region2])
+    # The duplicate-citation check must run BEFORE the offending region is
+    # appended to its owner's children, so a raised ValueError never leaves
+    # the tree partially mutated with the rejected, duplicate-citation node
+    # already attached.
+    assert len(article.children) == 1
+    assert article.children[0] is region1.table_node
 
 
 def _pending_region(cols=2, x_range=(90.0, 260.0), has_bottom_border=False):

@@ -73,26 +73,36 @@ def _table_bboxes_by_page(
     }
 
 
+def _is_droppable(image: RawImage, table_bboxes_by_page: dict[int, list]) -> bool:
+    if image.kind != "vector":
+        return False
+    table_bboxes = table_bboxes_by_page.get(image.page - 1, [])
+    return not exclude_overlapping_rects([image.bbox], table_bboxes)
+
+
 def drop_images_over_tables(
     raw_images: list[RawImage], table_regions_by_page: list[list[TableRegion]]
 ) -> list[RawImage]:
-    """Drops a raw image whose bbox overlaps a table region's outer bbox on
-    the same page (anchored or continuation-synthesized alike).
+    """Drops a VECTOR-DERIVED raw image whose bbox overlaps a table region's
+    outer bbox on the same page (anchored or continuation-synthesized
+    alike). Never drops a raster image (kind="raster") on that basis alone -
+    a genuine embedded image (an equation, a diagram, a photo) can
+    legitimately sit inside/near a table's own bbox; only a vector-cluster
+    crop of the table's own gridlines is ever a false-positive "figure".
 
     fill_continuation_gaps synthesizes additional table regions for
     continuation pages in a later, sequential pass - AFTER raw_images was
     already computed per-page inside extract_all_pages/_extract_page, which
     only ever excluded the anchored table_regions_by_page bboxes known at
     that time. Without this filter, a continuation page's own grid still
-    gets rendered and indexed as a spurious "figure" image (confirmed on 527
-    real pages of the source document).
+    gets rendered and indexed as a spurious vector "figure" image (confirmed
+    on 527 real pages of the source document). An earlier version of this
+    filter dropped ANY image regardless of kind, which turned out to also
+    discard 154 genuine embedded raster images across 81 real pages -
+    reviewer-confirmed regression, fixed by the kind == "vector" guard here.
     """
     table_bboxes_by_page = _table_bboxes_by_page(table_regions_by_page)
-    return [
-        image
-        for image in raw_images
-        if exclude_overlapping_rects([image.bbox], table_bboxes_by_page.get(image.page - 1, []))
-    ]
+    return [image for image in raw_images if not _is_droppable(image, table_bboxes_by_page)]
 
 
 def run(pdf_path: str, output_dir: str) -> None:

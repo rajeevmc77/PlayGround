@@ -714,6 +714,21 @@ def _register_table_citation(
     latent x-range-drift risk on long continuation chains (see stitch_
     continuations) that would otherwise hide a duplicate table by keeping
     only the last one written.
+
+    KNOWN LIMITATION, deliberately not closed: `seen_citations` only tracks
+    citations registered during THIS call, so a collision against a citation
+    already present in `index` from a citation BEFORE this call started
+    (e.g. attach_tables() invoked more than once against the same tree)
+    still silently overwrites via the `index[citation] = table_node` line
+    below. Widening the check to the whole `index` would also reject
+    test_attach_tables_leaves_title_empty_when_no_caption_matches's
+    deliberate two-separate-calls-same-identifier path, which is not a bug -
+    each attach_tables() call is otherwise independent. In the real
+    pipeline, attach_tables() is only ever called once per document build
+    (see build_mo_toc.build_document), so this cross-call gap is currently
+    unreachable in practice; left as a documented limitation rather than a
+    fix that would require redesigning how repeated calls are meant to
+    compose.
     """
     citation = table_node.citation
     if citation in seen_citations:
@@ -732,8 +747,8 @@ def attach_tables(volume: Node, regions: list[TableRegion], captions: list[Capti
         division = _division_for_page(volume, region.table_node.page)
         owner_citation = resolve_owner_citation(region, division, index, volume)
         owner = index[owner_citation]
-        owner.children.append(region.table_node)
         _register_table_citation(region.table_node, index, seen_citations)
+        owner.children.append(region.table_node)
         caption = _matching_caption(region, captions)
         if caption is not None and caption.title:
             region.table_node.title = caption.title
