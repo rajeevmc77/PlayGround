@@ -26,6 +26,17 @@ LINE_THICKNESS_MAX = 2.0  # pt; a gridline rect's thin dimension
 BOUNDARY_MERGE_TOLERANCE = 2.0  # pt; nearby edges from adjacent segments are one boundary
 MIN_TABLE_ROWS = 2  # header + at least one data row
 MIN_TABLE_COLS = 2
+# A caption-anchored table's own page can legitimately hold only its header
+# band - a single row-boundary pair, bordered top and bottom, with no
+# internal divider - when the data rows continue on a later, caption-less
+# page (confirmed on the real document: Table 9.10.14.5.-A's page 794).
+# build_continuation_region already accepts a caption-less candidate page
+# down to 1 row; build_table_region uses this same floor for its own
+# anchor-page grid, since a genuine "Table X" caption match is already a
+# stronger signal than a continuation page has to lean on. MIN_TABLE_ROWS
+# stays the (stricter) bar for rects_form_a_grid, which has no caption
+# anchor at all and needs the unambiguous multi-row signal instead.
+MIN_ANCHOR_TABLE_ROWS = 1
 
 
 @dataclass
@@ -262,7 +273,7 @@ def build_table_region(
 ) -> TableRegion | None:
     caption_bottom = lines[anchor.caption_line_idx].bbox[3]
     row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=caption_bottom)
-    if len(row_ys) - 1 < MIN_TABLE_ROWS or len(col_xs) - 1 < MIN_TABLE_COLS:
+    if len(row_ys) - 1 < MIN_ANCHOR_TABLE_ROWS or len(col_xs) - 1 < MIN_TABLE_COLS:
         return None
 
     title, title_end_idx = _consume_table_title(lines, anchor.caption_line_idx, row_ys[0])
