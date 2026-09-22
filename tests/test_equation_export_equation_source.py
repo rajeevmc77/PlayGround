@@ -125,6 +125,44 @@ def test_fetch_equations_fixes_glued_commands_in_the_fetched_latex(mock_client_c
 
 
 @patch("equation_export.parsing.equation_source.httpx.AsyncClient")
+def test_fetch_equations_captures_the_mathml_field(mock_client_cls):
+    mock_client = _mock_client(mock_client_cls)
+    mock_client.get.return_value = _fake_response(
+        {
+            "eg02500a": {
+                "id": "eg02500a",
+                "latex": "Area=0.24(2\\times LD-1.2)^{2}",
+                "mathml": "<math><mi>Area</mi></math>",
+            }
+        }
+    )
+
+    async def scenario():
+        async with HttpxEquationSource("https://dev.buildingcode.gov.bc.ca", "2024") as source:
+            return await source.fetch_equations()
+
+    result = _run(scenario())
+
+    assert result[0].mathml == "<math><mi>Area</mi></math>"
+
+
+@patch("equation_export.parsing.equation_source.httpx.AsyncClient")
+def test_fetch_equations_defaults_mathml_to_none_when_absent(mock_client_cls):
+    mock_client = _mock_client(mock_client_cls)
+    mock_client.get.return_value = _fake_response(
+        {"eg02500a": {"id": "eg02500a", "latex": "Area=0.24(2\\times LD-1.2)^{2}"}}
+    )
+
+    async def scenario():
+        async with HttpxEquationSource("https://dev.buildingcode.gov.bc.ca", "2024") as source:
+            return await source.fetch_equations()
+
+    result = _run(scenario())
+
+    assert result[0].mathml is None
+
+
+@patch("equation_export.parsing.equation_source.httpx.AsyncClient")
 def test_fetch_equations_skips_entries_with_no_latex_field(mock_client_cls):
     mock_client = _mock_client(mock_client_cls)
     mock_client.get.return_value = _fake_response(

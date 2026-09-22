@@ -42,7 +42,11 @@ class HttpxEquationSource:
         response.raise_for_status()
         equation_map = response.json()
         return [
-            Equation(id=entry["id"], latex=_normalize_latex(entry["latex"]))
+            Equation(
+                id=entry["id"],
+                latex=_normalize_latex(entry["latex"]),
+                mathml=entry.get("mathml"),
+            )
             for entry in equation_map.values()
             if "latex" in entry
         ]
