@@ -606,6 +606,50 @@ def test_build_continuation_region_accepts_when_forming_part_of_agrees():
     assert region is not None
 
 
+def test_build_continuation_region_rejects_via_identifier_fallback_when_no_forming_part_of():
+    # Direct unit coverage for the fallback branch specifically: pending's
+    # ORIGINAL anchor never had a "Forming part of ..." line at all
+    # (forming_part_of stays None), so the comparison falls back to
+    # pending's own table identifier ("1.1.(1)" for _pending_region's
+    # default) rather than a real forming-part-of reference.
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    assert pending.forming_part_of is None
+    lines, rects = _continuation_grid_fixture()
+    lines = [pline(100, 20, 300, 30, "Forming part of Sentence 9.9.(9)"), *lines]
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_build_continuation_region_rejects_when_candidate_has_its_own_leading_title_block():
+    # Real-PDF-confirmed case (page 835): sibling table families (e.g.
+    # Table 9.15.4.5.-A/-B/-C) all share the SAME "Forming part of Sentence
+    # 9.15.4.5.(2)" reference, so forming-part-of agreement alone cannot
+    # tell a genuinely new sibling table apart from a real continuation.
+    # The new sibling's own page nonetheless has its own bold-caption-font
+    # descriptive title sitting directly above its grid - something a true
+    # continuation page never has, since there is nothing to title.
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    pending.forming_part_of = ("Sentence", "1.1.(1)")
+    lines, rects = _continuation_grid_fixture()
+    lines = [
+        pline(100, 5, 300, 15, "A Brand New Table's Own Descriptive Title", CAPTION_FONT),
+        pline(100, 20, 300, 30, "Forming part of Sentence 1.1.(1)"),  # agrees, yet still rejected
+        *lines,
+    ]
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_build_continuation_region_accepts_ordinary_body_text_above_the_grid():
+    # A real continuation page can have ordinary, non-caption-font body
+    # text sitting above its grid (e.g. wrapped text bleeding over from a
+    # neighboring column) - this must not be mistaken for a leading title
+    # block just because something happens to precede the grid.
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()
+    lines = [pline(100, 20, 300, 30, "ordinary wrapped body text"), *lines]
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region is not None
+
+
 def test_fill_continuation_gaps_synthesizes_into_empty_page_slot():
     pending = _pending_region(has_bottom_border=False)
     lines, rects = _continuation_grid_fixture(closing=True)

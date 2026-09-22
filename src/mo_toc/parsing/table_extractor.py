@@ -387,6 +387,31 @@ def _matching_caption(region: TableRegion, captions: list[Caption]) -> Caption |
 
 
 def _own_forming_part_of_reference(lines: list[PageLine]) -> str | None:
+    """Deliberately UNBOUNDED (whole page, not bounded above the candidate's
+    own grid top) - confirmed by direct, whole-document experiment to be
+    the correct choice for this specific signal, even though it looks like
+    an asymmetry against _forming_part_of_above's bounded scan on an
+    anchored page.
+
+    A bounded version was tried and reverted: real page 926 has a
+    combined, single detected grid (via _grid_boundaries, which has no
+    concept of "this is actually two tables' worth of rects, separated by
+    an intervening 'Notes to Table ...:' heading") that spans BOTH a
+    genuine continuation of a preceding table AND, further down the SAME
+    page, past that Notes heading, a second, unrelated table's own
+    "Forming Part of Sentence 9.24.2.5.(1)" line - which sits BELOW this
+    combined grid's own top edge. Bounding the scan to "above the grid top"
+    excludes that line entirely, silently re-absorbing page 926 as fake
+    continuation rows (confirmed: a controlled instrument run over all
+    1685 pages showed the bounded scan's accepted-page set differs from
+    the unbounded scan's by EXACTLY one page - 926 - with zero other
+    differences anywhere in the document). The reviewer's own concern
+    (a later table's forming-part-of line polluting an earlier, genuine
+    continuation's check) is a real theoretical risk, but the same
+    whole-document run found zero confirmed instances of it actually
+    happening - so leaving the scan unbounded is a net improvement here,
+    not a compromise.
+    """
     for pline in lines:
         match = RE_FORMING_PART_OF.match(pline.text)
         if match:
@@ -404,6 +429,18 @@ def _forming_part_of_conflicts(lines: list[PageLine], pending: TableRegion) -> b
     part of ..." line, when present, points somewhere else - a cheap, strong
     signal this is not really a continuation of `pending`, even when the
     shape happens to match.
+
+    Compares reference-to-reference whenever possible: `pending.forming_
+    part_of` is now propagated through the whole continuation chain (see
+    build_continuation_region), never reset to None, so the identifier
+    fallback below is reached only when the ORIGINAL anchored table
+    genuinely never had a forming-part-of line at all - not, as an earlier
+    round of this fix relied on by accident, whenever `pending` happened to
+    be a synthesized region. Comparing a table's own identifier against a
+    forming-part-of reference is a different namespace in general (e.g.
+    identifier "9.24.2.1." vs. reference "9.24.2.1.(1)"); it is used here
+    only as a last-resort, best-effort signal when no real reference is
+    available to compare against.
     """
     candidate_ref = _own_forming_part_of_reference(lines)
     if candidate_ref is None:
@@ -412,6 +449,39 @@ def _forming_part_of_conflicts(lines: list[PageLine], pending: TableRegion) -> b
         pending.forming_part_of[1] if pending.forming_part_of else pending.table_node.identifier
     )
     return candidate_ref != expected_ref
+
+
+def _has_leading_title_block(lines: list[PageLine], grid_top_y: float) -> bool:
+    """A true continuation page never introduces a new descriptive title
+    above its grid - there is nothing to title, since it is a continuation,
+    not an introduction. Reuses the same bold-caption-font signal
+    _consume_table_title uses to read a genuine table's own title on an
+    anchored page, to catch a case _forming_part_of_conflicts alone cannot:
+    sibling table families (e.g. Table 9.15.4.5.-A/-B/-C) that all share
+    the SAME "Forming part of Sentence 9.15.4.5.(2)" reference, so
+    reference equality alone can't tell them apart. Confirmed on the real
+    document: page 835's Table 9.15.4.5.-C has its own bold-caption-font
+    descriptive title ("Vertical Reinforcement for 240 mm Flat Insulating
+    Concrete Form Founda...") sitting directly above its grid, even though
+    its forming-part-of reference agrees with the preceding, unrelated
+    Table 9.15.4.5.-B.
+
+    Walks backward from the line immediately preceding the grid: a
+    "Forming part of ..." line is skipped (an expected, legitimate
+    non-title element that can sit directly above a REAL table's grid
+    too), and a contiguous run of caption-font lines immediately touching
+    the grid (through any such skipped line) counts as a title block: the
+    walk stops at the first line that is neither.
+    """
+    above = [pline for pline in lines if pline.bbox[1] < grid_top_y]
+    found_title = False
+    for pline in reversed(above):
+        if RE_FORMING_PART_OF.match(pline.text):
+            continue
+        if not is_caption_font(pline.font):
+            break
+        found_title = True
+    return found_title
 
 
 def _continuation_shape_matches(
@@ -434,7 +504,9 @@ def build_continuation_region(
     can still hold rows of a still-open (no bottom border) table from a
     preceding page. Matched by column count and x-range against `pending`,
     guarded against a coincidental shape match to a genuinely different
-    table by _forming_part_of_conflicts.
+    table by _forming_part_of_conflicts and _has_leading_title_block - two
+    complementary, independent signals, since neither alone rejects every
+    known real-document false positive (see each function's own docstring).
     """
     row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=0.0)
     if len(row_ys) - 1 < 1 or len(col_xs) - 1 < MIN_TABLE_COLS:
@@ -442,7 +514,12 @@ def build_continuation_region(
     expected_cols = len(pending.table_node.children[-1].children)
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
     same_shape = _continuation_shape_matches(outer_bbox, len(col_xs) - 1, expected_cols, pending)
-    if not same_shape or _forming_part_of_conflicts(lines, pending):
+    rejected = (
+        not same_shape
+        or _forming_part_of_conflicts(lines, pending)
+        or _has_leading_title_block(lines, row_ys[0])
+    )
+    if rejected:
         return None
 
     cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
@@ -460,7 +537,13 @@ def build_continuation_region(
     return TableRegion(
         anchor=pending.anchor,
         table_node=table_node,
-        forming_part_of=None,
+        # Propagated, not reset to None: the ORIGINAL anchored table's own
+        # forming_part_of carries forward through the whole continuation
+        # chain, so _forming_part_of_conflicts always compares a real
+        # reference against a real reference at every step, never falling
+        # back to comparing a table identifier against a reference (a
+        # different namespace in general - see that function's docstring).
+        forming_part_of=pending.forming_part_of,
         consumed_line_indices=consumed,
         has_bottom_border=_has_bottom_border(drawing_rects, row_ys[-1]),
         outer_bbox=outer_bbox,

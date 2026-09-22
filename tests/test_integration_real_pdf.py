@@ -189,7 +189,7 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     assert len(spurious_row.children) == 3
     assert spurious_row.children[0].content == ""
     assert spurious_row.children[1].content == ""
-    assert spurious_row.children[2].content != ""
+    assert "smoke detectors" in spurious_row.children[2].content
 
     last_row = table.children[-1]
     assert last_row.children[0].content == "33"
@@ -243,6 +243,55 @@ def test_table_3_2_2_53_does_not_absorb_the_next_unrelated_table_as_fake_continu
     assert table.end_page == 169
     last_row = table.children[-1]
     assert [c.content for c in last_row.children] == ["3", "800", "1000", "1200"]
+
+
+@pytest.mark.slow
+def test_table_9_15_4_5_b_does_not_absorb_a_sibling_tables_own_title_page():
+    # Reviewer-confirmed false positive (fixed by _has_leading_title_block,
+    # NOT by _forming_part_of_conflicts alone): Table 9.15.4.5.-B, -C are
+    # sibling tables in the same family that all share the SAME "Forming
+    # Part of Sentence 9.15.4.5.(2)" reference, so reference equality can't
+    # tell them apart. Page 835 - Table 9.15.4.5.-C's own page, whose own
+    # "Table X" caption trigger find_table_anchors never matched (a
+    # separate, pre-existing gap, same shape as Table 3.2.2.54.'s above) -
+    # nonetheless has its own bold-caption-font descriptive title ("Vertical
+    # Reinforcement for 240 mm Flat Insulating Concrete Form Founda...")
+    # sitting directly above its grid. Before this guard, page 835 was
+    # silently absorbed as fake continuation rows of Table 9.15.4.5.-B,
+    # header row and all.
+    volume, _captions = _build_real_tree_with_tables()
+    table = _find_by_citation(volume, "Table:9.15.4.5.-B")
+    assert table is not None
+    assert len(table.children) == 7
+    assert table.page == 834
+    assert table.end_page == 834
+    last_row = table.children[-1]
+    assert [c.content for c in last_row.children] == ["3.0", "n/a", "n/a", "15M at 400 mm o.c."]
+
+
+@pytest.mark.slow
+def test_table_9_24_2_1_does_not_absorb_the_next_tables_own_forming_part_of_line():
+    # Reviewer-confirmed false positive, found only by whole-document
+    # instrumentation (fixed by keeping _own_forming_part_of_reference's
+    # scan UNBOUNDED, after an earlier attempt to bound it - mirroring the
+    # anchored path's _forming_part_of_above - regressed this exact page:
+    # page 926's combined detected grid spans both a genuine continuation
+    # of Table 9.24.2.1. AND, further down the SAME page past an
+    # intervening "Notes to Table 9.24.2.1.:" heading, a second, unrelated
+    # Table 9.24.2.5.'s own "Forming Part of Sentence 9.24.2.5.(1))" line -
+    # which sits BELOW the combined grid's own top edge and so would be
+    # invisible to a bounded scan. A controlled instrument run over all
+    # 1685 pages confirmed the bounded scan's accepted-page set differs
+    # from the unbounded scan's by exactly this one page, with zero other
+    # differences anywhere in the document - so the scan stays unbounded.
+    volume, _captions = _build_real_tree_with_tables()
+    table = _find_by_citation(volume, "Table:9.24.2.1.")
+    assert table is not None
+    assert len(table.children) == 2
+    assert table.page == 925
+    assert table.end_page == 925
+    last_row = table.children[-1]
+    assert [c.content for c in last_row.children] == ["32 × 41", "400", "3.0"]
 
 
 @pytest.mark.slow
