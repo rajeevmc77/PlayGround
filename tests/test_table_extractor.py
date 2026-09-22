@@ -1,3 +1,5 @@
+import pytest
+
 from mo_toc.domain.models import BBox, Caption, Node
 from mo_toc.parsing.pdf_source import PageLine
 from mo_toc.parsing.table_extractor import (
@@ -505,6 +507,103 @@ def test_attach_tables_leaves_title_empty_when_no_caption_matches():
     )
     attach_tables(volume, [region2])
     assert article.children[1].title == ""
+
+
+def test_attach_tables_does_not_clobber_a_good_title_with_an_empty_caption_title():
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    region = _table_region(
+        "1.1.1.1.(5)",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "x")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    # build_table_region already set this geometrically-local title; a
+    # matching caption whose OWN title happens to be blank must not clobber
+    # it with an empty string.
+    region.table_node.title = "Geometrically Local Title"
+    blank_title_caption = _table_caption("1.1.1.1.(5)", "")
+    attach_tables(volume, [region], [blank_title_caption])
+    assert article.children[0].title == "Geometrically Local Title"
+
+
+def test_attach_tables_raises_on_duplicate_table_citation_in_one_call():
+    article = Node(
+        type="Article",
+        identifier="1.1.1.1.",
+        citation="A-1.1.1.1.",
+        title="Title",
+        page=8,
+        end_page=8,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    division = Node(
+        type="Division",
+        identifier="A",
+        citation="A",
+        title="",
+        page=6,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[article],
+    )
+    volume = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=30,
+        bbox=BBox(0, 0, 0, 0),
+        children=[division],
+    )
+    # Simulates the documented, currently-latent x-range-drift risk: two
+    # distinct TableRegions (e.g. from a stitching failure) resolving to the
+    # same citation within the SAME attach_tables() call.
+    region1 = _table_region(
+        "1.1.1.1.(5)",
+        page=8,
+        rows=[_row("Row1", [_cell("Col1", "a")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 200, 500, 300),
+    )
+    region2 = _table_region(
+        "1.1.1.1.(5)",
+        page=9,
+        rows=[_row("Row1", [_cell("Col1", "b")])],
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 40, 500, 200),
+    )
+    with pytest.raises(ValueError, match="Table:1.1.1.1.\\(5\\)"):
+        attach_tables(volume, [region1, region2])
 
 
 def _pending_region(cols=2, x_range=(90.0, 260.0), has_bottom_border=False):

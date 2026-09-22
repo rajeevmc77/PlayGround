@@ -706,14 +706,34 @@ def fill_continuation_gaps(
     return filled
 
 
+def _register_table_citation(
+    table_node: Node, index: dict[str, Node], seen_citations: set[str]
+) -> None:
+    """Raises rather than silently overwriting the index when two regions in
+    the SAME attach_tables() call resolve to the same citation - a currently-
+    latent x-range-drift risk on long continuation chains (see stitch_
+    continuations) that would otherwise hide a duplicate table by keeping
+    only the last one written.
+    """
+    citation = table_node.citation
+    if citation in seen_citations:
+        raise ValueError(
+            f"Duplicate table citation {citation!r}: two TableRegions in the "
+            "same attach_tables() call resolved to the same citation."
+        )
+    seen_citations.add(citation)
+    index[citation] = table_node
+
+
 def attach_tables(volume: Node, regions: list[TableRegion], captions: list[Caption] = ()) -> None:
     index = _citation_index(volume)
+    seen_citations: set[str] = set()
     for region in regions:
         division = _division_for_page(volume, region.table_node.page)
         owner_citation = resolve_owner_citation(region, division, index, volume)
         owner = index[owner_citation]
         owner.children.append(region.table_node)
-        index[region.table_node.citation] = region.table_node
+        _register_table_citation(region.table_node, index, seen_citations)
         caption = _matching_caption(region, captions)
-        if caption is not None:
+        if caption is not None and caption.title:
             region.table_node.title = caption.title
