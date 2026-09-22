@@ -1,8 +1,16 @@
+import re
 from types import TracebackType
 
 import httpx
 
 from equation_export.domain.models import Equation
+
+# Commands observed glued directly to the following variable with no
+# separator in the site's own equation data (e.g. `\timesLD`, `\leqC_{max}`,
+# `\sumh_{i}`) - a TeX control word greedily consumes the letters that
+# follow, so this makes the parser look for an undefined macro. Extend this
+# list if the site's data glues a different command the same way.
+_GLUED_COMMAND_RE = re.compile(r"\\(times|leq|sum)(?=[A-Za-z])")
 
 
 class HttpxEquationSource:
@@ -44,5 +52,7 @@ def _normalize_latex(latex: str) -> str:
     """The site's own equation-map.json double-escapes some LaTeX commands
     (e.g. two literal backslashes before `times`/`leq`), confirmed by
     comparing against the same entry's plainText field. Collapse them back
-    to the single backslash mathtext/MathJax expect."""
-    return latex.replace("\\\\", "\\")
+    to the single backslash mathtext/MathJax expect, then separate any
+    command left glued to the following variable."""
+    unescaped = latex.replace("\\\\", "\\")
+    return _GLUED_COMMAND_RE.sub(r"\\\1 ", unescaped)
