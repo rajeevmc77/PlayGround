@@ -78,10 +78,6 @@ def _advance_clause_state(pline: PageLine, token: str, next_letter: str) -> tupl
     return next_letter, pline.x0
 
 
-def _union_bbox(a: BBox, b: BBox) -> BBox:
-    return BBox(min(a.x0, b.x0), min(a.y0, b.y0), max(a.x1, b.x1), max(a.y1, b.y1))
-
-
 def _marker_node(
     node_type: str,
     token: str,
@@ -111,7 +107,7 @@ def _marker_node(
 def _append_continuation(owner: Node, owner_start_page: int, page_index: int, pline) -> None:
     owner.content = f"{owner.content} {pline.text}".strip()
     if page_index == owner_start_page:
-        owner.bbox = _union_bbox(owner.bbox, BBox(*pline.bbox))
+        owner.bbox = owner.bbox.union(BBox(*pline.bbox))
 
 
 def _add_clause(

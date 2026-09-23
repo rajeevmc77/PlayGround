@@ -11,6 +11,14 @@ class BBox:
     def as_tuple(self) -> tuple[float, float, float, float]:
         return (self.x0, self.y0, self.x1, self.y1)
 
+    def union(self, other: "BBox") -> "BBox":
+        return BBox(
+            min(self.x0, other.x0),
+            min(self.y0, other.y0),
+            max(self.x1, other.x1),
+            max(self.y1, other.y1),
+        )
+
 
 @dataclass
 class Node:
