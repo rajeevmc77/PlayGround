@@ -45,6 +45,12 @@ class _BuildState:
     current_body: list | None = None
     article_bodies: list = field(default_factory=list)
     captions: list = field(default_factory=list)
+    # The Note currently open (and the 0-based page it started on), so a
+    # continuation line - part of the same note paragraph but not itself
+    # matching RE_NOTE_ENTRY - can extend that note's bbox instead of being
+    # silently dropped.
+    current_note: Node | None = None
+    current_note_page: int | None = None
 
 
 def _citation_division(match, division: str | None) -> tuple[str, str, str]:
@@ -135,6 +141,7 @@ def _close_stack_to_rank(state: _BuildState, rank: int) -> Node:
 
 def _update_state_after_open(ntype: str, node: Node, state: _BuildState) -> None:
     rank = RANK[ntype]
+    state.current_note = None
     if rank <= 2:
         state.in_notes = ntype == "NotesContainer"
     if ntype in ("Division", "Appendix"):
@@ -187,6 +194,8 @@ def _open_note(match, page_index: int, bbox: BBox, state: _BuildState) -> None:
     )
     state.stack[-1][1].children.append(node)
     state.current_body = None
+    state.current_note = node
+    state.current_note_page = page_index
 
 
 def _consume_caption_title(lines: list[PageLine], idx: int) -> tuple[str, int]:
@@ -243,8 +252,6 @@ def _classify_heading(pline: PageLine, state: _BuildState):
 
 
 def _try_open_note(pline: PageLine, page_index: int, state: _BuildState) -> bool:
-    if not state.in_notes:
-        return False
     note_match = RE_NOTE_ENTRY.match(pline.text)
     if not note_match:
         return False
@@ -256,6 +263,27 @@ def _append_to_current_article(pline: PageLine, page_index: int, state: _BuildSt
     if state.current_body is None:
         return
     state.current_body.append((page_index, pline))
+
+
+def _continue_current_note(pline: PageLine, page_index: int, state: _BuildState) -> bool:
+    if state.current_note is None:
+        return False
+    if page_index == state.current_note_page:
+        state.current_note.bbox = state.current_note.bbox.union(BBox(*pline.bbox))
+    return True
+
+
+def _try_handle_note_line(pline: PageLine, page_index: int, state: _BuildState) -> bool:
+    """A Note's own paragraph can wrap onto further lines that don't start a
+    new RE_NOTE_ENTRY - those must still extend the open Note's bbox rather
+    than fall through to _append_to_current_article, where in_notes leaves
+    current_body unset and the line would be silently dropped.
+    """
+    if not state.in_notes:
+        return False
+    if _try_open_note(pline, page_index, state):
+        return True
+    return _continue_current_note(pline, page_index, state)
 
 
 def _process_page(
@@ -275,7 +303,7 @@ def _process_page(
         if heading:
             idx = _open_node(heading[0], heading[1], page_index, lines, idx, state)
             continue
-        if _try_open_note(pline, page_index, state):
+        if _try_handle_note_line(pline, page_index, state):
             idx += 1
             continue
         _append_to_current_article(pline, page_index, state)

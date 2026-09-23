@@ -159,7 +159,11 @@ def test_node_content_can_be_set():
 
 def test_image_asset_title_defaults_to_empty_string():
     image = ImageAsset(
-        page=1, bbox=BBox(0, 0, 5, 5), width=5, height=5, phash=None,
+        page=1,
+        bbox=BBox(0, 0, 5, 5),
+        width=5,
+        height=5,
+        phash=None,
         image_path="images/img_0.png",
     )
     assert image.title == ""
@@ -167,7 +171,12 @@ def test_image_asset_title_defaults_to_empty_string():
 
 def test_image_asset_title_can_be_set():
     image = ImageAsset(
-        page=1, bbox=BBox(0, 0, 5, 5), width=5, height=5, phash=None,
-        image_path="images/img_0.png", title="Figure A-1.1.1.1.(6)",
+        page=1,
+        bbox=BBox(0, 0, 5, 5),
+        width=5,
+        height=5,
+        phash=None,
+        image_path="images/img_0.png",
+        title="Figure A-1.1.1.1.(6)",
     )
     assert image.title == "Figure A-1.1.1.1.(6)"

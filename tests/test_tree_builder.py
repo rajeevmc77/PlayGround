@@ -1,3 +1,4 @@
+from mo_toc.domain.models import BBox
 from mo_toc.parsing.pdf_source import PageLine
 from mo_toc.parsing.tree_builder import build_tree, build_tree_from_lines
 
@@ -102,6 +103,60 @@ def test_notes_container_holds_note():
     assert notes_container.type == "NotesContainer"
     assert notes_container.children[0].type == "Note"
     # rstrip(".") removes the one trailing dot the RE_NOTE_ENTRY token includes
+    assert notes_container.children[0].identifier == "A-1.1.1.1"
+
+
+def test_note_bbox_spans_continuation_lines_on_same_page():
+    pages = [
+        [line(50, 40, "Random front matter text.", BODY)],  # page 0: FrontMatter
+        [line(50, 40, "Division A", BLACK)],  # page 1
+        [line(50, 40, "Part 1", BLACK)],  # page 2
+        [
+            line(50, 40, "Notes to Part 1", BLACK),
+            line(70, 40, "A-1.1.1.1. First line of the note.", BODY),
+            line(90, 40, "Second line continuing the same note.", BODY),
+        ],  # page 3
+    ]
+    root, _captions = build_tree(FakePdfSource(pages))
+    note = root.children[1].children[1].children[0]
+    # The trigger line alone spans y0=70..y1=80; the highlight must reach
+    # down to the continuation line's bottom edge (y1=100), not stop at the
+    # first line.
+    assert note.bbox == BBox(40, 70, 340, 100)
+
+
+def test_continuation_line_attaches_to_the_currently_open_note():
+    pages = [
+        [line(50, 40, "Random front matter text.", BODY)],  # page 0: FrontMatter
+        [line(50, 40, "Division A", BLACK)],  # page 1
+        [line(50, 40, "Part 1", BLACK)],  # page 2
+        [
+            line(50, 40, "Notes to Part 1", BLACK),
+            line(70, 40, "A-1.1.1.1. First note first line.", BODY),
+            line(90, 40, "A-1.1.1.2. Second note first line.", BODY),
+            line(110, 40, "Second note continuation line.", BODY),
+        ],  # page 3
+    ]
+    root, _captions = build_tree(FakePdfSource(pages))
+    first_note, second_note = root.children[1].children[1].children
+    assert first_note.bbox == BBox(40, 70, 340, 80)
+    assert second_note.bbox == BBox(40, 90, 340, 120)
+
+
+def test_stray_line_before_first_note_entry_is_ignored():
+    pages = [
+        [line(50, 40, "Random front matter text.", BODY)],  # page 0: FrontMatter
+        [line(50, 40, "Division A", BLACK)],  # page 1
+        [line(50, 40, "Part 1", BLACK)],  # page 2
+        [
+            line(50, 40, "Notes to Part 1", BLACK),
+            line(70, 40, "Some intro text before any note entry.", BODY),
+            line(90, 40, "A-1.1.1.1. First note.", BODY),
+        ],  # page 3
+    ]
+    root, _captions = build_tree(FakePdfSource(pages))
+    notes_container = root.children[1].children[1]
+    assert len(notes_container.children) == 1
     assert notes_container.children[0].identifier == "A-1.1.1.1"
 
 
