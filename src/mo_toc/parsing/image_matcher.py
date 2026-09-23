@@ -11,12 +11,16 @@ from mo_toc.domain.models import Caption, ImageAsset, Node
 
 MAX_CAPTION_GAP = 50.0  # pt; beyond this a caption is presumed unrelated
 
-# pt, in the image's smaller dimension; matches the viewer's own "declutter"
-# convention (index.html's "Hide images under 40pt"). Inline equation glyphs
-# are never themselves captioned in this document, but can still sit closer
-# to a real Figure/Table caption than the actual figure it describes -
-# without this floor, a glyph would steal the caption before the real,
-# larger figure gets a chance at it.
+# pt, in the image's smaller dimension. Deliberately its own threshold, not
+# the viewer's "hide decorative images" convention (mo_toc.domain.image_
+# classification.is_decorative): that one lets a wide-but-short single-line
+# formula through so it's still visible in the Table of Images, but such a
+# formula must NOT become caption-eligible here - a caption never describes
+# an inline equation, only a genuine Figure/Table, so this floor stays
+# keyed on the smaller dimension alone (real-document regression: a 100x24pt
+# equation glyph must not outrank a farther 300x250pt diagram for the same
+# caption - see test_small_ineligible_image_does_not_steal_a_caption_from_a_
+# farther_real_figure).
 MIN_CAPTION_ELIGIBLE_DIM = 40.0
 
 # Table/Row/Cell are never pushed as position-walkable owners - an image is

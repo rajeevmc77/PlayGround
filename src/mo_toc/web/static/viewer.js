@@ -43,10 +43,12 @@ function renderNode(node, depth) {
   return wrapper;
 }
 
-function imageIsBelowMinDim(img, minDim) {
-  const width = img.bbox.x1 - img.bbox.x0;
-  const height = img.bbox.y1 - img.bbox.y0;
-  return Math.min(width, height) < minDim;
+function isHiddenByDeclutter(img, declutterOn) {
+  // `decorative` is computed server-side (mo_toc.domain.image_classification
+  // .is_decorative) from the image's bbox - a near-square AND small-area
+  // shape, the kind a logo/icon leaves. A wide-but-short single-line formula
+  // is neither, so it stays visible even with declutter on.
+  return declutterOn && img.decorative;
 }
 
 function imageLabel(img) {
@@ -71,9 +73,8 @@ async function loadImages() {
 
   function render() {
     container.querySelectorAll(".image-row").forEach((el) => el.remove());
-    const minDim = declutter.checked ? 40 : 0;
     allImages.forEach((img, index) => {
-      if (imageIsBelowMinDim(img, minDim)) return;
+      if (isHiddenByDeclutter(img, declutter.checked)) return;
       container.appendChild(renderImageRow(img, index, 0));
     });
   }
@@ -92,11 +93,11 @@ function clearAttachedImages(node) {
   node.children.forEach(clearAttachedImages);
 }
 
-function attachImagesToOwners(minDim) {
+function attachImagesToOwners(declutterOn) {
   clearAttachedImages(tocVolume);
   const citationMap = buildCitationMap(tocVolume, {});
   allImages.forEach((img, index) => {
-    if (imageIsBelowMinDim(img, minDim)) return;
+    if (isHiddenByDeclutter(img, declutterOn)) return;
     const owner = citationMap[img.owner_citation];
     if (!owner) return;
     if (!owner._images) owner._images = [];
@@ -144,7 +145,7 @@ async function loadImageTree() {
 
   function render() {
     content.innerHTML = "";
-    attachImagesToOwners(declutter.checked ? 40 : 0);
+    attachImagesToOwners(declutter.checked);
     if (!subtreeHasImages(tocVolume)) return;
     content.appendChild(renderImageTreeNode(tocVolume, 0));
   }
@@ -343,7 +344,7 @@ async function loadCompareTab() {
 
   function render() {
     content.innerHTML = "";
-    attachImagesToOwners(declutter.checked ? 40 : 0);
+    attachImagesToOwners(declutter.checked);
     if (!subtreeHasImages(tocVolume)) return;
     content.appendChild(renderCompareImageTreeNode(tocVolume, 0));
   }

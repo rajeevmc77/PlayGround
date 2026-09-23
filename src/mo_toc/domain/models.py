@@ -59,3 +59,4 @@ class ImageAsset:
     caption_identifier: str | None = None
     caption_title: str | None = None
     title: str = ""
+    decorative: bool = False
