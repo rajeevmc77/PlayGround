@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from mo_toc.domain.image_classification import is_decorative
 from mo_toc.domain.models import BBox, ImageAsset
 from mo_toc.parsing.image_extractor import RawImage
 
@@ -11,14 +12,16 @@ def write_images(raw_images: list[RawImage], output_dir: str) -> list[ImageAsset
     for i, raw in enumerate(raw_images):
         file_path = out_dir / f"img_{i}.{raw.ext}"
         file_path.write_bytes(raw.data)
+        bbox = BBox(*raw.bbox)
         assets.append(
             ImageAsset(
                 page=raw.page,
-                bbox=BBox(*raw.bbox),
+                bbox=bbox,
                 width=raw.width,
                 height=raw.height,
                 phash=raw.phash,
                 image_path=f"{out_dir.name}/{file_path.name}",
+                decorative=is_decorative(bbox.x1 - bbox.x0, bbox.y1 - bbox.y0),
             )
         )
     return assets

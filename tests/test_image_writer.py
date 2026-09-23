@@ -34,3 +34,35 @@ def test_asset_carries_page_bbox_dimensions_phash(tmp_path):
 def test_empty_list_writes_nothing(tmp_path):
     output_dir = tmp_path / "images"
     assert write_images([], str(output_dir)) == []
+
+
+def test_small_square_raster_image_is_flagged_decorative(tmp_path):
+    output_dir = tmp_path / "images"
+    icon = RawImage(
+        page=1,
+        bbox=(0, 0, 20, 22),
+        width=20,
+        height=22,
+        data=b"icon",
+        ext="png",
+        phash=None,
+        kind="raster",
+    )
+    assets = write_images([icon], str(output_dir))
+    assert assets[0].decorative is True
+
+
+def test_wide_short_vector_formula_is_not_flagged_decorative(tmp_path):
+    output_dir = tmp_path / "images"
+    formula = RawImage(
+        page=1,
+        bbox=(0, 0, 259.2, 33.8),
+        width=346,
+        height=45,
+        data=b"formula",
+        ext="png",
+        phash=None,
+        kind="vector",
+    )
+    assets = write_images([formula], str(output_dir))
+    assert assets[0].decorative is False
