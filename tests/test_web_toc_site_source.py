@@ -159,3 +159,36 @@ def test_context_manager_opens_and_closes_one_shared_client(mock_client_cls):
 
     mock_client_cls.assert_called_once()
     mock_client.aclose.assert_awaited_once()
+
+
+@patch("web_toc.parsing.site_source.httpx.AsyncClient")
+def test_fetch_bytes_requests_the_site_root_path_as_is(mock_client_cls):
+    mock_client = _mock_client(mock_client_cls)
+    response = _fake_response("")
+    response.content = b"woff2-bytes"
+    mock_client.get.return_value = response
+
+    async def scenario():
+        async with HttpxWebSource("https://dev.buildingcode.gov.bc.ca/", "2024") as source:
+            return await source.fetch_bytes("/_next/static/media/BCSans-Regular.woff2")
+
+    assert _run(scenario()) == b"woff2-bytes"
+    mock_client.get.assert_called_once_with(
+        "https://dev.buildingcode.gov.bc.ca/_next/static/media/BCSans-Regular.woff2"
+    )
+
+
+@patch("web_toc.parsing.site_source.httpx.AsyncClient")
+def test_fetch_bytes_returns_none_on_an_http_error(mock_client_cls):
+    mock_client = _mock_client(mock_client_cls)
+    response = _fake_response("")
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "404", request=MagicMock(), response=MagicMock()
+    )
+    mock_client.get.return_value = response
+
+    async def scenario():
+        async with HttpxWebSource("https://dev.buildingcode.gov.bc.ca", "2024") as source:
+            return await source.fetch_bytes("/graphics/missing.jpg")
+
+    assert _run(scenario()) is None

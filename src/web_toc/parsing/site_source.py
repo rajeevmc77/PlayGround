@@ -8,6 +8,7 @@ class WebSource(Protocol):
     async def fetch_navigation_tree(self) -> dict: ...
     async def fetch_content(self, path: str) -> dict | None: ...
     async def fetch_image(self, src: str) -> bytes | None: ...
+    async def fetch_bytes(self, path: str) -> bytes | None: ...
 
 
 class HttpxWebSource:
@@ -51,7 +52,10 @@ class HttpxWebSource:
         return response.json()
 
     async def fetch_image(self, src: str) -> bytes | None:
-        url = f"{self._base_url}/{src}.jpg"
+        return await self.fetch_bytes(f"/{src}.jpg")
+
+    async def fetch_bytes(self, path: str) -> bytes | None:
+        url = f"{self._base_url}{path}"
         try:
             response = await self._client.get(url)
             response.raise_for_status()

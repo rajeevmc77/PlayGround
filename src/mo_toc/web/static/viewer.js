@@ -1,4 +1,14 @@
 import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs";
+import {
+  breadcrumbTrail,
+  isNavNode,
+  navIndent,
+  pageOwner,
+  scrollTargetId,
+  siteNavLabel,
+  sitePathKey,
+  viewTarget,
+} from "./web_toc_view.mjs?v=2";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -193,24 +203,6 @@ function attachWebImagesToOwners(tree, images) {
   });
 }
 
-function showWebImageDetail(img, ownerNode) {
-  document.getElementById("web-image-detail-img").src = webImageUrl(img);
-  document.getElementById("web-image-detail-alt").textContent = img.alt_text || "(no description)";
-  document.getElementById("web-image-detail-citation").textContent = formatNodeLabel(ownerNode);
-  document.getElementById("web-image-detail-link").href =
-    `https://dev.buildingcode.gov.bc.ca${ownerNode.path}?version=2024&date=2024-03-08`;
-  document.getElementById("web-image-detail").style.display = "block";
-}
-
-function renderWebImageRow(img, ownerNode, depth) {
-  const row = document.createElement("div");
-  row.className = "image-row node-row";
-  row.style.marginLeft = `${depth * 4}px`;
-  row.innerHTML = `<img src="${webImageUrl(img)}" loading="lazy"> ${img.alt_text || "(no description)"}`;
-  row.addEventListener("click", () => showWebImageDetail(img, ownerNode));
-  return row;
-}
-
 // The web TOC has no Figure/Equation split like the pdf's caption_kind - every
 // web image is just "Figures" here. "Tables" are real structural content:
 // either a "Table" node extracted from a section's own content (the web
@@ -220,259 +212,248 @@ function renderWebImageRow(img, ownerNode, depth) {
 // node, with the same Sentence -> Clause -> Subclause shape). None of these
 // is an image overlay, so all three count toward "keep this branch" on
 // their own.
-function subtreeHasWebTocContent(node, showFigures, showTables, showBody) {
-  if (showFigures && node._images && node._images.length > 0) return true;
-  if (showTables && (node.type === "Table" || node.type === "spectables")) return true;
-  if (showBody && node.type === "Sentence") return true;
-  return node.children.some((child) =>
-    subtreeHasWebTocContent(child, showFigures, showTables, showBody)
-  );
+function subtreeHasWebTocContent(node, filters) {
+  if (filters.figures && node._images && node._images.length > 0) return true;
+  if (filters.tables && (node.type === "Table" || node.type === "spectables")) return true;
+  if (filters.body && node.type === "Sentence") return true;
+  return node.children.some((child) => subtreeHasWebTocContent(child, filters));
 }
 
-function renderTocWebNode(node, depth, pruning, showFigures, showTables, showBody, inheritedPath) {
-  // Once we're rendering a matched Table's or Sentence's own children,
-  // they're its content, not independent branches to filter - a Row/Cell or
-  // Clause/Subclause is never itself a Table/spectables/Sentence or image
-  // owner, so pruning would hide every row/clause of a match the user just
-  // chose to expand.
-  const childPruning = pruning && node.type !== "Table" && node.type !== "Sentence";
-  const relevantChildren = childPruning
-    ? node.children.filter((child) =>
-        subtreeHasWebTocContent(child, showFigures, showTables, showBody)
-      )
-    : node.children;
-  const ownImages = showFigures ? node._images || [] : [];
-  const hasChildren = relevantChildren.length > 0 || ownImages.length > 0;
-  const nodePath = node.path || inheritedPath;
-  const row = document.createElement("div");
-  row.className = "node-row";
-  row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
+// The tab reproduces the live site itself: its own navigation-tree markup
+// and CSS on the left (site-nav.css, extracted by build_web_pages.py), and
+// its own scraped reading page on the right, in an iframe so the site's
+// full stylesheet can't leak into the other tabs.
+let webPages = new Set();
+let webPathIndex = new Map();
+let webNavControls = new Map();
+let activeWebControl = null;
+const OFFICIAL_SITE = "https://dev.buildingcode.gov.bc.ca";
+const OFFICIAL_QUERY = "?version=2024&date=2024-03-08";
 
-  const childrenBox = document.createElement("div");
-  childrenBox.className = "node-children";
-
-  row.addEventListener("click", () => {
-    showWebContentDetail(node, nodePath);
-    if (!hasChildren) return;
-    childrenBox.classList.toggle("expanded");
-    if (childrenBox.children.length > 0) return;
-    relevantChildren.forEach((child) => {
-      childrenBox.appendChild(
-        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables, showBody, nodePath)
-      );
-    });
-    ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
-  });
-
-  const wrapper = document.createElement("div");
-  wrapper.appendChild(row);
-  wrapper.appendChild(childrenBox);
-  return wrapper;
+function webNavChildren(node, pruning, filters) {
+  const children = node.children.filter(isNavNode);
+  if (!pruning) return children;
+  return children.filter((child) => subtreeHasWebTocContent(child, filters));
 }
 
-function renderTocWebTree() {
-  const showFigures = document.getElementById("filter-web-figures").checked;
-  const showTables = document.getElementById("filter-web-tables").checked;
-  const showBody = document.getElementById("filter-web-body").checked;
-  const pruning = showFigures || showTables || showBody;
-  const content = document.getElementById("tree-web-content");
-  content.innerHTML = "";
-  content.appendChild(
-    renderTocWebNode(webTocTree, 0, pruning, showFigures, showTables, showBody, webTocTree.path)
-  );
-}
-
-// Structural levels above a Section have no single reading page on the live
-// site either - navigating to a Part/Division/Volume there shows "Select a
-// section to start reading" plus a list of its children, not their full
-// inlined content (confirmed by loading one live). Rendering full content
-// for these would mean dumping an entire Division's text into the DOM at
-// once, so they get the same shallow child-list treatment here.
-const WEB_CONTENT_SUMMARY_TYPES = new Set(["root", "volume", "division", "part", "index", "conversions"]);
-
-// Raw extracted text/cell content carries three kinds of site-specific
-// markup. Bold/italic aren't decorative here - the live site uses them to
-// distinguish two different semantic things (a defined term vs. a plain
-// cross-reference), confirmed by reading its own computed styles:
-//   <bold>...</bold>            - wraps its inner (possibly marked-up) text;
-//                                 renders as font-weight 700, no color change
-//   [REF:term:<code>:<label>]   - a defined term ("glossary-term" span):
-//                                 italic, #1a5a96, weight 400
-//   [REF:internal:<citation>:(long|short)] - a cross-reference
-//                                 ("cross-reference-link" button), labelled
-//                                 e.g. "Sentence 3.1.3.1.(1)": NOT italic,
-//                                 #255a90, weight 400
-// Neither glossary popovers nor working cross-reference links are worth
-// building for this internal viewer, but the bold/italic distinction itself
-// is kept (see .web-content-term / .web-content-xref in style.css).
-const MARKUP_RE =
-  /<bold>([\s\S]*?)<\/bold>|\[REF:term:[^:]+:([^\]]+)\]|\[REF:internal:([^:\]]+):(?:long|short)\]/g;
-
-let webCitationIndex = null;
-
-function resolveInternalRefLabel(citation) {
-  if (!webCitationIndex) webCitationIndex = buildWebCitationMap(webTocTree, {});
-  const target = webCitationIndex[citation];
-  if (!target) return citation;
-  return [target.type, target.unified_number].filter(Boolean).join(" ");
-}
-
-function appendMarkedUpText(parent, text) {
-  // text.matchAll() (not MARKUP_RE.exec() in a loop) because this function
-  // recurses into a <bold> match's own inner text: a shared regex object's
-  // .lastIndex is mutated by .exec(), so a recursive call would stomp on the
-  // outer loop's iteration position and hang the page in an infinite loop.
-  // matchAll's iterator carries its own independent position instead.
-  let lastIndex = 0;
-  for (const match of text.matchAll(MARKUP_RE)) {
-    if (match.index > lastIndex) {
-      parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
-    }
-    const [, boldInner, termLabel, internalCitation] = match;
-    if (boldInner !== undefined) {
-      const strong = document.createElement("strong");
-      appendMarkedUpText(strong, boldInner);
-      parent.appendChild(strong);
-    } else if (termLabel !== undefined) {
-      const em = document.createElement("em");
-      em.className = "web-content-term";
-      em.textContent = termLabel;
-      parent.appendChild(em);
-    } else {
-      const span = document.createElement("span");
-      span.className = "web-content-xref";
-      span.textContent = resolveInternalRefLabel(internalCitation);
-      parent.appendChild(span);
-    }
-    lastIndex = match.index + match[0].length;
-  }
-  parent.appendChild(document.createTextNode(text.slice(lastIndex)));
-}
-
-function renderWebContentImage(img) {
-  const figure = document.createElement("figure");
-  figure.className = "web-content-image";
-  const el = document.createElement("img");
-  el.src = webImageUrl(img);
-  el.loading = "lazy";
-  figure.appendChild(el);
-  const caption = document.createElement("figcaption");
-  caption.textContent = img.alt_text || "(no description)";
-  figure.appendChild(caption);
-  return figure;
-}
-
-function renderWebContentTable(node) {
-  const wrapper = document.createElement("div");
-  if (node.title) {
-    const title = document.createElement("div");
-    title.className = "web-content-table-title";
-    title.textContent = node.title;
-    wrapper.appendChild(title);
-  }
-  const table = document.createElement("table");
-  table.className = "web-content-table";
-  // The extracted Table -> Row shape concatenates header_rows then body_rows
-  // with no marker of which is which (table_extractor.py); every real table
-  // seen has exactly one header row, so the first row is rendered as the
-  // header (<th>, bold, shaded) the way the live site's table-block__header-
-  // cell renders it, and the rest as plain data cells.
-  node.children.forEach((row, rowIndex) => {
-    const tr = document.createElement("tr");
-    const cellTag = rowIndex === 0 ? "th" : "td";
-    row.children.forEach((cell) => {
-      const cellEl = document.createElement(cellTag);
-      appendMarkedUpText(cellEl, cell.content);
-      tr.appendChild(cellEl);
-    });
-    table.appendChild(tr);
-  });
-  wrapper.appendChild(table);
-  return wrapper;
-}
-
-// Matches the live site's sentenceNumber/clauseNumber/subclauseNumber spans:
-// only the sentence number is bold, and each level has its own text color.
-const NUMBER_LABEL_CLASS = {
-  Sentence: "web-content-sentence-number",
-  Clause: "web-content-clause-number",
-  Subclause: "web-content-subclause-number",
-};
-
-function renderWebContentTextItem(node, tag) {
+function createElement(tag, className) {
   const el = document.createElement(tag);
-  el.className = "web-content-item";
-  const label = document.createElement("span");
-  label.className = NUMBER_LABEL_CLASS[node.type] || "";
-  label.textContent = `${node.identifier} `;
-  el.appendChild(label);
-  appendMarkedUpText(el, node.content);
+  if (className) el.className = className;
   return el;
 }
 
-function renderWebContentSummary(node) {
-  const container = document.createElement("div");
-  container.className = "web-content-node";
-  const hint = document.createElement("p");
-  hint.className = "compare-placeholder";
-  hint.textContent = "No single reading page at this level - pick an item below, or a node further down the left tree.";
-  container.appendChild(hint);
-  const list = document.createElement("ul");
-  list.className = "web-content-summary-list";
-  node.children.forEach((child) => {
-    const li = document.createElement("li");
-    li.textContent = formatNodeLabel(child);
+function renderNavTreeLink(node, depth, expandable) {
+  const wrapper = createElement("div", "nav-tree-link-wrapper");
+  wrapper.style.paddingLeft = `${navIndent(depth)}px`;
+  // The site draws no selection bar beside a volume heading.
+  if (node.type !== "volume") {
+    wrapper.appendChild(createElement("div", "nav-tree-selection nav-tree-selection--inactive"));
+  }
+  const button = createElement("button", `nav-tree-link nav-tree-link--${node.type}`);
+  if (expandable) button.setAttribute("aria-expanded", "false");
+  const text = createElement("span", "nav-tree-text");
+  const title = createElement("span", "nav-tree-title");
+  title.textContent = siteNavLabel(node);
+  text.appendChild(title);
+  button.appendChild(text);
+  wrapper.appendChild(button);
+  return { wrapper, button };
+}
+
+function setActiveWebControl(control) {
+  if (activeWebControl) activeWebControl.setActive(false);
+  activeWebControl = control;
+  if (control) control.setActive(true);
+}
+
+function renderTocWebNode(node, depth, pruning, filters, parentChain) {
+  const chain = [...parentChain, node];
+  const children = webNavChildren(node, pruning, filters);
+  const item = createElement("div", "nav-tree-item");
+  const { wrapper, button } = renderNavTreeLink(node, depth, children.length > 0);
+  item.appendChild(wrapper);
+  let childrenBox = null;
+
+  const control = {
+    expand(open = true) {
+      if (!children.length) return;
+      if (open && !childrenBox) {
+        childrenBox = createElement("div", "nav-tree-children");
+        childrenBox.setAttribute("role", "group");
+        children.forEach((child) =>
+          childrenBox.appendChild(renderTocWebNode(child, depth + 1, pruning, filters, chain))
+        );
+        item.appendChild(childrenBox);
+      }
+      if (childrenBox) childrenBox.hidden = !open;
+      button.setAttribute("aria-expanded", String(open));
+    },
+    setActive(active) {
+      wrapper.classList.toggle("nav-tree-link-wrapper--active", active);
+      button.classList.toggle("nav-tree-link--active", active);
+      const bar = wrapper.querySelector(".nav-tree-selection");
+      if (bar) bar.className = `nav-tree-selection nav-tree-selection--${active ? "active" : "inactive"}`;
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    },
+  };
+  webNavControls.set(node.citation, control);
+
+  button.addEventListener("click", () => {
+    control.expand(button.getAttribute("aria-expanded") !== "true");
+    // Volumes and divisions have no reading page on the site - its own
+    // tree only expands them.
+    if (node.type === "volume" || node.type === "division") return;
+    setActiveWebControl(control);
+    showWebReading(chain);
+  });
+  return item;
+}
+
+function webFilters() {
+  return {
+    figures: document.getElementById("filter-web-figures").checked,
+    tables: document.getElementById("filter-web-tables").checked,
+    body: document.getElementById("filter-web-body").checked,
+  };
+}
+
+function renderTocWebTree() {
+  const filters = webFilters();
+  const pruning = filters.figures || filters.tables || filters.body;
+  const content = document.getElementById("tree-web-content");
+  content.innerHTML = "";
+  webNavControls = new Map();
+  activeWebControl = null;
+  // The site opens with its first volume expanded; the root isn't shown.
+  webNavChildren(webTocTree, pruning, filters).forEach((volume, index) => {
+    content.appendChild(renderTocWebNode(volume, 0, pruning, filters, [webTocTree]));
+    if (index === 0) webNavControls.get(volume.citation).expand();
+  });
+}
+
+// Expands every ancestor so the node's own row exists, then selects it.
+function revealWebNode(chain) {
+  chain.slice(1, -1).forEach((ancestor) => webNavControls.get(ancestor.citation)?.expand());
+  const control = webNavControls.get(chain[chain.length - 1].citation);
+  setActiveWebControl(control || null);
+  control?.expand();
+}
+
+function renderWebBreadcrumbs(chain) {
+  const list = document.querySelector("#web-breadcrumbs .breadcrumbs-list");
+  list.innerHTML = "";
+  const trail = breadcrumbTrail(chain);
+  trail.forEach((crumb, index) => {
+    const li = createElement("li", "breadcrumbs-item");
+    const link = createElement(crumb.navigable ? "a" : "span", "breadcrumbs-link");
+    if (!crumb.navigable) link.classList.add("breadcrumbs-link--non-navigable");
+    if (crumb.current) {
+      link.classList.add("breadcrumbs-link--current");
+      link.setAttribute("aria-current", "page");
+    }
+    if (crumb.navigable) {
+      const crumbChain = chain.slice(0, chain.indexOf(crumb.node) + 1);
+      link.href = "#";
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        navigateWeb(crumbChain);
+      });
+    }
+    const title = createElement("span", "breadcrumbs-title");
+    title.textContent = crumb.label;
+    const tooltip = createElement("span", "breadcrumbs-tooltip");
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.textContent = crumb.full;
+    link.append(title, tooltip);
+    li.appendChild(link);
+    if (index < trail.length - 1) {
+      const separator = createElement("span", "breadcrumbs-separator");
+      separator.setAttribute("aria-hidden", "true");
+      separator.textContent = "/";
+      li.appendChild(separator);
+    }
     list.appendChild(li);
   });
-  container.appendChild(list);
-  return container;
 }
 
-// Matches the live site's partTitle/sectionTitle/subsectionHeading/
-// articleHeading elements (h1/h2/h3/h4 respectively, each with its own
-// font-size - subsectionHeading is actually larger than sectionTitle there).
-// Types with no page of their own (part_appendix, division_appendix,
-// spectables, front-matter article) fall back to the article level.
-const HEADING_TAG = { part: "h1", section: "h2", subsection: "h3", article: "h4" };
-
-function renderWebContentNode(node) {
-  if (WEB_CONTENT_SUMMARY_TYPES.has(node.type)) return renderWebContentSummary(node);
-
-  const container = document.createElement("div");
-  container.className = "web-content-node";
-
-  if (node.type === "Table") {
-    container.appendChild(renderWebContentTable(node));
-  } else if (node.type === "Sentence" || node.type === "Clause" || node.type === "Subclause") {
-    container.appendChild(renderWebContentTextItem(node, "p"));
-    node.children.forEach((child) => container.appendChild(renderWebContentNode(child)));
-  } else {
-    if (node.title) {
-      const heading = document.createElement(HEADING_TAG[node.type] || "h4");
-      heading.textContent = [node.unified_number, node.title].filter(Boolean).join(" ");
-      container.appendChild(heading);
-    }
-    node.children.forEach((child) => container.appendChild(renderWebContentNode(child)));
-  }
-
-  (node._images || []).forEach((img) => container.appendChild(renderWebContentImage(img)));
-  return container;
+// A subsection's or article's page on the site is its section page with
+// just the Part title and that one block: <div class="sectionRenderer">
+// holding only the block, no sectionTitle (confirmed against the live DOM).
+function sliceToBlock(doc, target) {
+  const isSubsection = target.type === "subsection";
+  const heading = [...doc.querySelectorAll(isSubsection ? ".subsectionHeading" : ".articleHeading")]
+    .find((el) => el.textContent.startsWith(`${target.identifier}. `));
+  const block = heading?.closest(isSubsection ? ".subsectionBlock" : ".articleBlock");
+  const renderer = doc.querySelector(".sectionRenderer");
+  if (block && renderer) renderer.replaceChildren(block);
 }
 
-function showWebContentDetail(node, path) {
-  document.getElementById("web-content-header").textContent = formatNodeLabel(node);
-  const body = document.getElementById("web-content-body");
-  body.classList.remove("compare-placeholder");
-  body.innerHTML = "";
-  body.appendChild(renderWebContentNode(node));
+function interceptSiteLinks(doc) {
+  doc.addEventListener("click", (event) => {
+    const anchor = event.target.closest("a[href]");
+    if (!anchor) return;
+    event.preventDefault();
+    const url = new URL(anchor.href);
+    const chain = webPathIndex.get(sitePathKey(url.pathname));
+    if (chain) navigateWeb(chain);
+    else window.open(`${OFFICIAL_SITE}${url.pathname}${url.search}`, "_blank", "noopener");
+  });
+}
+
+function applyWebView(doc, chain, owner) {
+  const target = viewTarget(chain);
+  if (target && chain.indexOf(target) > chain.indexOf(owner)) sliceToBlock(doc, target);
+  interceptSiteLinks(doc);
+  const scrollId = scrollTargetId(chain[chain.length - 1]);
+  const element = scrollId ? doc.getElementById(scrollId) : null;
+  if (element) element.scrollIntoView({ block: "start" });
+  else doc.defaultView.scrollTo(0, 0);
+}
+
+function viewedChain(chain, owner) {
+  const target = viewTarget(chain);
+  const last = target && chain.indexOf(target) > chain.indexOf(owner) ? target : owner;
+  return chain.slice(0, chain.indexOf(last) + 1);
+}
+
+function showWebReading(chain) {
+  const owner = pageOwner(chain, webPages);
+  const frame = document.getElementById("web-page-frame");
+  const placeholder = document.getElementById("web-reading-placeholder");
   const link = document.getElementById("web-content-link");
-  if (path) {
-    link.href = `https://dev.buildingcode.gov.bc.ca${path}?version=2024&date=2024-03-08`;
-    link.style.display = "inline-block";
-  } else {
-    link.style.display = "none";
+  frame.hidden = !owner;
+  placeholder.hidden = Boolean(owner);
+  if (!owner) {
+    renderWebBreadcrumbs(chain);
+    placeholder.textContent = "No reading page for this item - run src/build_web_pages.py.";
+    link.hidden = true;
+    return;
   }
+  const shown = viewedChain(chain, owner);
+  renderWebBreadcrumbs(shown);
+  const path = shown[shown.length - 1].path;
+  link.href = `${OFFICIAL_SITE}${path}${OFFICIAL_QUERY}`;
+  link.hidden = !path;
+  frame.onload = () => applyWebView(frame.contentDocument, chain, owner);
+  // Always a fresh load: a previous view may have sliced the same page's DOM.
+  frame.src = `/web-page/${encodeURIComponent(owner.citation)}?t=${Date.now()}`;
+}
+
+function navigateWeb(chain) {
+  revealWebNode(chain);
+  showWebReading(chain);
+}
+
+function indexWebPaths(node, chain) {
+  const nodeChain = [...chain, node];
+  if (node.path && isNavNode(node)) webPathIndex.set(sitePathKey(node.path), nodeChain);
+  node.children.forEach((child) => indexWebPaths(child, nodeChain));
+}
+
+async function loadWebPages() {
+  const res = await fetch("/api/web-pages");
+  webPages = res.ok ? new Set(Object.keys(await res.json())) : new Set();
 }
 
 async function loadWebToc() {
@@ -485,12 +466,10 @@ async function loadWebToc() {
   const data = await res.json();
   webTocTree = data.tree;
   attachWebImagesToOwners(webTocTree, data.images);
+  indexWebPaths(webTocTree, []);
+  await loadWebPages();
   renderTocWebTree();
 }
-
-document.getElementById("web-image-detail-close").addEventListener("click", () => {
-  document.getElementById("web-image-detail").style.display = "none";
-});
 
 let compareWebImages = [];
 
@@ -654,7 +633,7 @@ function switchTab(active) {
   document.getElementById("controls").style.display = showPdf ? "block" : "none";
   document.getElementById("page-canvas").style.display = showPdf ? "block" : "none";
   if (!showPdf) document.getElementById("highlight").style.display = "none";
-  document.getElementById("web-content").style.display = active === "toc-web" ? "block" : "none";
+  document.getElementById("web-reading").style.display = active === "toc-web" ? "flex" : "none";
 }
 
 TABS.forEach((name) => {

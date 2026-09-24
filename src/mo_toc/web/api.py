@@ -5,12 +5,46 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from web_toc.output.page_writer import asset_file, page_file
+
+_NOT_BUILT = "Run src/build_web_pages.py first"
+
+
+def _add_web_page_routes(app: FastAPI, web_pages_dir: str | None) -> None:
+    """Serves the live site's own scraped reading pages (build_web_pages.py)
+    and the site stylesheets/fonts/images they reference, mirrored under
+    the same paths the site uses."""
+    pages_dir = Path(web_pages_dir) if web_pages_dir else None
+
+    def built_dir() -> Path:
+        if pages_dir is None or not (pages_dir / "pages.json").exists():
+            raise HTTPException(status_code=503, detail=_NOT_BUILT)
+        return pages_dir
+
+    def existing(path: Path | None) -> Path:
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="Not found")
+        return path
+
+    @app.get("/api/web-pages")
+    def get_web_pages():
+        return JSONResponse(json.loads((built_dir() / "pages.json").read_text()))
+
+    @app.get("/web-page/{citation}")
+    def get_web_page(citation: str):
+        return FileResponse(str(existing(page_file(built_dir(), citation))))
+
+    @app.get("/web-assets/{site_path:path}")
+    def get_web_asset(site_path: str):
+        return FileResponse(str(existing(asset_file(built_dir() / "assets", f"/{site_path}"))))
+
 
 def create_app(
     toc_json_path: str,
     pdf_path: str,
     images_dir: str,
     web_toc_json_path: str | None = None,
+    web_pages_dir: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="MO Package TOC Viewer")
     payload = json.loads(Path(toc_json_path).read_text())
@@ -57,6 +91,8 @@ def create_app(
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Cached image file missing")
         return FileResponse(str(file_path))
+
+    _add_web_page_routes(app, web_pages_dir)
 
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
