@@ -37,6 +37,7 @@ Never set that in production — serve over HTTPS and remove it.
 """
 
 import difflib
+import html
 import os
 import re
 
@@ -107,25 +108,39 @@ def fetch_people_api(creds: Credentials):
             results = (
                 service.people()
                 .listDirectoryPeople(
-                    readMask="names,emailAddresses,addresses",
+                    readMask="names,emailAddresses,addresses,photos",
                     sources="DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE",
                     pageSize=1000,
                     pageToken=page_token,
                 )
                 .execute()
             )
-            for person in results.get("people", []):
-                names = person.get("names", [{}])
-                name = names[0].get("displayName", "No Name") if names else "No Name"
-                emails = [e.get("value") for e in person.get("emailAddresses", [])]
-                addresses = [format_person_address(a) for a in person.get("addresses", [])]
-                users.append({"name": name, "emails": emails, "addresses": addresses})
+            users.extend(person_to_user(p) for p in results.get("people", []))
             page_token = results.get("nextPageToken")
             if not page_token:
                 break
         return True, users, None
     except HttpError as e:
         return False, [], e
+
+
+def person_to_user(person: dict) -> dict:
+    names = person.get("names", [{}])
+    return {
+        "name": names[0].get("displayName", "No Name") if names else "No Name",
+        "emails": [e.get("value") for e in person.get("emailAddresses", [])],
+        "addresses": [format_person_address(a) for a in person.get("addresses", [])],
+        "photo": primary_photo_url(person),
+    }
+
+
+def primary_photo_url(person: dict) -> str | None:
+    """Primary photo URL, or None if the person only has Google's generated letter avatar."""
+    photos = person.get("photos", [])
+    primary = next((p for p in photos if p.get("metadata", {}).get("primary")), None)
+    if not primary or primary.get("default"):
+        return None
+    return primary.get("url")
 
 
 def format_person_address(addr: dict) -> str:
@@ -158,17 +173,22 @@ def fetch_admin_sdk(creds: Credentials):
                 )
                 .execute()
             )
-            for user in results.get("users", []):
-                name = user.get("name", {}).get("fullName", "No Name")
-                email = user.get("primaryEmail")
-                addresses = [format_admin_address(a) for a in user.get("addresses", [])]
-                users.append({"name": name, "emails": [email], "addresses": addresses})
+            users.extend(admin_user_to_user(u) for u in results.get("users", []))
             page_token = results.get("nextPageToken")
             if not page_token:
                 break
         return True, users, None
     except HttpError as e:
         return False, [], e
+
+
+def admin_user_to_user(user: dict) -> dict:
+    return {
+        "name": user.get("name", {}).get("fullName", "No Name"),
+        "emails": [user.get("primaryEmail")],
+        "addresses": [format_admin_address(a) for a in user.get("addresses", [])],
+        "photo": user.get("thumbnailPhotoUrl"),
+    }
 
 
 def fetch_drive_folders(creds: Credentials, parent_id: str):
@@ -305,9 +325,21 @@ def render_folder_table(folders: list) -> str:
     """
 
 
+def render_photo_cell(user: dict) -> str:
+    if not user.get("photo"):
+        return "<td>—</td>"
+    src, alt = html.escape(user["photo"], quote=True), html.escape(user["name"], quote=True)
+    return (
+        f'<td><img src="{src}" alt="{alt}" width="32" height="32" '
+        'style="border-radius:50%;object-fit:cover;display:block" '
+        'referrerpolicy="no-referrer"></td>'
+    )
+
+
 def render_table(users: list, source: str) -> str:
     rows = "".join(
-        f"<tr><td>{i}</td><td>{u['name']}</td><td>{', '.join(u['emails'])}</td>"
+        f"<tr><td>{i}</td>{render_photo_cell(u)}<td>{u['name']}</td>"
+        f"<td>{', '.join(u['emails'])}</td>"
         f"<td>{', '.join(u.get('addresses', [])) or '—'}</td></tr>"
         for i, u in enumerate(sorted(users, key=lambda x: x["name"].lower()), start=1)
     )
@@ -316,7 +348,7 @@ def render_table(users: list, source: str) -> str:
     <p>{len(users)} entries — source: {source}</p>
     <p><a href="/logout">Logout</a></p>
     <table border="1" cellpadding="6" cellspacing="0">
-      <tr><th>#</th><th>Name</th><th>Email(s)</th><th>Address(es)</th></tr>
+      <tr><th>#</th><th>Photo</th><th>Name</th><th>Email(s)</th><th>Address(es)</th></tr>
       {rows}
     </table>
     """
