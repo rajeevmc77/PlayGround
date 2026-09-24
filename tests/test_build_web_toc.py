@@ -66,7 +66,7 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
     mock_extract_images.assert_called_once_with(
         {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
     )
-    expected_path = str(Path(tmp_path) / "web_toc.json")
+    expected_path = str(Path(tmp_path) / "bcbc_web.json")
     mock_download_images.assert_called_once_with(
         ["WEB_IMAGE"], mock_source, str(Path(tmp_path) / "web_images")
     )
@@ -104,7 +104,7 @@ def test_run_skips_nodes_where_content_url_returns_none(
     mock_download_images.assert_called_once_with(
         [], mock_source, str(Path(tmp_path) / "web_images")
     )
-    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "web_toc.json"))
+    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "bcbc_web.json"))
 
 
 @patch("build_web_toc.write_json")
@@ -146,7 +146,7 @@ def test_run_skips_nodes_where_fetch_content_returns_none(
     mock_download_images.assert_called_once_with(
         [], mock_source, str(Path(tmp_path) / "web_images")
     )
-    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "web_toc.json"))
+    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "bcbc_web.json"))
 
 
 @patch("build_web_toc.write_json")
