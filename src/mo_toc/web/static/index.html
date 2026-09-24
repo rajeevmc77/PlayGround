@@ -8,19 +8,17 @@
 <body>
   <div id="sidebar">
     <div id="tabs">
-      <button id="tab-toc" class="active">Table of Contents</button>
-      <button id="tab-images">Images</button>
-      <button id="tab-image-tree">Table of Images</button>
+      <button id="tab-toc" class="active">Table of Contents - pdf</button>
       <button id="tab-web-images">BC Code (Web)</button>
       <button id="tab-compare">Compare</button>
     </div>
-    <div id="tree"></div>
-    <div id="images" style="display:none">
-      <label><input type="checkbox" id="declutter" checked> Hide decorative images (small icons/logos)</label>
-    </div>
-    <div id="image-tree" style="display:none">
-      <label><input type="checkbox" id="declutter-tree" checked> Hide decorative images (small icons/logos)</label>
-      <div id="image-tree-content"></div>
+    <div id="tree">
+      <div id="toc-filters">
+        <label><input type="checkbox" id="filter-figures" checked> Figures</label>
+        <label><input type="checkbox" id="filter-equations" checked> Equations / Formula</label>
+        <label><input type="checkbox" id="filter-tables" checked> Tables</label>
+      </div>
+      <div id="tree-content"></div>
     </div>
     <div id="web-images" style="display:none">
       <div id="web-image-tree-content"></div>
@@ -58,6 +56,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=9"></script>
+  <script type="module" src="/static/viewer.js?v=10"></script>
 </body>
 </html>
