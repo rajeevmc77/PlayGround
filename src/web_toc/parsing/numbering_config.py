@@ -15,10 +15,13 @@ WEB_TOC_TYPE_MARKERS: dict[str, str | None] = {
     "index": "Idx",
     "conversions": "Conv",
     "spectables": "Spec",
+    "Table": "Tbl",
 }
 
-# Division numbers by its lettered identifier (e.g. "B") instead of position.
-WEB_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"division"})
+# Division numbers by its lettered identifier (e.g. "B") instead of position;
+# Row and Cell number by their own identifier (e.g. "row1", "col1") directly -
+# same convention as mo_toc's MO_TOC_IDENTIFIER_TYPES.
+WEB_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"division", "Row", "Cell"})
 
 # web_toc has no Sentence/Clause/Subclause-equivalent nodes today.
 WEB_TOC_SUFFIX_TYPES: frozenset[str] = frozenset()
