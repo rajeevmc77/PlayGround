@@ -220,7 +220,12 @@ function subtreeHasWebTocContent(node, showFigures, showTables) {
 }
 
 function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
-  const relevantChildren = pruning
+  // Once we're rendering a matched Table's own Row/Cell children, they're
+  // its content, not independent branches to filter - none of them are
+  // themselves a Table/spectables or image owner, so pruning would hide
+  // every row of a table the user just chose to expand.
+  const childPruning = pruning && node.type !== "Table";
+  const relevantChildren = childPruning
     ? node.children.filter((child) => subtreeHasWebTocContent(child, showFigures, showTables))
     : node.children;
   const ownImages = showFigures ? node._images || [] : [];
@@ -238,7 +243,9 @@ function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;
     relevantChildren.forEach((child) => {
-      childrenBox.appendChild(renderTocWebNode(child, depth + 1, pruning, showFigures, showTables));
+      childrenBox.appendChild(
+        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables)
+      );
     });
     ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
   });
