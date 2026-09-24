@@ -16,14 +16,62 @@ function formatNodeLabel(node) {
 async function loadToc() {
   const res = await fetch("/api/toc");
   tocVolume = await res.json();
-  document.getElementById("tree").appendChild(renderNode(tocVolume, 0));
 }
 
-function renderNode(node, depth) {
+async function loadAllImages() {
+  const res = await fetch("/api/images");
+  allImages = await res.json();
+}
+
+// A Figure is any image the PDF itself captioned "Figure ...". An uncaptioned,
+// non-decorative image is an inline Equation/Formula crop (see
+// mo_toc.domain.image_classification.is_decorative for what "decorative"
+// excludes) - the building code never leaves a genuine Figure uncaptioned.
+function isFigure(img) {
+  return img.caption_kind === "Figure";
+}
+
+function isEquation(img) {
+  return !img.caption_kind && !img.decorative;
+}
+
+function clearAttachedTocImages(node) {
+  delete node._tocImages;
+  node.children.forEach(clearAttachedTocImages);
+}
+
+// A Table node is genuine document structure (attached in place by
+// mo_toc.parsing.table_extractor.attach_tables), not an overlay row like a
+// Figure/Equation - it counts toward "keep this branch" whenever the Tables
+// filter is on, independent of whether it happens to own any images.
+function subtreeHasTocContent(node, showTables) {
+  if (node._tocImages && node._tocImages.length > 0) return true;
+  if (showTables && node.type === "Table") return true;
+  return node.children.some((child) => subtreeHasTocContent(child, showTables));
+}
+
+function attachTocImages(showFigures, showEquations) {
+  clearAttachedTocImages(tocVolume);
+  const citationMap = buildCitationMap(tocVolume, {});
+  allImages.forEach((img, index) => {
+    const matches = (showFigures && isFigure(img)) || (showEquations && isEquation(img));
+    if (!matches) return;
+    const owner = citationMap[img.owner_citation];
+    if (!owner) return;
+    if (!owner._tocImages) owner._tocImages = [];
+    owner._tocImages.push({ img, index });
+  });
+}
+
+function renderTocNode(node, depth, pruning, showTables) {
+  const relevantChildren = pruning
+    ? node.children.filter((child) => subtreeHasTocContent(child, showTables))
+    : node.children;
+  const ownImages = node._tocImages || [];
+  const hasChildren = relevantChildren.length > 0 || ownImages.length > 0;
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  const hasChildren = node.children && node.children.length > 0;
   row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
@@ -32,15 +80,34 @@ function renderNode(node, depth) {
     goToLocation(node.page, node.bbox);
     if (!hasChildren) return;
     childrenBox.classList.toggle("expanded");
-    if (childrenBox.children.length === 0) {
-      node.children.forEach((child) => childrenBox.appendChild(renderNode(child, depth + 1)));
-    }
+    if (childrenBox.children.length > 0) return;
+    relevantChildren.forEach((child) => {
+      childrenBox.appendChild(renderTocNode(child, depth + 1, pruning, showTables));
+    });
+    ownImages.forEach(({ img, index }) => {
+      childrenBox.appendChild(renderImageRow(img, index, depth + 1));
+    });
   });
 
   const wrapper = document.createElement("div");
   wrapper.appendChild(row);
   wrapper.appendChild(childrenBox);
   return wrapper;
+}
+
+function renderTocTree() {
+  const showFigures = document.getElementById("filter-figures").checked;
+  const showEquations = document.getElementById("filter-equations").checked;
+  const showTables = document.getElementById("filter-tables").checked;
+  const pruning = showFigures || showEquations || showTables;
+  if (showFigures || showEquations) {
+    attachTocImages(showFigures, showEquations);
+  } else {
+    clearAttachedTocImages(tocVolume);
+  }
+  const content = document.getElementById("tree-content");
+  content.innerHTML = "";
+  content.appendChild(renderTocNode(tocVolume, 0, pruning, showTables));
 }
 
 function isHiddenByDeclutter(img, declutterOn) {
@@ -63,23 +130,6 @@ function renderImageRow(img, index, depth) {
   row.innerHTML = `<img src="/api/image/${index}"> ${imageLabel(img)}`;
   row.addEventListener("click", () => goToLocation(img.page, img.bbox));
   return row;
-}
-
-async function loadImages() {
-  const res = await fetch("/api/images");
-  allImages = await res.json();
-  const container = document.getElementById("images");
-  const declutter = document.getElementById("declutter");
-
-  function render() {
-    container.querySelectorAll(".image-row").forEach((el) => el.remove());
-    allImages.forEach((img, index) => {
-      if (isHiddenByDeclutter(img, declutter.checked)) return;
-      container.appendChild(renderImageRow(img, index, 0));
-    });
-  }
-  declutter.addEventListener("change", render);
-  render();
 }
 
 function buildCitationMap(node, map) {
@@ -108,49 +158,6 @@ function attachImagesToOwners(declutterOn) {
 function subtreeHasImages(node) {
   if (node._images && node._images.length > 0) return true;
   return node.children.some(subtreeHasImages);
-}
-
-function renderImageTreeNode(node, depth) {
-  const relevantChildren = node.children.filter(subtreeHasImages);
-  const ownImages = node._images || [];
-  const row = document.createElement("div");
-  row.className = "node-row";
-  row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `▸ ${formatNodeLabel(node)}`.trim();
-
-  const childrenBox = document.createElement("div");
-  childrenBox.className = "node-children";
-
-  row.addEventListener("click", () => {
-    goToLocation(node.page, node.bbox);
-    childrenBox.classList.toggle("expanded");
-    if (childrenBox.children.length > 0) return;
-    relevantChildren.forEach((child) => {
-      childrenBox.appendChild(renderImageTreeNode(child, depth + 1));
-    });
-    ownImages.forEach(({ img, index }) => {
-      childrenBox.appendChild(renderImageRow(img, index, depth + 1));
-    });
-  });
-
-  const wrapper = document.createElement("div");
-  wrapper.appendChild(row);
-  wrapper.appendChild(childrenBox);
-  return wrapper;
-}
-
-async function loadImageTree() {
-  const content = document.getElementById("image-tree-content");
-  const declutter = document.getElementById("declutter-tree");
-
-  function render() {
-    content.innerHTML = "";
-    attachImagesToOwners(declutter.checked);
-    if (!subtreeHasImages(tocVolume)) return;
-    content.appendChild(renderImageTreeNode(tocVolume, 0));
-  }
-  declutter.addEventListener("change", render);
-  render();
 }
 
 function webImageUrl(img) {
@@ -392,11 +399,8 @@ async function goToLocation(pageNumber, bbox) {
   showHighlight(viewport, bbox);
 }
 
-const TABS = ["toc", "images", "image-tree", "web-images", "compare"];
-const TAB_CONTENT_ID = {
-  toc: "tree", images: "images", "image-tree": "image-tree", "web-images": "web-images",
-  compare: "compare",
-};
+const TABS = ["toc", "web-images", "compare"];
+const TAB_CONTENT_ID = { toc: "tree", "web-images": "web-images", compare: "compare" };
 const TAB_ACTIVE_DISPLAY = { compare: "flex" };
 
 function switchTab(active) {
@@ -416,13 +420,16 @@ document.getElementById("prev-page").addEventListener("click", () => {
 document.getElementById("next-page").addEventListener("click", () => {
   if (currentPage < pdfDoc.numPages) renderPage(currentPage + 1);
 });
+["filter-figures", "filter-equations", "filter-tables"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", renderTocTree);
+});
 
 (async function init() {
   pdfDoc = await pdfjsLib.getDocument("/pdf").promise;
   await renderPage(1);
   await loadToc();
-  await loadImages();
-  await loadImageTree();
+  await loadAllImages();
+  renderTocTree();
   await loadWebToc();
   await loadCompareTab();
 })();

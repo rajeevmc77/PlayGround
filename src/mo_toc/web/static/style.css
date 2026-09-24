@@ -4,7 +4,8 @@ body { margin: 0; display: flex; height: 100vh; }
 #tabs { position: relative; z-index: 3; background: #fff; }
 #tabs button { margin-right: 4px; }
 #tabs button.active { font-weight: bold; }
-#tree, #images { margin-top: var(--gap); }
+#tree { margin-top: var(--gap); }
+#toc-filters { display: flex; gap: var(--gap); flex-wrap: wrap; margin-bottom: var(--gap); }
 .node-row { cursor: pointer; padding: 2px 0; white-space: nowrap; }
 .node-row:hover { background: #eef; }
 .node-children { margin-left: 14px; display: none; }
