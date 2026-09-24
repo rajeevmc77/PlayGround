@@ -8,16 +8,7 @@ comparison is needed here at all.
 """
 
 from web_toc.domain.models import WebImage
-
-
-def _resolve_owner(figure_id: str, citations: set[str], fallback_citation: str) -> str:
-    parts = figure_id.split(".")
-    while parts:
-        candidate = ".".join(parts)
-        if candidate in citations:
-            return candidate
-        parts.pop()
-    return fallback_citation
+from web_toc.parsing.owner_resolution import resolve_owner
 
 
 def _walk_figures(node):
@@ -38,7 +29,7 @@ def extract_images(content: dict, citations: set[str], fallback_citation: str) -
         if figure_id is None:
             continue
         graphic = figure.get("graphic", {})
-        owner = _resolve_owner(figure_id, citations, fallback_citation)
+        owner = resolve_owner(figure_id, citations, fallback_citation)
         images.append(
             WebImage(
                 id=figure_id,

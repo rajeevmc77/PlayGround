@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Parses the live BC Building Code website's navigation tree + per-section
-content into output/web_toc.json: a hierarchical index plus every embedded
+content into output/bcbc_web.json: a hierarchical index plus every embedded
 figure, matched to the deepest document node it belongs to.
 
 Usage:
@@ -26,6 +26,7 @@ from web_toc.parsing.numbering_config import (
     WEB_TOC_TYPE_MARKERS,
 )
 from web_toc.parsing.site_source import HttpxWebSource
+from web_toc.parsing.table_extractor import attach_tables, extract_tables
 from web_toc.parsing.tree_builder import build_tree, collect_citations
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -57,22 +58,9 @@ async def _fetch_content(source, semaphore, url):
         return await source.fetch_content(url)
 
 
-def _images_for(node, url, content, citations):
-    if content is None:
-        print(f"  skipped (no content at {url})", file=sys.stderr)
-        return []
-    return extract_images(content, citations, node.citation)
-
-
 async def run(base_url: str, version: str, output_dir: str) -> None:
     async with HttpxWebSource(base_url, version) as source:
         root = build_tree(await source.fetch_navigation_tree())
-        assign_unified_numbers(
-            root.children,
-            WEB_TOC_TYPE_MARKERS,
-            identifier_types=WEB_TOC_IDENTIFIER_TYPES,
-            suffix_types=WEB_TOC_SUFFIX_TYPES,
-        )
         citations = collect_citations(root)
 
         targets = list(_content_bearing_nodes(root, version))
@@ -82,12 +70,28 @@ async def run(base_url: str, version: str, output_dir: str) -> None:
         )
 
         images = []
+        owned_tables = []
         for (node, url), content in zip(targets, contents, strict=True):
-            images.extend(_images_for(node, url, content, citations))
+            if content is None:
+                print(f"  skipped (no content at {url})", file=sys.stderr)
+                continue
+            images.extend(extract_images(content, citations, node.citation))
+            owned_tables.extend(extract_tables(content, citations, node.citation))
+
+        attach_tables(root, owned_tables)
+        # Runs after attach_tables so the Table/Row/Cell nodes it just added
+        # get numbered too - matching the pdf pipeline's build_mo_toc.py,
+        # which also numbers only after its own attach_tables call.
+        assign_unified_numbers(
+            root.children,
+            WEB_TOC_TYPE_MARKERS,
+            identifier_types=WEB_TOC_IDENTIFIER_TYPES,
+            suffix_types=WEB_TOC_SUFFIX_TYPES,
+        )
 
         await download_images(images, source, str(Path(output_dir) / "web_images"))
 
-    write_json(root, images, str(Path(output_dir) / "web_toc.json"))
+    write_json(root, images, str(Path(output_dir) / "bcbc_web.json"))
 
 
 def main() -> None:
@@ -98,7 +102,7 @@ def main() -> None:
     args = parser.parse_args()
     print(f"Parsing {args.base_url} (version {args.version}) ...", file=sys.stderr)
     asyncio.run(run(args.base_url, args.version, args.output_dir))
-    print(f"Wrote {args.output_dir}/web_toc.json", file=sys.stderr)
+    print(f"Wrote {args.output_dir}/bcbc_web.json", file=sys.stderr)
 
 
 if __name__ == "__main__":

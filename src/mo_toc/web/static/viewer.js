@@ -207,17 +207,25 @@ function renderWebImageRow(img, ownerNode, depth) {
 }
 
 // The web TOC has no Figure/Equation split like the pdf's caption_kind - every
-// web image is just "Figures" here. "Tables" are the site's own spectables
-// nodes (real structural entries, the web equivalent of the pdf's Table nodes),
-// not an image overlay, so they count toward "keep this branch" on their own.
+// web image is just "Figures" here. "Tables" are real structural content:
+// either a "Table" node extracted from a section's own content (the web
+// equivalent of the pdf's Table node, with the same Table -> Row -> Cell
+// shape), or one of the site's own "spectables" special-tables index pages.
+// Neither is an image overlay, so both count toward "keep this branch" on
+// their own.
 function subtreeHasWebTocContent(node, showFigures, showTables) {
   if (showFigures && node._images && node._images.length > 0) return true;
-  if (showTables && node.type === "spectables") return true;
+  if (showTables && (node.type === "Table" || node.type === "spectables")) return true;
   return node.children.some((child) => subtreeHasWebTocContent(child, showFigures, showTables));
 }
 
 function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
-  const relevantChildren = pruning
+  // Once we're rendering a matched Table's own Row/Cell children, they're
+  // its content, not independent branches to filter - none of them are
+  // themselves a Table/spectables or image owner, so pruning would hide
+  // every row of a table the user just chose to expand.
+  const childPruning = pruning && node.type !== "Table";
+  const relevantChildren = childPruning
     ? node.children.filter((child) => subtreeHasWebTocContent(child, showFigures, showTables))
     : node.children;
   const ownImages = showFigures ? node._images || [] : [];
@@ -235,7 +243,9 @@ function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;
     relevantChildren.forEach((child) => {
-      childrenBox.appendChild(renderTocWebNode(child, depth + 1, pruning, showFigures, showTables));
+      childrenBox.appendChild(
+        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables)
+      );
     });
     ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
   });

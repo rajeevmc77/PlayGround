@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parses MO Package BCBC MRK signed.pdf into output/mo_pdf.json
+"""Parses MO Package BCBC MRK signed.pdf into output/bcbc_pdf.json
 and every embedded raster and vector-drawn image under output/images/.
 
 Usage:
@@ -119,7 +119,7 @@ def run(pdf_path: str, output_dir: str) -> None:
     raw_images = drop_images_over_tables(raw_images, table_regions_by_page)
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
-    write_json(volume, captions, images, str(Path(output_dir) / "mo_pdf.json"))
+    write_json(volume, captions, images, str(Path(output_dir) / "bcbc_pdf.json"))
 
 
 def main() -> None:
@@ -131,7 +131,7 @@ def main() -> None:
         sys.exit(f"No such file: {args.pdf_path}")
     print(f"Parsing {args.pdf_path} ...", file=sys.stderr)
     run(args.pdf_path, args.output_dir)
-    print(f"Wrote {args.output_dir}/mo_pdf.json, images/", file=sys.stderr)
+    print(f"Wrote {args.output_dir}/bcbc_pdf.json, images/", file=sys.stderr)
 
 
 if __name__ == "__main__":

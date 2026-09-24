@@ -46,6 +46,29 @@ def test_web_node_unified_number_can_be_set():
     assert node.unified_number == "1.1"
 
 
+def test_web_node_content_defaults_to_empty_string():
+    node = WebNode(
+        type="Cell",
+        identifier="col1",
+        citation="nbc.divA.part1.sect1.table1-row1-col1",
+        title="",
+        path="",
+    )
+    assert node.content == ""
+
+
+def test_web_node_content_can_be_set():
+    node = WebNode(
+        type="Cell",
+        identifier="col1",
+        citation="nbc.divA.part1.sect1.table1-row1-col1",
+        title="",
+        path="",
+        content="45",
+    )
+    assert node.content == "45"
+
+
 def test_web_node_holds_nested_children():
     child = WebNode(
         type="article",

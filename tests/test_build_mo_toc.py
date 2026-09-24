@@ -19,7 +19,7 @@ from mo_toc.parsing.numbering_config import (
 from mo_toc.parsing.table_extractor import TableAnchor, TableRegion
 
 
-def test_run_writes_mo_pdf_json_not_mo_toc_json(tmp_path):
+def test_run_writes_bcbc_pdf_json_not_mo_toc_json(tmp_path):
     fake_lines = [[]]
     with (
         patch("build_mo_toc.extract_all_pages", return_value=(fake_lines, [], [[]], [[]])),
@@ -27,9 +27,9 @@ def test_run_writes_mo_pdf_json_not_mo_toc_json(tmp_path):
     ):
         run(pdf_path="unused.pdf", output_dir=str(tmp_path))
 
-    assert (tmp_path / "mo_pdf.json").exists()
+    assert (tmp_path / "bcbc_pdf.json").exists()
     assert not (tmp_path / "mo_toc.json").exists()
-    payload = json.loads((tmp_path / "mo_pdf.json").read_text())
+    payload = json.loads((tmp_path / "bcbc_pdf.json").read_text())
     assert payload["volume"]["type"] == "Volume"
 
 
@@ -84,7 +84,7 @@ def test_run_wires_pipeline_in_order(
     mock_write_images.assert_called_once_with(["FILTERED_RAW_IMAGE"], str(tmp_path / "images"))
     mock_match_images.assert_called_once_with(["IMAGE_ASSET"], ["CAPTION"], "VOLUME")
     mock_write_json.assert_called_once_with(
-        "VOLUME", ["CAPTION"], ["MATCHED_IMAGE_ASSET"], str(tmp_path / "mo_pdf.json")
+        "VOLUME", ["CAPTION"], ["MATCHED_IMAGE_ASSET"], str(tmp_path / "bcbc_pdf.json")
     )
 
     assert [c[0] for c in manager.mock_calls] == [

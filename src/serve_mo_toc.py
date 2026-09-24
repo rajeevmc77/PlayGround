@@ -13,10 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mo_toc.web.api import create_app
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TOC_JSON = str(PROJECT_ROOT / "output" / "mo_pdf.json")
+TOC_JSON = str(PROJECT_ROOT / "output" / "bcbc_pdf.json")
 PDF_PATH = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
 IMAGES_DIR = str(PROJECT_ROOT / "output" / "images")
-WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "web_toc.json")
+WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "bcbc_web.json")
 
 _app = None
 
@@ -25,7 +25,7 @@ def _get_app():
     """Builds `app` lazily on first access, so importing this module never
     touches the filesystem: `from serve_mo_toc import app` (module __getattr__,
     below) and `uvicorn src.serve_mo_toc:app` both still work when the real
-    data is present, and a missing output/mo_pdf.json (e.g. a fresh checkout
+    data is present, and a missing output/bcbc_pdf.json (e.g. a fresh checkout
     that hasn't run build_mo_toc.py yet) raises a clear message here instead
     of a raw traceback at import time.
     """
