@@ -9,19 +9,23 @@
   <div id="sidebar">
     <div id="tabs">
       <button id="tab-toc" class="active">Table of Contents - pdf</button>
-      <button id="tab-web-images">BC Code (Web)</button>
+      <button id="tab-toc-web">Table of Contents - web</button>
       <button id="tab-compare">Compare</button>
     </div>
     <div id="tree">
-      <div id="toc-filters">
+      <div class="toc-filters">
         <label><input type="checkbox" id="filter-figures" checked> Figures</label>
         <label><input type="checkbox" id="filter-equations" checked> Equations / Formula</label>
         <label><input type="checkbox" id="filter-tables" checked> Tables</label>
       </div>
       <div id="tree-content"></div>
     </div>
-    <div id="web-images" style="display:none">
-      <div id="web-image-tree-content"></div>
+    <div id="tree-web" style="display:none">
+      <div class="toc-filters">
+        <label><input type="checkbox" id="filter-web-figures" checked> Figures</label>
+        <label><input type="checkbox" id="filter-web-tables" checked> Tables</label>
+      </div>
+      <div id="tree-web-content"></div>
     </div>
   </div>
   <div id="main">
@@ -56,6 +60,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=10"></script>
+  <script type="module" src="/static/viewer.js?v=11"></script>
 </body>
 </html>

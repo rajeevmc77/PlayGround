@@ -7,6 +7,7 @@ let pdfDoc = null;
 let currentPage = 1;
 let tocVolume = null;
 let allImages = null;
+let webTocTree = null;
 
 function formatNodeLabel(node) {
   const text = node.title || node.content;
@@ -187,11 +188,6 @@ function attachWebImagesToOwners(tree, images) {
   });
 }
 
-function subtreeHasWebImages(node) {
-  if (node._images && node._images.length > 0) return true;
-  return node.children.some(subtreeHasWebImages);
-}
-
 function showWebImageDetail(img, ownerNode) {
   document.getElementById("web-image-detail-img").src = webImageUrl(img);
   document.getElementById("web-image-detail-alt").textContent = img.alt_text || "(no description)";
@@ -210,21 +206,37 @@ function renderWebImageRow(img, ownerNode, depth) {
   return row;
 }
 
-function renderWebTreeNode(node, depth) {
-  const relevantChildren = node.children.filter(subtreeHasWebImages);
-  const ownImages = node._images || [];
+// The web TOC has no Figure/Equation split like the pdf's caption_kind - every
+// web image is just "Figures" here. "Tables" are the site's own spectables
+// nodes (real structural entries, the web equivalent of the pdf's Table nodes),
+// not an image overlay, so they count toward "keep this branch" on their own.
+function subtreeHasWebTocContent(node, showFigures, showTables) {
+  if (showFigures && node._images && node._images.length > 0) return true;
+  if (showTables && node.type === "spectables") return true;
+  return node.children.some((child) => subtreeHasWebTocContent(child, showFigures, showTables));
+}
+
+function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
+  const relevantChildren = pruning
+    ? node.children.filter((child) => subtreeHasWebTocContent(child, showFigures, showTables))
+    : node.children;
+  const ownImages = showFigures ? node._images || [] : [];
+  const hasChildren = relevantChildren.length > 0 || ownImages.length > 0;
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `▸ ${formatNodeLabel(node)}`.trim();
+  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
 
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
 
   row.addEventListener("click", () => {
+    if (!hasChildren) return;
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;
-    relevantChildren.forEach((child) => childrenBox.appendChild(renderWebTreeNode(child, depth + 1)));
+    relevantChildren.forEach((child) => {
+      childrenBox.appendChild(renderTocWebNode(child, depth + 1, pruning, showFigures, showTables));
+    });
     ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
   });
 
@@ -234,19 +246,26 @@ function renderWebTreeNode(node, depth) {
   return wrapper;
 }
 
+function renderTocWebTree() {
+  const showFigures = document.getElementById("filter-web-figures").checked;
+  const showTables = document.getElementById("filter-web-tables").checked;
+  const pruning = showFigures || showTables;
+  const content = document.getElementById("tree-web-content");
+  content.innerHTML = "";
+  content.appendChild(renderTocWebNode(webTocTree, 0, pruning, showFigures, showTables));
+}
+
 async function loadWebToc() {
-  const content = document.getElementById("web-image-tree-content");
+  const content = document.getElementById("tree-web-content");
   const res = await fetch("/api/web-toc");
   if (!res.ok) {
     content.textContent = "Not built yet - run src/build_web_toc.py, then reload.";
     return;
   }
   const data = await res.json();
-  attachWebImagesToOwners(data.tree, data.images);
-  content.innerHTML = "";
-  if (subtreeHasWebImages(data.tree)) {
-    content.appendChild(renderWebTreeNode(data.tree, 0));
-  }
+  webTocTree = data.tree;
+  attachWebImagesToOwners(webTocTree, data.images);
+  renderTocWebTree();
 }
 
 document.getElementById("web-image-detail-close").addEventListener("click", () => {
@@ -399,8 +418,8 @@ async function goToLocation(pageNumber, bbox) {
   showHighlight(viewport, bbox);
 }
 
-const TABS = ["toc", "web-images", "compare"];
-const TAB_CONTENT_ID = { toc: "tree", "web-images": "web-images", compare: "compare" };
+const TABS = ["toc", "toc-web", "compare"];
+const TAB_CONTENT_ID = { toc: "tree", "toc-web": "tree-web", compare: "compare" };
 const TAB_ACTIVE_DISPLAY = { compare: "flex" };
 
 function switchTab(active) {
@@ -422,6 +441,9 @@ document.getElementById("next-page").addEventListener("click", () => {
 });
 ["filter-figures", "filter-equations", "filter-tables"].forEach((id) => {
   document.getElementById(id).addEventListener("change", renderTocTree);
+});
+["filter-web-figures", "filter-web-tables"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", renderTocWebTree);
 });
 
 (async function init() {
