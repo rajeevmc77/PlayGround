@@ -129,6 +129,69 @@ def test_run_attaches_and_numbers_tables_from_every_content_bearing_node(
 
 @patch("build_web_toc.write_json")
 @patch("build_web_toc.download_images")
+@patch("build_web_toc.extract_body")
+@patch("build_web_toc.extract_images")
+@patch("build_web_toc.content_url")
+@patch("build_web_toc.collect_citations")
+@patch("build_web_toc.build_tree")
+@patch("build_web_toc.HttpxWebSource")
+def test_run_attaches_and_numbers_body_text_from_every_content_bearing_node(
+    mock_source_cls,
+    mock_build_tree,
+    mock_collect_citations,
+    mock_content_url,
+    mock_extract_images,
+    mock_extract_body,
+    mock_download_images,
+    mock_write_json,
+    tmp_path,
+):
+    leaf = WebNode(
+        type="section",
+        identifier="1.1",
+        citation="nbc.divA.part1.sect1",
+        title="",
+        path="",
+    )
+    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
+    clause_node = WebNode(
+        type="Clause",
+        identifier="(a)",
+        citation="nbc.divA.part1.sect1.sent1.clause1",
+        title="",
+        path="",
+    )
+    sentence_node = WebNode(
+        type="Sentence",
+        identifier="(1)",
+        citation="nbc.divA.part1.sect1.sent1",
+        title="",
+        path="",
+        children=[clause_node],
+    )
+    mock_source = _mock_source(mock_source_cls)
+    mock_source.fetch_navigation_tree.return_value = {"tree": []}
+    mock_build_tree.return_value = root
+    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
+    mock_content_url.side_effect = lambda node, version: (
+        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
+    )
+    mock_source.fetch_content.return_value = {"id": "nbc.divA.part1.sect1"}
+    mock_extract_images.return_value = []
+    mock_extract_body.return_value = [("nbc.divA.part1.sect1", sentence_node)]
+
+    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
+
+    mock_extract_body.assert_called_once_with(
+        {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
+    )
+    assert leaf.children == [sentence_node]
+    assert sentence_node.unified_number == "1.(1)"
+    assert clause_node.unified_number == "1.(1)(a)"
+
+
+@patch("build_web_toc.write_json")
+@patch("build_web_toc.download_images")
 @patch("build_web_toc.extract_images")
 @patch("build_web_toc.content_url")
 @patch("build_web_toc.collect_citations")

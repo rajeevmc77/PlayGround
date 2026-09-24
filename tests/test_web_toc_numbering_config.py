@@ -34,9 +34,9 @@ def test_synthetic_root_type_is_not_in_the_table():
     assert "root" not in WEB_TOC_TYPE_MARKERS
 
 
-def test_division_row_and_cell_are_the_identifier_types():
-    assert WEB_TOC_IDENTIFIER_TYPES == frozenset({"division", "Row", "Cell"})
+def test_division_row_cell_and_sentence_are_the_identifier_types():
+    assert WEB_TOC_IDENTIFIER_TYPES == frozenset({"division", "Row", "Cell", "Sentence"})
 
 
-def test_no_suffix_types_yet_web_toc_has_no_sentence_level_nodes():
-    assert WEB_TOC_SUFFIX_TYPES == frozenset()
+def test_clause_and_subclause_are_the_suffix_types():
+    assert WEB_TOC_SUFFIX_TYPES == frozenset({"Clause", "Subclause"})

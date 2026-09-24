@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Parses the live BC Building Code website's navigation tree + per-section
 content into output/bcbc_web.json: a hierarchical index plus every embedded
-figure, matched to the deepest document node it belongs to.
+figure, table, and Sentence/Clause/Subclause body-text node, each matched to
+the deepest document node it belongs to.
 
 Usage:
     python3 src/build_web_toc.py
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from shared.numbering import assign_unified_numbers
 from web_toc.output.image_downloader import download_images
 from web_toc.output.json_writer import write_json
+from web_toc.parsing.body_extractor import attach_body, extract_body
 from web_toc.parsing.content_url import content_url
 from web_toc.parsing.image_extractor import extract_images
 from web_toc.parsing.numbering_config import (
@@ -71,15 +73,18 @@ async def run(base_url: str, version: str, output_dir: str) -> None:
 
         images = []
         owned_tables = []
+        owned_sentences = []
         for (node, url), content in zip(targets, contents, strict=True):
             if content is None:
                 print(f"  skipped (no content at {url})", file=sys.stderr)
                 continue
             images.extend(extract_images(content, citations, node.citation))
             owned_tables.extend(extract_tables(content, citations, node.citation))
+            owned_sentences.extend(extract_body(content, citations, node.citation))
 
         attach_tables(root, owned_tables)
-        # Runs after attach_tables so the Table/Row/Cell nodes it just added
+        attach_body(root, owned_sentences)
+        # Runs after attach_tables/attach_body so the nodes they just added
         # get numbered too - matching the pdf pipeline's build_mo_toc.py,
         # which also numbers only after its own attach_tables call.
         assign_unified_numbers(
