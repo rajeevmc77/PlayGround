@@ -65,7 +65,12 @@ function attachTocImages(showFigures, showEquations) {
 }
 
 function renderTocNode(node, depth, pruning, showTables) {
-  const relevantChildren = pruning
+  // Once we're rendering a matched Table's own Row/Cell children, they're
+  // its content, not independent branches to filter - none of them are
+  // themselves a Table or image owner, so pruning would hide every row of
+  // a table the user just chose to expand.
+  const childPruning = pruning && node.type !== "Table";
+  const relevantChildren = childPruning
     ? node.children.filter((child) => subtreeHasTocContent(child, showTables))
     : node.children;
   const ownImages = node._tocImages || [];
@@ -83,7 +88,7 @@ function renderTocNode(node, depth, pruning, showTables) {
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;
     relevantChildren.forEach((child) => {
-      childrenBox.appendChild(renderTocNode(child, depth + 1, pruning, showTables));
+      childrenBox.appendChild(renderTocNode(child, depth + 1, childPruning, showTables));
     });
     ownImages.forEach(({ img, index }) => {
       childrenBox.appendChild(renderImageRow(img, index, depth + 1));
