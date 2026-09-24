@@ -216,22 +216,30 @@ function renderWebImageRow(img, ownerNode, depth) {
 // either a "Table" node extracted from a section's own content (the web
 // equivalent of the pdf's Table node, with the same Table -> Row -> Cell
 // shape), or one of the site's own "spectables" special-tables index pages.
-// Neither is an image overlay, so both count toward "keep this branch" on
+// "Body Text" is a "Sentence" node (the web equivalent of the pdf's Sentence
+// node, with the same Sentence -> Clause -> Subclause shape). None of these
+// is an image overlay, so all three count toward "keep this branch" on
 // their own.
-function subtreeHasWebTocContent(node, showFigures, showTables) {
+function subtreeHasWebTocContent(node, showFigures, showTables, showBody) {
   if (showFigures && node._images && node._images.length > 0) return true;
   if (showTables && (node.type === "Table" || node.type === "spectables")) return true;
-  return node.children.some((child) => subtreeHasWebTocContent(child, showFigures, showTables));
+  if (showBody && node.type === "Sentence") return true;
+  return node.children.some((child) =>
+    subtreeHasWebTocContent(child, showFigures, showTables, showBody)
+  );
 }
 
-function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
-  // Once we're rendering a matched Table's own Row/Cell children, they're
-  // its content, not independent branches to filter - none of them are
-  // themselves a Table/spectables or image owner, so pruning would hide
-  // every row of a table the user just chose to expand.
-  const childPruning = pruning && node.type !== "Table";
+function renderTocWebNode(node, depth, pruning, showFigures, showTables, showBody) {
+  // Once we're rendering a matched Table's or Sentence's own children,
+  // they're its content, not independent branches to filter - a Row/Cell or
+  // Clause/Subclause is never itself a Table/spectables/Sentence or image
+  // owner, so pruning would hide every row/clause of a match the user just
+  // chose to expand.
+  const childPruning = pruning && node.type !== "Table" && node.type !== "Sentence";
   const relevantChildren = childPruning
-    ? node.children.filter((child) => subtreeHasWebTocContent(child, showFigures, showTables))
+    ? node.children.filter((child) =>
+        subtreeHasWebTocContent(child, showFigures, showTables, showBody)
+      )
     : node.children;
   const ownImages = showFigures ? node._images || [] : [];
   const hasChildren = relevantChildren.length > 0 || ownImages.length > 0;
@@ -249,7 +257,7 @@ function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
     if (childrenBox.children.length > 0) return;
     relevantChildren.forEach((child) => {
       childrenBox.appendChild(
-        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables)
+        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables, showBody)
       );
     });
     ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
@@ -264,10 +272,11 @@ function renderTocWebNode(node, depth, pruning, showFigures, showTables) {
 function renderTocWebTree() {
   const showFigures = document.getElementById("filter-web-figures").checked;
   const showTables = document.getElementById("filter-web-tables").checked;
-  const pruning = showFigures || showTables;
+  const showBody = document.getElementById("filter-web-body").checked;
+  const pruning = showFigures || showTables || showBody;
   const content = document.getElementById("tree-web-content");
   content.innerHTML = "";
-  content.appendChild(renderTocWebNode(webTocTree, 0, pruning, showFigures, showTables));
+  content.appendChild(renderTocWebNode(webTocTree, 0, pruning, showFigures, showTables, showBody));
 }
 
 async function loadWebToc() {
@@ -457,7 +466,7 @@ document.getElementById("next-page").addEventListener("click", () => {
 ["filter-figures", "filter-equations", "filter-tables"].forEach((id) => {
   document.getElementById(id).addEventListener("change", renderTocTree);
 });
-["filter-web-figures", "filter-web-tables"].forEach((id) => {
+["filter-web-figures", "filter-web-tables", "filter-web-body"].forEach((id) => {
   document.getElementById(id).addEventListener("change", renderTocWebTree);
 });
 
