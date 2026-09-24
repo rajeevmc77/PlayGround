@@ -8,7 +8,7 @@ strip-and-match used for figures, not a bbox/page comparison.
 """
 
 from web_toc.domain.models import WebNode
-from web_toc.parsing.owner_resolution import resolve_owner
+from web_toc.parsing.owner_resolution import attach_owned_nodes, resolve_owner
 
 
 def _cell_text(cell: dict) -> str:
@@ -83,16 +83,5 @@ def extract_tables(
     return owned_tables
 
 
-def _citation_index(node: WebNode, index: dict[str, WebNode]) -> dict[str, WebNode]:
-    index[node.citation] = node
-    for child in node.children:
-        _citation_index(child, index)
-    return index
-
-
 def attach_tables(root: WebNode, owned_tables: list[tuple[str, WebNode]]) -> None:
-    index = _citation_index(root, {})
-    for owner_citation, table_node in owned_tables:
-        owner = index.get(owner_citation)
-        if owner is not None:
-            owner.children.append(table_node)
+    attach_owned_nodes(root, owned_tables)

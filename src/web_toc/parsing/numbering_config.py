@@ -19,9 +19,12 @@ WEB_TOC_TYPE_MARKERS: dict[str, str | None] = {
 }
 
 # Division numbers by its lettered identifier (e.g. "B") instead of position;
-# Row and Cell number by their own identifier (e.g. "row1", "col1") directly -
-# same convention as mo_toc's MO_TOC_IDENTIFIER_TYPES.
-WEB_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"division", "Row", "Cell"})
+# Row, Cell, and Sentence number by their own identifier (e.g. "row1", "col1",
+# "(1)") directly - same convention as mo_toc's MO_TOC_IDENTIFIER_TYPES.
+WEB_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"division", "Row", "Cell", "Sentence"})
 
-# web_toc has no Sentence/Clause/Subclause-equivalent nodes today.
-WEB_TOC_SUFFIX_TYPES: frozenset[str] = frozenset()
+# Clause/Subclause already carry their display label - "(a)", "(i)" - in
+# WebNode.identifier; append it directly with no dot, run onto the Sentence
+# segment - e.g. "...(1)(a)(i)". Same convention as mo_toc's
+# MO_TOC_SUFFIX_TYPES.
+WEB_TOC_SUFFIX_TYPES: frozenset[str] = frozenset({"Clause", "Subclause"})
