@@ -23,6 +23,34 @@ body { margin: 0; display: flex; height: 100vh; }
 }
 #web-image-detail img { max-width: 100%; display: block; margin-bottom: var(--gap); }
 #web-image-detail-close { float: right; border: none; background: none; cursor: pointer; font-size: 1.2em; }
+/* Colors/weights/sizes below are lifted from the live site's own computed
+   styles (partTitle/sectionTitle/subsectionHeading/articleHeading,
+   sentenceNumber/clauseNumber/subclauseNumber, glossary-term,
+   cross-reference-link, table-block__header-cell), not chosen for looks -
+   the bold/italic distinctions carry meaning (defined term vs. plain
+   cross-reference) that the source markup itself encodes. */
+#web-content { text-align: left; max-width: 800px; margin: 0 auto; padding: var(--gap) calc(var(--gap) * 2);
+               color: #2d2d2d; line-height: 1.7; }
+#web-content-header { font-weight: bold; font-size: 1.1em; margin-bottom: var(--gap); color: #2d2d2d; }
+.web-content-node h1 { font-size: 28px; font-weight: 700; color: #313132; margin: 1em 0 0.3em; }
+.web-content-node h2 { font-size: 18px; font-weight: 700; color: #313132; margin: 1em 0 0.3em; }
+.web-content-node h3 { font-size: 20px; font-weight: 700; color: #313132; margin: 1em 0 0.3em; }
+.web-content-node h4 { font-size: 18px; font-weight: 700; color: #2d2d2d; margin: 1em 0 0.3em; }
+.web-content-item { margin: 0.4em 0 0.4em 1em; }
+.web-content-sentence-number { font-weight: 700; color: #2d2d2d; }
+.web-content-clause-number { font-weight: 400; color: #2d2d2d; }
+.web-content-subclause-number { font-weight: 400; color: #474543; }
+.web-content-term { font-style: italic; font-weight: 400; color: #1a5a96; }
+.web-content-xref { font-style: normal; font-weight: 400; color: #255a90; }
+.web-content-table-title { font-weight: 700; font-size: 18px; color: #2d2d2d; margin-top: var(--gap); }
+.web-content-table { border-collapse: collapse; margin: var(--gap) 0; }
+.web-content-table th, .web-content-table td { border: 1px solid #d8d8d8; padding: 8px 10px; text-align: left; }
+.web-content-table th { font-weight: 700; background: #faf9f8; }
+.web-content-summary-list { margin: 0.4em 0 0.4em 1em; }
+.web-content-image { margin: var(--gap) 0; }
+.web-content-image img { max-width: 100%; }
+.web-content-image figcaption { color: #666; font-size: 0.9em; }
+#web-content-link { display: inline-block; margin-top: var(--gap); }
 #compare { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; z-index: 2; display: flex; }
 #compare-tree { width: 320px; flex-shrink: 0; overflow-y: auto; padding: var(--gap); box-sizing: border-box; border-right: 1px solid #ccc; }
 #compare-images { flex: 1; display: flex; overflow: hidden; }

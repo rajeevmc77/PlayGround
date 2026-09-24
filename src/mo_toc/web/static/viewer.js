@@ -229,7 +229,7 @@ function subtreeHasWebTocContent(node, showFigures, showTables, showBody) {
   );
 }
 
-function renderTocWebNode(node, depth, pruning, showFigures, showTables, showBody) {
+function renderTocWebNode(node, depth, pruning, showFigures, showTables, showBody, inheritedPath) {
   // Once we're rendering a matched Table's or Sentence's own children,
   // they're its content, not independent branches to filter - a Row/Cell or
   // Clause/Subclause is never itself a Table/spectables/Sentence or image
@@ -243,6 +243,7 @@ function renderTocWebNode(node, depth, pruning, showFigures, showTables, showBod
     : node.children;
   const ownImages = showFigures ? node._images || [] : [];
   const hasChildren = relevantChildren.length > 0 || ownImages.length > 0;
+  const nodePath = node.path || inheritedPath;
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
@@ -252,12 +253,13 @@ function renderTocWebNode(node, depth, pruning, showFigures, showTables, showBod
   childrenBox.className = "node-children";
 
   row.addEventListener("click", () => {
+    showWebContentDetail(node, nodePath);
     if (!hasChildren) return;
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;
     relevantChildren.forEach((child) => {
       childrenBox.appendChild(
-        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables, showBody)
+        renderTocWebNode(child, depth + 1, childPruning, showFigures, showTables, showBody, nodePath)
       );
     });
     ownImages.forEach((img) => childrenBox.appendChild(renderWebImageRow(img, node, depth + 1)));
@@ -276,7 +278,201 @@ function renderTocWebTree() {
   const pruning = showFigures || showTables || showBody;
   const content = document.getElementById("tree-web-content");
   content.innerHTML = "";
-  content.appendChild(renderTocWebNode(webTocTree, 0, pruning, showFigures, showTables, showBody));
+  content.appendChild(
+    renderTocWebNode(webTocTree, 0, pruning, showFigures, showTables, showBody, webTocTree.path)
+  );
+}
+
+// Structural levels above a Section have no single reading page on the live
+// site either - navigating to a Part/Division/Volume there shows "Select a
+// section to start reading" plus a list of its children, not their full
+// inlined content (confirmed by loading one live). Rendering full content
+// for these would mean dumping an entire Division's text into the DOM at
+// once, so they get the same shallow child-list treatment here.
+const WEB_CONTENT_SUMMARY_TYPES = new Set(["root", "volume", "division", "part", "index", "conversions"]);
+
+// Raw extracted text/cell content carries three kinds of site-specific
+// markup. Bold/italic aren't decorative here - the live site uses them to
+// distinguish two different semantic things (a defined term vs. a plain
+// cross-reference), confirmed by reading its own computed styles:
+//   <bold>...</bold>            - wraps its inner (possibly marked-up) text;
+//                                 renders as font-weight 700, no color change
+//   [REF:term:<code>:<label>]   - a defined term ("glossary-term" span):
+//                                 italic, #1a5a96, weight 400
+//   [REF:internal:<citation>:(long|short)] - a cross-reference
+//                                 ("cross-reference-link" button), labelled
+//                                 e.g. "Sentence 3.1.3.1.(1)": NOT italic,
+//                                 #255a90, weight 400
+// Neither glossary popovers nor working cross-reference links are worth
+// building for this internal viewer, but the bold/italic distinction itself
+// is kept (see .web-content-term / .web-content-xref in style.css).
+const MARKUP_RE =
+  /<bold>([\s\S]*?)<\/bold>|\[REF:term:[^:]+:([^\]]+)\]|\[REF:internal:([^:\]]+):(?:long|short)\]/g;
+
+let webCitationIndex = null;
+
+function resolveInternalRefLabel(citation) {
+  if (!webCitationIndex) webCitationIndex = buildWebCitationMap(webTocTree, {});
+  const target = webCitationIndex[citation];
+  if (!target) return citation;
+  return [target.type, target.unified_number].filter(Boolean).join(" ");
+}
+
+function appendMarkedUpText(parent, text) {
+  // text.matchAll() (not MARKUP_RE.exec() in a loop) because this function
+  // recurses into a <bold> match's own inner text: a shared regex object's
+  // .lastIndex is mutated by .exec(), so a recursive call would stomp on the
+  // outer loop's iteration position and hang the page in an infinite loop.
+  // matchAll's iterator carries its own independent position instead.
+  let lastIndex = 0;
+  for (const match of text.matchAll(MARKUP_RE)) {
+    if (match.index > lastIndex) {
+      parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const [, boldInner, termLabel, internalCitation] = match;
+    if (boldInner !== undefined) {
+      const strong = document.createElement("strong");
+      appendMarkedUpText(strong, boldInner);
+      parent.appendChild(strong);
+    } else if (termLabel !== undefined) {
+      const em = document.createElement("em");
+      em.className = "web-content-term";
+      em.textContent = termLabel;
+      parent.appendChild(em);
+    } else {
+      const span = document.createElement("span");
+      span.className = "web-content-xref";
+      span.textContent = resolveInternalRefLabel(internalCitation);
+      parent.appendChild(span);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+}
+
+function renderWebContentImage(img) {
+  const figure = document.createElement("figure");
+  figure.className = "web-content-image";
+  const el = document.createElement("img");
+  el.src = webImageUrl(img);
+  el.loading = "lazy";
+  figure.appendChild(el);
+  const caption = document.createElement("figcaption");
+  caption.textContent = img.alt_text || "(no description)";
+  figure.appendChild(caption);
+  return figure;
+}
+
+function renderWebContentTable(node) {
+  const wrapper = document.createElement("div");
+  if (node.title) {
+    const title = document.createElement("div");
+    title.className = "web-content-table-title";
+    title.textContent = node.title;
+    wrapper.appendChild(title);
+  }
+  const table = document.createElement("table");
+  table.className = "web-content-table";
+  // The extracted Table -> Row shape concatenates header_rows then body_rows
+  // with no marker of which is which (table_extractor.py); every real table
+  // seen has exactly one header row, so the first row is rendered as the
+  // header (<th>, bold, shaded) the way the live site's table-block__header-
+  // cell renders it, and the rest as plain data cells.
+  node.children.forEach((row, rowIndex) => {
+    const tr = document.createElement("tr");
+    const cellTag = rowIndex === 0 ? "th" : "td";
+    row.children.forEach((cell) => {
+      const cellEl = document.createElement(cellTag);
+      appendMarkedUpText(cellEl, cell.content);
+      tr.appendChild(cellEl);
+    });
+    table.appendChild(tr);
+  });
+  wrapper.appendChild(table);
+  return wrapper;
+}
+
+// Matches the live site's sentenceNumber/clauseNumber/subclauseNumber spans:
+// only the sentence number is bold, and each level has its own text color.
+const NUMBER_LABEL_CLASS = {
+  Sentence: "web-content-sentence-number",
+  Clause: "web-content-clause-number",
+  Subclause: "web-content-subclause-number",
+};
+
+function renderWebContentTextItem(node, tag) {
+  const el = document.createElement(tag);
+  el.className = "web-content-item";
+  const label = document.createElement("span");
+  label.className = NUMBER_LABEL_CLASS[node.type] || "";
+  label.textContent = `${node.identifier} `;
+  el.appendChild(label);
+  appendMarkedUpText(el, node.content);
+  return el;
+}
+
+function renderWebContentSummary(node) {
+  const container = document.createElement("div");
+  container.className = "web-content-node";
+  const hint = document.createElement("p");
+  hint.className = "compare-placeholder";
+  hint.textContent = "No single reading page at this level - pick an item below, or a node further down the left tree.";
+  container.appendChild(hint);
+  const list = document.createElement("ul");
+  list.className = "web-content-summary-list";
+  node.children.forEach((child) => {
+    const li = document.createElement("li");
+    li.textContent = formatNodeLabel(child);
+    list.appendChild(li);
+  });
+  container.appendChild(list);
+  return container;
+}
+
+// Matches the live site's partTitle/sectionTitle/subsectionHeading/
+// articleHeading elements (h1/h2/h3/h4 respectively, each with its own
+// font-size - subsectionHeading is actually larger than sectionTitle there).
+// Types with no page of their own (part_appendix, division_appendix,
+// spectables, front-matter article) fall back to the article level.
+const HEADING_TAG = { part: "h1", section: "h2", subsection: "h3", article: "h4" };
+
+function renderWebContentNode(node) {
+  if (WEB_CONTENT_SUMMARY_TYPES.has(node.type)) return renderWebContentSummary(node);
+
+  const container = document.createElement("div");
+  container.className = "web-content-node";
+
+  if (node.type === "Table") {
+    container.appendChild(renderWebContentTable(node));
+  } else if (node.type === "Sentence" || node.type === "Clause" || node.type === "Subclause") {
+    container.appendChild(renderWebContentTextItem(node, "p"));
+    node.children.forEach((child) => container.appendChild(renderWebContentNode(child)));
+  } else {
+    if (node.title) {
+      const heading = document.createElement(HEADING_TAG[node.type] || "h4");
+      heading.textContent = [node.unified_number, node.title].filter(Boolean).join(" ");
+      container.appendChild(heading);
+    }
+    node.children.forEach((child) => container.appendChild(renderWebContentNode(child)));
+  }
+
+  (node._images || []).forEach((img) => container.appendChild(renderWebContentImage(img)));
+  return container;
+}
+
+function showWebContentDetail(node, path) {
+  document.getElementById("web-content-header").textContent = formatNodeLabel(node);
+  const body = document.getElementById("web-content-body");
+  body.classList.remove("compare-placeholder");
+  body.innerHTML = "";
+  body.appendChild(renderWebContentNode(node));
+  const link = document.getElementById("web-content-link");
+  if (path) {
+    link.href = `https://dev.buildingcode.gov.bc.ca${path}?version=2024&date=2024-03-08`;
+    link.style.display = "inline-block";
+  } else {
+    link.style.display = "none";
+  }
 }
 
 async function loadWebToc() {
@@ -452,6 +648,13 @@ function switchTab(active) {
     document.getElementById(TAB_CONTENT_ID[name]).style.display =
       name === active ? TAB_ACTIVE_DISPLAY[name] || "block" : "none";
   });
+  // The pdf canvas/controls and the web content panel share the same #main
+  // pane - only one of them is meaningful for the active tab.
+  const showPdf = active === "toc";
+  document.getElementById("controls").style.display = showPdf ? "block" : "none";
+  document.getElementById("page-canvas").style.display = showPdf ? "block" : "none";
+  if (!showPdf) document.getElementById("highlight").style.display = "none";
+  document.getElementById("web-content").style.display = active === "toc-web" ? "block" : "none";
 }
 
 TABS.forEach((name) => {
