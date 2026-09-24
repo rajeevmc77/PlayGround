@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>MO Package TOC Viewer</title>
+  <!-- The live site's own nav-tree/breadcrumbs CSS, extracted by src/build_web_pages.py -->
+  <link rel="stylesheet" href="/web-assets/site-nav.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -26,7 +28,9 @@
         <label><input type="checkbox" id="filter-web-tables" checked> Tables</label>
         <label><input type="checkbox" id="filter-web-body" checked> Body Text</label>
       </div>
-      <div id="tree-web-content"></div>
+      <div class="home-sidebar-nav">
+        <nav class="nav-tree" id="tree-web-content" aria-label="Building code navigation"></nav>
+      </div>
     </div>
   </div>
   <div id="main">
@@ -37,17 +41,15 @@
     </div>
     <canvas id="page-canvas"></canvas>
     <div id="highlight" style="display:none"></div>
-    <div id="web-image-detail" style="display:none">
-      <button id="web-image-detail-close">&times;</button>
-      <img id="web-image-detail-img">
-      <div id="web-image-detail-alt"></div>
-      <div id="web-image-detail-citation"></div>
-      <a id="web-image-detail-link" target="_blank" rel="noopener">View on official site &#8599;</a>
-    </div>
-    <div id="web-content" style="display:none">
-      <div id="web-content-header"></div>
-      <div id="web-content-body" class="compare-placeholder">Click a node on the left to see its content.</div>
-      <a id="web-content-link" target="_blank" rel="noopener" style="display:none">View on official site &#8599;</a>
+    <div id="web-reading" style="display:none">
+      <div id="web-reading-bar">
+        <nav class="breadcrumbs" id="web-breadcrumbs" aria-label="Breadcrumb navigation">
+          <ol class="breadcrumbs-list"></ol>
+        </nav>
+        <a id="web-content-link" target="_blank" rel="noopener" hidden>View on official site &#8599;</a>
+      </div>
+      <div id="web-reading-placeholder" class="compare-placeholder">Select a section to start reading.</div>
+      <iframe id="web-page-frame" title="BC Building Code reading page" hidden></iframe>
     </div>
   </div>
   <div id="compare" style="display:none">
@@ -66,6 +68,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=17"></script>
+  <script type="module" src="/static/viewer.js?v=19"></script>
 </body>
 </html>

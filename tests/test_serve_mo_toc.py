@@ -77,3 +77,24 @@ def test_get_app_returns_503_for_web_toc_when_web_toc_json_missing(tmp_path, mon
     client = TestClient(serve_mo_toc._get_app())
     resp = client.get("/api/web-toc")
     assert resp.status_code == 503
+
+
+def test_get_app_serves_scraped_web_pages_from_web_pages_dir(tmp_path, monkeypatch):
+    toc_json_path = _write_fixture_json(tmp_path)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    pages_dir = tmp_path / "web_pages"
+    pages_dir.mkdir()
+    (pages_dir / "pages.json").write_text('{"nbc.divA.part1": "Part 1"}')
+
+    monkeypatch.setattr(serve_mo_toc, "TOC_JSON", toc_json_path)
+    monkeypatch.setattr(serve_mo_toc, "PDF_PATH", str(pdf_path))
+    monkeypatch.setattr(serve_mo_toc, "IMAGES_DIR", str(images_dir))
+    monkeypatch.setattr(serve_mo_toc, "WEB_TOC_JSON", str(tmp_path / "missing_web_toc.json"))
+    monkeypatch.setattr(serve_mo_toc, "WEB_PAGES_DIR", str(pages_dir))
+    monkeypatch.setattr(serve_mo_toc, "_app", None)
+
+    client = TestClient(serve_mo_toc._get_app())
+    assert client.get("/api/web-pages").json() == {"nbc.divA.part1": "Part 1"}

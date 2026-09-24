@@ -24,7 +24,13 @@ independent tools live here:
    clicked location. See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
    A second, independent index (`src/web_toc/`, `src/build_web_toc.py`) is sourced from the
    live BC Building Code website's own navigation tree and content JSON instead of the PDF, and
-   is served as a fourth tab in the same viewer.
+   is served as a fourth tab in the same viewer. That tab reproduces the live site itself:
+   `src/build_web_pages.py` renders each of the site's own reading pages in headless Chromium
+   (Playwright, many tabs concurrently), saves its `main.ui-ContentPanel` to
+   `output/web_pages/<citation>.html`, and mirrors every stylesheet/font/image it uses under
+   `output/web_pages/assets/` (plus `site-nav.css`, the site's nav-tree/breadcrumbs rules for
+   the sidebar). Subsection/article views are cut from their section page the way the site
+   does it, so only ~136 pages are scraped.
 
 A standalone CLI companion, `src/check_directory_access.py`, checks (outside the web app) 
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,
@@ -107,7 +113,9 @@ Run these and fix everything they report before calling a task complete:
 Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker for the
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
-`src/build_web_toc.py`, `src/shared/`, and `tests/` — not the whole
+`src/build_web_toc.py`, `src/build_web_pages.py`, `src/shared/`, and `tests/` (including
+`tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
+— not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
 archived and intentionally exempt from this checklist. Apply the checklist to any of those
 only if/when they're actually touched, not retroactively.

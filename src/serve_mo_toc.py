@@ -17,6 +17,7 @@ TOC_JSON = str(PROJECT_ROOT / "output" / "bcbc_pdf.json")
 PDF_PATH = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
 IMAGES_DIR = str(PROJECT_ROOT / "output" / "images")
 WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "bcbc_web.json")
+WEB_PAGES_DIR = str(PROJECT_ROOT / "output" / "web_pages")
 
 _app = None
 
@@ -39,6 +40,7 @@ def _get_app():
             pdf_path=PDF_PATH,
             images_dir=IMAGES_DIR,
             web_toc_json_path=web_toc_json,
+            web_pages_dir=WEB_PAGES_DIR,
         )
     return _app
 

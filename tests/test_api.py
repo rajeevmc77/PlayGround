@@ -34,7 +34,9 @@ def _write_fixture_json(tmp_path):
     return str(path)
 
 
-def _make_client(tmp_path, pdf_path=None, create_image=True, web_toc_json_path=None):
+def _make_client(
+    tmp_path, pdf_path=None, create_image=True, web_toc_json_path=None, web_pages_dir=None
+):
     json_path = _write_fixture_json(tmp_path)
     images_dir = tmp_path / "images"
     images_dir.mkdir()
@@ -48,6 +50,7 @@ def _make_client(tmp_path, pdf_path=None, create_image=True, web_toc_json_path=N
         pdf_path=str(pdf_path),
         images_dir=str(images_dir),
         web_toc_json_path=web_toc_json_path,
+        web_pages_dir=web_pages_dir,
     )
     return TestClient(app)
 
@@ -212,3 +215,79 @@ def test_create_app_works_with_a_file_literally_named_mo_pdf_json(tmp_path):
     client = TestClient(app)
     response = client.get("/api/toc")
     assert response.json()["type"] == "Volume"
+
+
+def _write_web_pages_fixture(tmp_path):
+    pages_dir = tmp_path / "web_pages"
+    (pages_dir / "assets" / "_next" / "static" / "chunks").mkdir(parents=True)
+    (pages_dir / "nbc.divA.part1.sect1.html").write_text("<html>1.1. General</html>")
+    (pages_dir / "pages.json").write_text('{"nbc.divA.part1.sect1": "Section 1"}')
+    (pages_dir / "assets" / "_next" / "static" / "chunks" / "a.css").write_text(".x{}")
+    (pages_dir / "assets" / "site-nav.css").write_text(".nav-tree{}")
+    (tmp_path / "secret.txt").write_text("outside")
+    return str(pages_dir)
+
+
+def test_get_web_pages_lists_the_scraped_page_manifest(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    resp = client.get("/api/web-pages")
+    assert resp.status_code == 200
+    assert resp.json() == {"nbc.divA.part1.sect1": "Section 1"}
+
+
+def test_get_web_pages_returns_503_when_not_built(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=str(tmp_path / "missing"))
+    assert client.get("/api/web-pages").status_code == 503
+
+
+def test_get_web_pages_returns_503_when_no_dir_configured(tmp_path):
+    assert _make_client(tmp_path).get("/api/web-pages").status_code == 503
+
+
+def test_get_web_page_serves_the_scraped_html(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    resp = client.get("/web-page/nbc.divA.part1.sect1")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "1.1. General" in resp.text
+
+
+def test_get_web_page_unknown_citation_returns_404(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    assert client.get("/web-page/nbc.divZ").status_code == 404
+
+
+def test_get_web_page_rejects_an_unsafe_citation(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    assert client.get("/web-page/..%2Fsecret").status_code == 404
+
+
+def test_get_web_page_returns_503_when_no_dir_configured(tmp_path):
+    assert _make_client(tmp_path).get("/web-page/nbc.divA.part1.sect1").status_code == 503
+
+
+def test_get_web_asset_serves_a_mirrored_file(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    resp = client.get("/web-assets/_next/static/chunks/a.css")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/css")
+    assert resp.text == ".x{}"
+
+
+def test_get_web_asset_serves_the_site_nav_stylesheet(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    assert client.get("/web-assets/site-nav.css").text == ".nav-tree{}"
+
+
+def test_get_web_asset_missing_file_returns_404(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    assert client.get("/web-assets/graphics/none.jpg").status_code == 404
+
+
+def test_get_web_asset_refuses_to_escape_the_assets_dir(tmp_path):
+    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
+    assert client.get("/web-assets/..%2F..%2Fsecret.txt").status_code == 404
+
+
+def test_get_web_asset_returns_503_when_no_dir_configured(tmp_path):
+    assert _make_client(tmp_path).get("/web-assets/site-nav.css").status_code == 503

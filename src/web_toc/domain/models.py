@@ -20,3 +20,14 @@ class WebImage:
     alt_text: str
     owner_citation: str
     local_path: str = ""
+
+
+@dataclass
+class ScrapedPage:
+    """One live-site reading page as rendered in a real browser: the
+    `main.ui-ContentPanel` markup plus the styling it was rendered with."""
+
+    panel: str
+    title: str
+    stylesheets: list[str] = field(default_factory=list)
+    inline_styles: list[str] = field(default_factory=list)
