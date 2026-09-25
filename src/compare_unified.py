@@ -71,13 +71,17 @@ def _walk(node: dict):
         yield from _walk(child)
 
 
+def _image_keys(images: list[dict]) -> dict[str, dict]:
+    return {i["unified_number"]: i for i in images if i.get("unified_number")}
+
+
 def collect_keys(tree: dict, images: list[dict]) -> dict[str, dict[str, dict]]:
     keys: dict[str, dict[str, dict]] = {level: {} for level in LEVELS}
     for node in _walk(tree):
         level = LEVEL_OF.get(node["type"])
         if level and node.get("unified_number"):
             keys[level][node["unified_number"]] = node
-    keys["image"] = {i["unified_number"]: i for i in images if i.get("unified_number")}
+    keys["image"] = _image_keys(images)
     return keys
 
 

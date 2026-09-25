@@ -2,6 +2,7 @@ import json
 
 from compare_unified import (
     LevelCount,
+    _image_keys,
     collect_keys,
     comparable_text,
     format_report,
@@ -71,6 +72,12 @@ def test_collect_keys_groups_by_level_and_skips_unnumbered():
     assert set(keys["notes"]) == {"A.1.Notes"}
     assert set(keys["image"]) == {"A.1.1.1.1.Fig1"}
     assert keys["sentence"] == {}
+
+
+def test_image_keys_indexes_numbered_images_only():
+    numbered = {"unified_number": "A.1.Fig1"}
+    assert _image_keys([numbered, {"unified_number": ""}, {}]) == {"A.1.Fig1": numbered}
+    assert _image_keys([]) == {}
 
 
 def test_level_counts_both_and_only():

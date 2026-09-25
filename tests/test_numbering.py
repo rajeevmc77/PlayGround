@@ -44,19 +44,28 @@ def test_normalize_identifier_strips_trailing_dot_and_collapses_spaces():
     assert normalize_identifier("") == ""
 
 
-def test_official_numbers_build_the_key_and_volume_is_left_out():
+def _numbered_volume_chain():
     clause = _StubNode("Clause", "(a)", "c")
     sentence = _StubNode("Sentence", "(2)", "s", [clause])
     article = _StubNode("Article", "9.10.18.2.", "a", [sentence])
     part = _StubNode("Part", "9", "p", [article])
     division = _StubNode("Division", "B", "d", [part])
     volume = _StubNode("Volume", "2", "v", [division])
-
     assign_unified_numbers([volume], RULES, SCOPES)
+    return volume, division, part, article, sentence, clause
+
+
+def test_official_numbers_build_the_key_and_volume_is_left_out():
+    volume, division, part, *_ = _numbered_volume_chain()
 
     assert volume.unified_number == "V2"
     assert division.unified_number == "B"
     assert part.unified_number == "B.9"
+
+
+def test_official_numbers_build_article_sentence_and_clause_keys():
+    *_, article, sentence, clause = _numbered_volume_chain()
+
     assert article.unified_number == "B.9.10.18.2"
     assert sentence.unified_number == "B.9.10.18.2.(2)"
     assert clause.unified_number == "B.9.10.18.2.(2)(a)"

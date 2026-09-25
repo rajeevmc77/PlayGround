@@ -35,7 +35,7 @@ def _keys(node):
         yield from _keys(child)
 
 
-def test_part_9_gets_identical_keys_although_the_web_puts_it_in_volume_2():
+def _pdf_part9_volume():
     pdf_table = _pdf("Table", "9.10.18.2.", [_pdf("Row", "Row1", [_pdf("Cell", "Col1")])])
     pdf_article = _pdf(
         "Article",
@@ -53,8 +53,10 @@ def test_part_9_gets_identical_keys_although_the_web_puts_it_in_volume_2():
             pdf_notes,
         ],
     )
-    pdf_volume = _pdf("Volume", "Volume", [_pdf("Division", "B", [pdf_part])])
+    return _pdf("Volume", "Volume", [_pdf("Division", "B", [pdf_part])])
 
+
+def _web_part9_volume2():
     web_table = _web("Table", "table1", [_web("Row", "row1", [_web("Cell", "col1")])])
     web_article = _web(
         "article",
@@ -73,14 +75,27 @@ def test_part_9_gets_identical_keys_although_the_web_puts_it_in_volume_2():
             web_notes,
         ],
     )
-    web_volume2 = _web("volume", "2", [_web("division", "B", [web_part])])
+    return _web("volume", "2", [_web("division", "B", [web_part])])
 
+
+def _division_keys(volume):
+    return {key for _, key in _keys(volume.children[0])}
+
+
+def _part9_key_sets():
+    pdf_volume, web_volume2 = _pdf_part9_volume(), _web_part9_volume2()
     assign_unified_numbers([pdf_volume], MO_TOC_RULES, MO_TOC_SCOPE_TYPES)
     assign_unified_numbers([web_volume2], WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES)
+    return _division_keys(pdf_volume), _division_keys(web_volume2)
 
-    pdf_keys = {key for _, key in _keys(pdf_volume.children[0])}
-    web_keys = {key for _, key in _keys(web_volume2.children[0])}
+
+def test_part_9_gets_identical_keys_although_the_web_puts_it_in_volume_2():
+    pdf_keys, web_keys = _part9_key_sets()
     assert pdf_keys == web_keys
+
+
+def test_part_9_web_keys_cover_table_cells_notes_container_and_note():
+    _, web_keys = _part9_key_sets()
     assert "B.9.10.18.2.Tbl1.Row1.Col1" in web_keys
     assert "B.9.Notes" in web_keys
     assert "B.A-9.10.18.2.(2)" in web_keys
