@@ -1,42 +1,30 @@
-from web_toc.parsing.numbering_config import (
-    WEB_TOC_IDENTIFIER_TYPES,
-    WEB_TOC_SUFFIX_TYPES,
-    WEB_TOC_TYPE_MARKERS,
-)
-
-CANONICAL_LEVELS = ["volume", "division", "part", "section", "subsection", "article"]
-
-MARKER_TYPES = {
-    "part_appendix": "App",
-    "division_appendix": "App",
-    "index": "Idx",
-    "conversions": "Conv",
-    "spectables": "Spec",
-    "Table": "Tbl",
-}
+from shared.numbering import Rule
+from web_toc.parsing.numbering_config import WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
 
 
-def test_canonical_document_levels_map_to_none():
-    for level in CANONICAL_LEVELS:
-        assert WEB_TOC_TYPE_MARKERS[level] is None
+def test_official_number_levels_are_absolute():
+    for level in ("part", "section", "subsection", "article", "Note"):
+        assert WEB_TOC_RULES[level] == Rule("absolute")
 
 
-def test_non_level_types_map_to_short_markers():
-    for node_type, marker in MARKER_TYPES.items():
-        assert WEB_TOC_TYPE_MARKERS[node_type] == marker
+def test_chain_restarting_levels():
+    assert WEB_TOC_RULES["volume"] == Rule("root", "V")
+    assert WEB_TOC_RULES["division"] == Rule("root", fallback="FM")
+    assert WEB_TOC_RULES["division_appendix"] == Rule("root", "App")
 
 
-def test_table_has_exactly_the_expected_keys():
-    assert set(WEB_TOC_TYPE_MARKERS) == set(CANONICAL_LEVELS) | set(MARKER_TYPES)
+def test_body_notes_and_table_levels():
+    assert WEB_TOC_RULES["Sentence"] == Rule("child")
+    assert WEB_TOC_RULES["Clause"] == Rule("suffix")
+    assert WEB_TOC_RULES["Subclause"] == Rule("suffix")
+    assert WEB_TOC_RULES["part_appendix"] == Rule("literal", "Notes")
+    assert WEB_TOC_RULES["spectables"] == Rule("ordinal", "Spec")
+    assert WEB_TOC_RULES["index"] == Rule("ordinal", "Idx")
+    assert WEB_TOC_RULES["conversions"] == Rule("ordinal", "Conv")
+    assert WEB_TOC_RULES["Table"] == Rule("ordinal", "Tbl", scoped=True)
+    assert WEB_TOC_RULES["Row"] == Rule("ordinal", "Row")
+    assert WEB_TOC_RULES["Cell"] == Rule("ordinal", "Col")
 
 
-def test_synthetic_root_type_is_not_in_the_table():
-    assert "root" not in WEB_TOC_TYPE_MARKERS
-
-
-def test_division_row_cell_and_sentence_are_the_identifier_types():
-    assert WEB_TOC_IDENTIFIER_TYPES == frozenset({"division", "Row", "Cell", "Sentence"})
-
-
-def test_clause_and_subclause_are_the_suffix_types():
-    assert WEB_TOC_SUFFIX_TYPES == frozenset({"Clause", "Subclause"})
+def test_scope_types():
+    assert {"article", "Note", "part_appendix", "spectables"} <= WEB_TOC_SCOPE_TYPES

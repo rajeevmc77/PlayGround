@@ -20,6 +20,7 @@ def _mock_source(mock_source_cls):
 
 @patch("build_web_toc.write_json")
 @patch("build_web_toc.download_images")
+@patch("build_web_toc.number_images")
 @patch("build_web_toc.extract_images")
 @patch("build_web_toc.content_url")
 @patch("build_web_toc.collect_citations")
@@ -31,6 +32,7 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
     mock_collect_citations,
     mock_content_url,
     mock_extract_images,
+    mock_number_images,
     mock_download_images,
     mock_write_json,
     tmp_path,
@@ -56,7 +58,7 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
 
     _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
 
-    assert leaf.unified_number == "1"
+    assert leaf.unified_number == "1.1"
     mock_source_cls.assert_called_once_with("https://dev.buildingcode.gov.bc.ca", "2024")
     mock_build_tree.assert_called_once_with({"tree": []})
     mock_collect_citations.assert_called_once_with(root)
@@ -66,6 +68,9 @@ def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
     mock_extract_images.assert_called_once_with(
         {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
     )
+    mock_number_images.assert_called_once()
+    assert mock_number_images.call_args.args[0] == ["WEB_IMAGE"]
+    assert isinstance(mock_number_images.call_args.args[1], dict)
     expected_path = str(Path(tmp_path) / "bcbc_web.json")
     mock_download_images.assert_called_once_with(
         ["WEB_IMAGE"], mock_source, str(Path(tmp_path) / "web_images")
@@ -186,7 +191,7 @@ def test_run_attaches_and_numbers_tables_from_every_content_bearing_node(
         {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
     )
     assert leaf.children == [table_node]
-    assert table_node.unified_number == "1.Tbl1"
+    assert table_node.unified_number == "1.1.Tbl1"
 
 
 @patch("build_web_toc.write_json")
@@ -248,8 +253,8 @@ def test_run_attaches_and_numbers_body_text_from_every_content_bearing_node(
         {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
     )
     assert leaf.children == [sentence_node]
-    assert sentence_node.unified_number == "1.(1)"
-    assert clause_node.unified_number == "1.(1)(a)"
+    assert sentence_node.unified_number == "1.1.(1)"
+    assert clause_node.unified_number == "1.1.(1)(a)"
 
 
 @patch("build_web_toc.write_json")

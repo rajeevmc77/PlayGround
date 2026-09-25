@@ -16,18 +16,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from shared.numbering import assign_unified_numbers
+from shared.numbering import assign_unified_numbers, number_images
 from web_toc.output.image_downloader import download_images
 from web_toc.output.json_writer import write_json
 from web_toc.parsing.body_extractor import attach_body, extract_body
 from web_toc.parsing.content_url import content_url
 from web_toc.parsing.image_extractor import extract_images
 from web_toc.parsing.note_extractor import extract_notes
-from web_toc.parsing.numbering_config import (
-    WEB_TOC_IDENTIFIER_TYPES,
-    WEB_TOC_SUFFIX_TYPES,
-    WEB_TOC_TYPE_MARKERS,
-)
+from web_toc.parsing.numbering_config import WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
 from web_toc.parsing.owner_resolution import attach_owned_nodes
 from web_toc.parsing.site_source import HttpxWebSource
 from web_toc.parsing.table_extractor import attach_tables, extract_tables
@@ -110,13 +106,13 @@ async def run(base_url: str, version: str, output_dir: str) -> None:
         attach_body(root, owned_sentences)
         # Runs after attach_tables/attach_body so the nodes they just added
         # get numbered too - matching the pdf pipeline's build_mo_toc.py,
-        # which also numbers only after its own attach_tables call.
-        assign_unified_numbers(
-            root.children,
-            WEB_TOC_TYPE_MARKERS,
-            identifier_types=WEB_TOC_IDENTIFIER_TYPES,
-            suffix_types=WEB_TOC_SUFFIX_TYPES,
+        # which also numbers only after its own attach_tables call. Images
+        # are numbered from the same scope map so a figure's key lines up
+        # with its owning node's cross-source key.
+        scope_by_citation = assign_unified_numbers(
+            root.children, WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
         )
+        number_images(images, scope_by_citation)
 
         await download_images(images, source, str(Path(output_dir) / "web_images"))
 
