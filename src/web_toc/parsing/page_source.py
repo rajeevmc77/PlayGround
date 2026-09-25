@@ -21,6 +21,7 @@ from playwright.async_api import (
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from web_toc.domain.models import ScrapedPage
+from web_toc.parsing.layout_script import LAYOUT_JS
 from web_toc.parsing.scroll_plan import short_tables
 
 READY_SELECTOR = "main.ui-ContentPanel .reading-view__content, main.ui-ContentPanel .partRenderer"
@@ -97,6 +98,7 @@ class PageSource(Protocol):
         self, url: str, expected_rows: dict[str, int] | None = None
     ) -> ScrapedPage | None: ...
     async def fetch_nav_css(self, url: str, selector_pattern: str) -> list[dict]: ...
+    async def fetch_layout(self, url: str) -> dict | None: ...
 
 
 async def _row_counts(tab: Page, expected: dict[str, int]) -> dict[str, list[int]]:
@@ -172,6 +174,16 @@ class PlaywrightPageSource:
         except PlaywrightTimeoutError:
             return False
         return True
+
+    async def fetch_layout(self, url: str) -> dict | None:
+        """Runs the layout pass (layout_script.py) over an already-saved,
+        locally served page; None if it has no content panel."""
+        tab = await self._context.new_page()
+        try:
+            await tab.goto(url, wait_until="load")
+            return await tab.evaluate(LAYOUT_JS)
+        finally:
+            await tab.close()
 
     async def fetch_nav_css(self, url: str, selector_pattern: str) -> list[dict]:
         tab = await self._context.new_page()
