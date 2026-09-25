@@ -30,7 +30,9 @@ independent tools live here:
    `output/web_pages/<citation>.html`, and mirrors every stylesheet/font/image it uses under
    `output/web_pages/assets/` (plus `site-nav.css`, the site's nav-tree/breadcrumbs rules for
    the sidebar). Subsection/article views are cut from their section page the way the site
-   does it, so only ~136 pages are scraped.
+   does it, so only ~136 pages are scraped. `src/compare_unified.py` compares the two indexes
+   by `unified_number` (keys built from the code's own numbering, identical in both files for
+   the same node) and reports per-level agreement; `--diff` lists matched keys whose text differs.
 
 A standalone CLI companion, `src/check_directory_access.py`, checks (outside the web app) 
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,
@@ -113,7 +115,7 @@ Run these and fix everything they report before calling a task complete:
 Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker for the
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
-`src/build_web_toc.py`, `src/build_web_pages.py`, `src/shared/`, and `tests/` (including
+`src/build_web_toc.py`, `src/build_web_pages.py`, `src/compare_unified.py`, `src/shared/`, and `tests/` (including
 `tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
 — not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
