@@ -35,6 +35,38 @@ def test_body_and_table_levels():
     assert MO_TOC_RULES["Cell"] == Rule("ordinal", "Col")
 
 
+def test_rule_table_covers_exactly_the_expected_node_types():
+    assert set(MO_TOC_RULES) == {
+        "Volume",
+        "FrontMatter",
+        "BackMatter",
+        "Division",
+        "Appendix",
+        "Part",
+        "Section",
+        "Subsection",
+        "Article",
+        "Note",
+        "AppendixPart",
+        "AppendixSection",
+        "AppendixArticle",
+        "Sentence",
+        "Clause",
+        "Subclause",
+        "NotesContainer",
+        "TableGroup",
+        "Table",
+        "Row",
+        "Cell",
+    }
+
+
+def test_scope_types_are_exactly_the_expected_set():
+    assert MO_TOC_SCOPE_TYPES == frozenset(
+        {"Part", "Section", "Subsection", "Article", "NotesContainer", "Note", "TableGroup"}
+    )
+
+
 def test_appendix_sub_levels_are_not_table_scopes():
     # the web keeps Appendix C/D tables directly under the appendix
     assert {"AppendixPart", "AppendixSection", "AppendixArticle"}.isdisjoint(MO_TOC_SCOPE_TYPES)

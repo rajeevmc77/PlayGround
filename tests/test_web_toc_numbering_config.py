@@ -29,5 +29,48 @@ def test_notes_and_table_levels():
     assert WEB_TOC_RULES["Cell"] == Rule("ordinal", "Col")
 
 
+def test_rule_table_covers_exactly_the_expected_node_types():
+    assert set(WEB_TOC_RULES) == {
+        "volume",
+        "division",
+        "division_appendix",
+        "part",
+        "section",
+        "subsection",
+        "article",
+        "Note",
+        "Sentence",
+        "Clause",
+        "Subclause",
+        "part_appendix",
+        "spectables",
+        "index",
+        "conversions",
+        "Table",
+        "Row",
+        "Cell",
+    }
+
+
+def test_synthetic_root_is_never_numbered():
+    assert "root" not in WEB_TOC_RULES
+
+
+def test_scope_types_are_exactly_the_expected_set():
+    assert WEB_TOC_SCOPE_TYPES == frozenset(
+        {
+            "part",
+            "section",
+            "subsection",
+            "article",
+            "part_appendix",
+            "Note",
+            "spectables",
+            "index",
+            "conversions",
+        }
+    )
+
+
 def test_scope_types():
     assert {"article", "Note", "part_appendix", "spectables"} <= WEB_TOC_SCOPE_TYPES
