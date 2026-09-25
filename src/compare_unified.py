@@ -18,6 +18,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PDF = str(PROJECT_ROOT / "output" / "bcbc_pdf.json")
 DEFAULT_WEB = str(PROJECT_ROOT / "output" / "bcbc_web.json")
 
+# PDF node types are TitleCase; web nav types are the site's raw lowercase names.
+# Both spellings map to one normalized level name.
 LEVEL_OF = {
     "Volume": "volume",
     "volume": "volume",
@@ -95,7 +97,9 @@ def comparable_text(node: dict) -> str:
     text = node.get("content") or node.get("title") or ""
     heading = node.get("heading", "")
     if heading and text.startswith(heading):
-        text = text[len(heading) :].lstrip(" -")
+        stripped = text[len(heading) :].lstrip(" -")
+        if stripped:
+            text = stripped
     return " ".join(_REF_RE.sub(r"\1", text).lower().split())
 
 

@@ -88,10 +88,21 @@ def test_comparable_text_strips_heading_refs_and_case():
     assert comparable_text({}) == ""
 
 
+def test_comparable_text_keeps_full_text_when_stripping_heading_empties_it():
+    node = {"title": "Notes to Part 1", "heading": "Notes to Part 1"}
+    assert comparable_text(node) == "notes to part 1"
+
+
 def test_text_mismatches_only_reports_matched_keys_that_differ():
     pdf = {"k1": {"title": "Scope"}, "k2": {"title": "X"}, "only": {"title": "Y"}}
     web = {"k1": {"title": "1.1.1.1 Scope", "heading": "1.1.1.1"}, "k2": {"title": "Z"}}
     assert text_mismatches(pdf, web) == [("k2", "x", "z")]
+
+
+def test_text_mismatches_detects_different_note_titles():
+    pdf = {"note_key": {"title": "Notes to Part 1", "heading": "Notes to Part 1"}}
+    web = {"note_key": {"title": "Notes to Part 2", "heading": "Notes to Part 2"}}
+    assert text_mismatches(pdf, web) == [("note_key", "notes to part 1", "notes to part 2")]
 
 
 def test_format_report_has_header_and_one_row_per_level():
