@@ -16,11 +16,16 @@ from web_toc.parsing.page_source import PlaywrightPageSource
 _PAGE = """<!DOCTYPE html><html><head><style>
 body{margin:0} .ui-ContentPanel{display:block;margin-top:50px;height:200px;overflow:auto}
 h1{margin:0;height:30px} td,th{height:20px}
+.compound-ref{display:inline-block} .compound-ref:before{content:"[ "}
+.compound-ref:after{content:" ]"} .hidden{display:none}
 </style></head><body><svg><symbol id="bcbc-info-icon"></symbol></svg>
 <main id="main-content"><div class="MainLayout">
 <main class="ui-ContentPanel"><div class="reading-view__content">
 <h1 class="partTitle">Part 9 - Housing</h1>
 <h4 class="articleHeading">9.38.1.1. Attribution</h4>
+<div id="refs"><span class="compound-ref"><span>F20</span> - <span>OS2.1</span></span><span
+class="compound-ref"><span>F22</span> - <span>OS2.5</span></span><span class="hidden">x</span>
+Applies.</div>
 <div id="s1">(1) A  sentence
   with   spaces.<div id="s1.clause1">(a) a clause</div></div>
 <div id="t1"><table><thead><tr><th>Provision</th><th>Statement</th></tr></thead>
@@ -105,6 +110,12 @@ def test_elements_are_keyed_by_id_with_collapsed_rendered_text(measured):
     assert elements["s1"]["text"] == "(1) A sentence with spaces. (a) a clause"
     assert elements["s1.clause1"]["text"] == "(a) a clause"
     assert "bcbc-info-icon" not in elements  # outside the panel
+
+
+def test_text_includes_css_generated_content_and_skips_hidden_elements(measured):
+    # The site draws each compound reference's brackets with ::before/::after.
+    text = measured["page"]["elements"]["refs"]["text"]
+    assert text == "[ F20 - OS2.1 ] [ F22 - OS2.5 ] Applies."
 
 
 def test_tables_keep_every_row_and_cell_in_document_order(measured):

@@ -46,7 +46,30 @@ LAYOUT_JS = f"""() => {{
     const x = r.left - origin.left + dx, y = r.top - origin.top + dy;
     return {{ x0: round(x), y0: round(y), x1: round(x + r.width), y1: round(y + r.height) }};
   }};
-  const textOf = (el) => (el.innerText || '').replace(/\\s+/g, ' ').trim();
+  // The text as displayed: like innerText, but with CSS generated content
+  // (the site draws e.g. a compound reference's "[ ... ]" with ::before/
+  // ::after), a space around every non-inline box, and display:none skipped.
+  // Memoised - a table's text is built from its already-walked cells.
+  const cache = new Map();
+  const generated = (el, which) => {{
+    const match = getComputedStyle(el, which).content.match(/^"(.*)"$/s);
+    return match ? match[1].replace(/\\\\(.)/g, '$1') : '';
+  }};
+  const rendered = (el) => {{
+    if (cache.has(el)) return cache.get(el);
+    const display = getComputedStyle(el).display;
+    let text = '';
+    if (display !== 'none' && !(el instanceof SVGElement)) {{
+      const parts = [...el.childNodes].map((child) =>
+        child.nodeType === Node.TEXT_NODE ? child.nodeValue
+          : child.nodeType === Node.ELEMENT_NODE ? rendered(child) : '');
+      text = generated(el, '::before') + parts.join('') + generated(el, '::after');
+      if (display !== 'inline') text = ` ${{text}} `;
+    }}
+    cache.set(el, text);
+    return text;
+  }};
+  const textOf = (el) => rendered(el).replace(/\\s+/g, ' ').trim();
   const entry = (el) => ({{ xpath: xpathOf(el), text: textOf(el), bbox: bboxOf(el) }});
   const inHtml = (el) => !el.closest('svg');
 
