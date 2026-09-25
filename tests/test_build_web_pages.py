@@ -2,7 +2,9 @@ import asyncio
 import json
 from unittest.mock import patch
 
-from build_web_pages import PAGE_FETCH_CONCURRENCY, run
+import pytest
+
+from build_web_pages import PAGE_FETCH_CONCURRENCY, main, run
 from web_toc.domain.models import ScrapedPage
 
 BASE = "https://site.example"
@@ -360,3 +362,31 @@ def test_run_with_only_scrapes_just_that_page_and_keeps_the_rest_of_the_manifest
         "nbc.divA.part1": "Part 1 (old)",
         "nbc.divA.part1.sect1": "Section 1 - BC Building Code",
     }
+
+
+def _main_with(argv, incomplete):
+    async def fake_run(*args):
+        fake_run.args = args
+        return incomplete
+
+    with patch("build_web_pages.run", fake_run), patch("sys.argv", ["build_web_pages.py", *argv]):
+        main()
+    return fake_run.args
+
+
+def test_main_passes_its_options_to_run_and_exits_cleanly_when_complete(tmp_path):
+    args = _main_with(["--output-dir", str(tmp_path), "--only", "nbc.divA.part1"], {})
+    assert args == (
+        "https://dev.buildingcode.gov.bc.ca",
+        "2024",
+        "2024-03-08",
+        str(tmp_path),
+        "nbc.divA.part1",
+    )
+
+
+def test_main_reports_incomplete_tables_and_exits_non_zero(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        _main_with(["--output-dir", str(tmp_path)], {"p1": {"t1": [1, 3]}})
+    assert exit_info.value.code == 1
+    assert "INCOMPLETE p1: {'t1': [1, 3]}" in capsys.readouterr().err

@@ -168,6 +168,21 @@ def test_a_heading_number_does_not_match_a_longer_number_it_prefixes():
     assert _find(root, f"{SECTION}.subsect1.art1").location is not None
 
 
+def test_a_heading_level_node_without_a_heading_number_is_not_matched_by_text():
+    root = _tree()
+    _find(root, f"{SECTION}.subsect1").heading = ""
+    _join(root, {SECTION: _layout()})
+    assert _find(root, f"{SECTION}.subsect1").location is None
+
+
+def test_a_table_with_no_measured_grid_is_located_but_its_rows_are_not():
+    layout = _layout()
+    del layout["tables"][TABLE]
+    root = _join(_tree(_table_node([2, 1])), {SECTION: layout})
+    assert _find(root, TABLE).location is not None
+    assert _find(root, f"{TABLE}-row1").location is None
+
+
 def test_an_image_is_located_by_its_src_on_its_owners_page():
     image = WebImage(id="f1", src="bc-graphics/fig1", alt_text="", owner_citation=SENTENCE)
     other = WebImage(id="f2", src="bc-graphics/other", alt_text="", owner_citation=SENTENCE)

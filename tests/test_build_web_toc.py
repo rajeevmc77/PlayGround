@@ -3,10 +3,11 @@ tests lay out a tiny web_source/ + web_pages/ tree on disk and read back the
 bcbc_web.json it writes."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 
-from build_web_toc import _attach_notes, run
+from build_web_toc import _attach_notes, main, run
 from web_toc.domain.models import WebNode
 
 ROOT_XPATH = "/html/body/main/div/main"
@@ -274,6 +275,13 @@ def test_run_reads_revised_content_as_of_the_snapshot_date(output_dir):
     cell = _find(tree, f"{TABLE}-row2-col1")
     assert cell is not None
     assert cell["location"]["xpath"].endswith("tbody[1]/tr[1]/td[1]")
+
+
+def test_main_builds_into_the_given_output_dir(output_dir, capsys):
+    with patch("sys.argv", ["build_web_toc.py", "--output-dir", str(output_dir)]):
+        main()
+    assert (output_dir / "bcbc_web.json").exists()
+    assert f"Wrote {output_dir}/bcbc_web.json" in capsys.readouterr().err
 
 
 def test_run_without_a_cached_source_says_to_scrape_first(tmp_path):

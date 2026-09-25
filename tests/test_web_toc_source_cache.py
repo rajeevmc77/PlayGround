@@ -85,6 +85,14 @@ def test_cache_contents_fetches_concurrently_but_bounded(tmp_path):
     assert http.max_in_flight == CONTENT_FETCH_CONCURRENCY
 
 
+def test_cache_contents_refuses_a_citation_that_is_not_a_safe_file_name(tmp_path):
+    section = _section(1)
+    section.citation = "nbc divA.part1.sect1"  # still a section id, but has a space
+    http = _FakeHttp({"/data/2024/content/nbc diva/part-1/section-1.json": {"id": "s1"}})
+    with pytest.raises(ValueError, match="Unsafe citation"):
+        asyncio.run(cache_contents(http, _root(section), "2024", tmp_path))
+
+
 def test_write_navigation_and_local_source_round_trip(tmp_path):
     nav = {"tree": [{"id": "nbc.divA"}]}
     write_navigation(tmp_path, nav)
