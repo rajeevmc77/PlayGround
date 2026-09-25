@@ -153,12 +153,20 @@ def _update_state_after_open(ntype: str, node: Node, state: _BuildState) -> None
     state.article_bodies.append((node, state.current_body))
 
 
-def _heading_text(match, title: str) -> str:
+# Their trigger line is the title itself ("Span Tables", "PROVINCE OF BRITISH
+# COLUMBIA"), not heading words.
+_NO_HEADING_TYPES = frozenset({"TableGroup", "BackMatter"})
+
+
+def _heading_text(ntype: str, match, title: str) -> str:
     """The literal heading words - "Part 1", "Section 9.10.", "Notes to Part 1" -
     without any title the same trigger line also carried."""
+    if ntype in _NO_HEADING_TYPES:
+        return ""
     if not title or match.lastindex is None:
-        return match.group(0).strip()
-    return match.string[: match.start(match.lastindex)].strip()
+        return " ".join(match.group(0).split())
+    # Relies on the title being the LAST capture group of each heading regex.
+    return " ".join(match.string[: match.start(match.lastindex)].split())
 
 
 def _heading_title(
@@ -178,7 +186,7 @@ def _open_node(
     ntype: str, match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
 ) -> int:
     identifier, title, citation = _citation_for(ntype, match, state.division)
-    heading = _heading_text(match, title)
+    heading = _heading_text(ntype, match, title)
     if ntype == "Division":
         state.division = identifier
     title, next_idx = _heading_title(ntype, lines, idx + 1, title, heading)

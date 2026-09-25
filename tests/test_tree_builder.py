@@ -129,6 +129,39 @@ def test_heading_records_literal_heading_words():
     assert (article.heading, article.title) == ("1.1.1.1.", "Application of this Code")
 
 
+def test_heading_collapses_internal_whitespace():
+    volume, _ = build_tree_from_lines(
+        [
+            [
+                line(50, 40, "Division A", BLACK),
+                line(70, 40, "Part 3", BLACK),
+                line(90, 40, "Section  3.9.   General", BLACK),
+            ]
+        ],
+        1,
+    )
+    section = volume.children[1].children[0].children[0]
+    assert section.heading == "Section 3.9."
+
+
+def test_table_group_and_back_matter_have_no_heading_words():
+    volume, _ = build_tree_from_lines(
+        [
+            [
+                line(50, 40, "Division B", BLACK),
+                line(70, 40, "Part 9", BLACK),
+                line(90, 40, "Span Tables", BLACK),
+            ],
+            [line(50, 40, "PROVINCE OF BRITISH COLUMBIA", BOLD)],
+        ],
+        2,
+    )
+    table_group = volume.children[1].children[0].children[0]
+    back_matter = volume.children[-1]
+    assert (table_group.type, table_group.heading) == ("TableGroup", "")
+    assert (back_matter.type, back_matter.heading) == ("BackMatter", "")
+
+
 def test_notes_container_title_is_notes_to_part_n():
     volume, _ = build_tree_from_lines(
         [
