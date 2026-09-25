@@ -12,6 +12,7 @@
     <div id="tabs">
       <button id="tab-toc" class="active">Table of Contents - pdf</button>
       <button id="tab-toc-web">Table of Contents - web</button>
+      <button id="tab-toc-both">Table of Contents - Both</button>
       <button id="tab-compare">Compare</button>
     </div>
     <div id="tree">
@@ -52,6 +53,32 @@
       <iframe id="web-page-frame" title="BC Building Code reading page" hidden></iframe>
     </div>
   </div>
+  <div id="toc-both" style="display:none">
+    <div id="both-tree">
+      <div class="toc-filters">
+        <label><input type="checkbox" id="filter-both-figures" checked> Figures</label>
+        <label><input type="checkbox" id="filter-both-equations" checked> Equations / Formula</label>
+        <label><input type="checkbox" id="filter-both-images" checked> Images</label>
+      </div>
+      <div id="both-tree-content"></div>
+    </div>
+    <div id="both-content">
+      <div class="both-content-col">
+        <h3>PDF</h3>
+        <div id="both-pdf-pane" class="both-pane">
+          <canvas id="both-pdf-canvas"></canvas>
+          <div id="both-pdf-highlight" class="content-highlight" style="display:none"></div>
+        </div>
+      </div>
+      <div class="both-content-col">
+        <h3>Web</h3>
+        <div id="both-web-pane" class="both-pane">
+          <div id="both-web-placeholder" class="compare-placeholder">Click an item on the left to compare.</div>
+          <iframe id="both-web-frame" title="Matching web content" hidden></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="compare" style="display:none">
     <div id="compare-tree">
       <label><input type="checkbox" id="declutter-compare" checked> Hide decorative images (small icons/logos)</label>
@@ -68,6 +95,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=19"></script>
+  <script type="module" src="/static/viewer.js?v=20"></script>
 </body>
 </html>

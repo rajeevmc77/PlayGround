@@ -39,3 +39,21 @@ body { margin: 0; display: flex; height: 100vh; }
 .compare-image-col h3 { position: sticky; top: 0; background: #fff; margin: 0 0 var(--gap); padding-bottom: var(--gap); }
 .compare-image-col img { max-width: 100%; }
 .compare-placeholder { color: #888; }
+#toc-both { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; z-index: 2; display: flex; }
+#both-tree { width: 320px; flex-shrink: 0; overflow-y: auto; padding: var(--gap); box-sizing: border-box; border-right: 1px solid #ccc; }
+#both-content { flex: 1; display: flex; overflow: hidden; }
+.both-content-col { flex: 1; overflow: auto; box-sizing: border-box; text-align: center; }
+.both-content-col:first-child { border-right: 1px solid #ccc; }
+.both-content-col h3 { position: sticky; top: 0; left: 0; background: #fff; margin: 0; padding: var(--gap); z-index: 1; }
+.both-pane { position: relative; }
+#both-pdf-canvas { margin-top: 12px; box-shadow: 0 0 4px #999; }
+/* Fixed to the exact viewport build_web_pages.py rendered at (page_source.py),
+   so the saved page's own CSS reflows identically and its recorded bbox
+   stays valid; the frame scrolls its own document to the highlight rather
+   than growing to full content height. */
+#both-web-frame { display: block; width: 1500px; height: 950px; border: 0; margin: 12px auto; }
+/* The base rule's own `display: block` (needed for margin:auto centering)
+   outranks the `[hidden]` attribute's UA-stylesheet display:none - restore
+   it explicitly so frame.hidden = true actually hides stale content. */
+#both-web-frame[hidden] { display: none; }
+.content-highlight { position: absolute; border: 2px solid red; background: rgba(255,0,0,0.15); pointer-events: none; }

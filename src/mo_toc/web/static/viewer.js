@@ -9,6 +9,12 @@ import {
   sitePathKey,
   viewTarget,
 } from "./web_toc_view.mjs?v=2";
+import {
+  classifyImage,
+  collectUnifiedLocations,
+  highlightRect,
+  pageFileRoute,
+} from "./both_view.mjs?v=1";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -18,6 +24,8 @@ let currentPage = 1;
 let tocVolume = null;
 let allImages = null;
 let webTocTree = null;
+let webImages = [];
+let bothLocations = new Map();
 
 function formatNodeLabel(node) {
   const text = node.title || node.content;
@@ -465,13 +473,12 @@ async function loadWebToc() {
   }
   const data = await res.json();
   webTocTree = data.tree;
-  attachWebImagesToOwners(webTocTree, data.images);
+  webImages = data.images;
+  attachWebImagesToOwners(webTocTree, webImages);
   indexWebPaths(webTocTree, []);
   await loadWebPages();
   renderTocWebTree();
 }
-
-let compareWebImages = [];
 
 function normalizeForMatch(value) {
   return (value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -520,7 +527,7 @@ function renderCompareWebImage(webImg) {
 
 function showCompareImages(img, index) {
   renderComparePdfImage(img, index);
-  renderCompareWebImage(findMatchingWebImage(img, compareWebImages));
+  renderCompareWebImage(findMatchingWebImage(img, webImages));
 }
 
 function renderCompareImageRow(img, index, depth) {
@@ -564,9 +571,6 @@ async function loadCompareTab() {
   const content = document.getElementById("compare-tree-content");
   const declutter = document.getElementById("declutter-compare");
 
-  const res = await fetch("/api/web-toc");
-  compareWebImages = res.ok ? (await res.json()).images : [];
-
   function render() {
     content.innerHTML = "";
     attachImagesToOwners(declutter.checked);
@@ -577,39 +581,48 @@ async function loadCompareTab() {
   render();
 }
 
-async function renderPage(pageNumber) {
+async function renderPdfPage(canvasId, pageNumber) {
   const page = await pdfDoc.getPage(pageNumber);
   const viewport = page.getViewport({ scale: 1.5 });
-  const canvas = document.getElementById("page-canvas");
+  const canvas = document.getElementById(canvasId);
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-  document.getElementById("page-indicator").textContent = `Page ${pageNumber}`;
-  currentPage = pageNumber;
   return viewport;
 }
 
-function showHighlight(viewport, bbox) {
-  // bbox comes from PyMuPDF, which already uses a top-left-origin, y-down
-  // coordinate system (like the canvas) - NOT the PDF spec's native
-  // bottom-left-origin, y-up space that pdf.js's own
-  // convertToViewportRectangle() expects for raw PDF-space coordinates.
-  // Running our bbox through that conversion flips it vertically, so we
-  // scale directly by the render scale instead.
+// bbox comes from PyMuPDF, which already uses a top-left-origin, y-down
+// coordinate system (like the canvas) - NOT the PDF spec's native
+// bottom-left-origin, y-up space that pdf.js's own
+// convertToViewportRectangle() expects for raw PDF-space coordinates.
+// Running our bbox through that conversion flips it vertically, so we
+// scale directly by the render scale instead.
+function showPdfHighlight(canvasId, highlightId, scrollContainerId, viewport, bbox) {
   const scale = viewport.scale;
   const x0 = bbox.x0 * scale;
   const y0 = bbox.y0 * scale;
   const x1 = bbox.x1 * scale;
   const y1 = bbox.y1 * scale;
-  const canvas = document.getElementById("page-canvas");
-  const highlight = document.getElementById("highlight");
+  const canvas = document.getElementById(canvasId);
+  const highlight = document.getElementById(highlightId);
   highlight.style.display = "block";
   highlight.style.opacity = "1";
   highlight.style.left = `${canvas.offsetLeft + x0}px`;
   highlight.style.top = `${canvas.offsetTop + y0}px`;
   highlight.style.width = `${x1 - x0}px`;
   highlight.style.height = `${y1 - y0}px`;
-  document.getElementById("main").scrollTo({ top: canvas.offsetTop + y0 - 80, behavior: "smooth" });
+  document.getElementById(scrollContainerId).scrollTo({ top: canvas.offsetTop + y0 - 80, behavior: "smooth" });
+}
+
+async function renderPage(pageNumber) {
+  const viewport = await renderPdfPage("page-canvas", pageNumber);
+  document.getElementById("page-indicator").textContent = `Page ${pageNumber}`;
+  currentPage = pageNumber;
+  return viewport;
+}
+
+function showHighlight(viewport, bbox) {
+  showPdfHighlight("page-canvas", "highlight", "main", viewport, bbox);
 }
 
 async function goToLocation(pageNumber, bbox) {
@@ -617,9 +630,133 @@ async function goToLocation(pageNumber, bbox) {
   showHighlight(viewport, bbox);
 }
 
-const TABS = ["toc", "toc-web", "compare"];
-const TAB_CONTENT_ID = { toc: "tree", "toc-web": "tree-web", compare: "compare" };
-const TAB_ACTIVE_DISPLAY = { compare: "flex" };
+// "Table of Contents - Both": one tree (the full pdf hierarchy, same as the
+// pdf tab) drives two synchronized content panes. Filters only toggle which
+// Figure/Equation/Image overlay rows attach to their owner - unlike the pdf
+// tab, the structural tree itself is never pruned, since the whole point of
+// this tab is to show every element down to Subclause.
+function bothFilters() {
+  return {
+    figure: document.getElementById("filter-both-figures").checked,
+    equation: document.getElementById("filter-both-equations").checked,
+    image: document.getElementById("filter-both-images").checked,
+  };
+}
+
+function clearAttachedBothImages(node) {
+  delete node._bothImages;
+  node.children.forEach(clearAttachedBothImages);
+}
+
+function attachBothImages(filters) {
+  clearAttachedBothImages(tocVolume);
+  const citationMap = buildCitationMap(tocVolume, {});
+  allImages.forEach((img, index) => {
+    if (!filters[classifyImage(img)]) return;
+    const owner = citationMap[img.owner_citation];
+    if (!owner) return;
+    if (!owner._bothImages) owner._bothImages = [];
+    owner._bothImages.push({ img, index });
+  });
+}
+
+async function goToBothPdfLocation(pageNumber, bbox) {
+  const viewport = await renderPdfPage("both-pdf-canvas", pageNumber);
+  showPdfHighlight("both-pdf-canvas", "both-pdf-highlight", "both-pdf-pane", viewport, bbox);
+}
+
+// The content panel every saved page's bbox is measured from (see
+// layout_join.py / the web-toc-local-scrape design doc).
+const WEB_PANEL_XPATH = "/html/body/main/div/main";
+
+function highlightInFrame(doc, bbox) {
+  const panel = doc.evaluate(WEB_PANEL_XPATH, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)
+    .singleNodeValue;
+  if (!panel) return;
+  const rect = panel.getBoundingClientRect();
+  const scroll = { x: doc.defaultView.scrollX, y: doc.defaultView.scrollY };
+  const box = highlightRect(rect, scroll, bbox);
+  let highlight = doc.getElementById("both-web-injected-highlight");
+  if (!highlight) {
+    highlight = doc.createElement("div");
+    highlight.id = "both-web-injected-highlight";
+    highlight.style.cssText =
+      "position:absolute; border:2px solid red; background:rgba(255,0,0,0.15); pointer-events:none; z-index:9999;";
+    doc.body.appendChild(highlight);
+  }
+  Object.assign(highlight.style, {
+    left: `${box.left}px`,
+    top: `${box.top}px`,
+    width: `${box.width}px`,
+    height: `${box.height}px`,
+  });
+  doc.defaultView.scrollTo(0, Math.max(box.top - 80, 0));
+}
+
+function showBothWebLocation(location) {
+  const frame = document.getElementById("both-web-frame");
+  const placeholder = document.getElementById("both-web-placeholder");
+  if (!location) {
+    frame.hidden = true;
+    placeholder.hidden = false;
+    placeholder.textContent = "No matching web content for this item.";
+    return;
+  }
+  frame.hidden = false;
+  placeholder.hidden = true;
+  frame.onload = () => highlightInFrame(frame.contentDocument, location.bbox);
+  frame.src = `${pageFileRoute(location.page_file)}?t=${Date.now()}`;
+}
+
+function selectBothNode(pageNumber, bbox, unifiedNumber) {
+  goToBothPdfLocation(pageNumber, bbox);
+  showBothWebLocation(bothLocations.get(unifiedNumber) || null);
+}
+
+function renderBothImageRow(img, index, depth) {
+  const row = document.createElement("div");
+  row.className = "image-row node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.innerHTML = `<img src="/api/image/${index}"> ${imageLabel(img)}`;
+  row.addEventListener("click", () => selectBothNode(img.page, img.bbox, img.unified_number));
+  return row;
+}
+
+function renderBothNode(node, depth) {
+  const ownImages = node._bothImages || [];
+  const hasChildren = node.children.length > 0 || ownImages.length > 0;
+  const row = document.createElement("div");
+  row.className = "node-row";
+  row.style.marginLeft = `${depth * 4}px`;
+  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
+  const childrenBox = document.createElement("div");
+  childrenBox.className = "node-children";
+
+  row.addEventListener("click", () => {
+    selectBothNode(node.page, node.bbox, node.unified_number);
+    if (!hasChildren) return;
+    childrenBox.classList.toggle("expanded");
+    if (childrenBox.children.length > 0) return;
+    node.children.forEach((child) => childrenBox.appendChild(renderBothNode(child, depth + 1)));
+    ownImages.forEach(({ img, index }) => childrenBox.appendChild(renderBothImageRow(img, index, depth + 1)));
+  });
+
+  const wrapper = document.createElement("div");
+  wrapper.appendChild(row);
+  wrapper.appendChild(childrenBox);
+  return wrapper;
+}
+
+function renderBothTree() {
+  attachBothImages(bothFilters());
+  const content = document.getElementById("both-tree-content");
+  content.innerHTML = "";
+  content.appendChild(renderBothNode(tocVolume, 0));
+}
+
+const TABS = ["toc", "toc-web", "toc-both", "compare"];
+const TAB_CONTENT_ID = { toc: "tree", "toc-web": "tree-web", "toc-both": "toc-both", compare: "compare" };
+const TAB_ACTIVE_DISPLAY = { "toc-both": "flex", compare: "flex" };
 
 function switchTab(active) {
   TABS.forEach((name) => {
@@ -651,6 +788,9 @@ document.getElementById("next-page").addEventListener("click", () => {
 ["filter-web-figures", "filter-web-tables", "filter-web-body"].forEach((id) => {
   document.getElementById(id).addEventListener("change", renderTocWebTree);
 });
+["filter-both-figures", "filter-both-equations", "filter-both-images"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", renderBothTree);
+});
 
 (async function init() {
   pdfDoc = await pdfjsLib.getDocument("/pdf").promise;
@@ -659,5 +799,7 @@ document.getElementById("next-page").addEventListener("click", () => {
   await loadAllImages();
   renderTocTree();
   await loadWebToc();
+  if (webTocTree) bothLocations = collectUnifiedLocations(webTocTree, webImages);
+  renderBothTree();
   await loadCompareTab();
 })();
