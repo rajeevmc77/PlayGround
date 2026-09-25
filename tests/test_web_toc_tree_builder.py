@@ -122,7 +122,9 @@ def test_collect_citations_on_leaf_node_returns_single_citation():
         ("Notes to Part 1", "Notes to Part 1"),
         ("10.1.1.1 Scope", "10.1.1.1"),
         ("10.1 General", "10.1"),
+        ("Appendix C - Climatic and Seismic Information for Building Design", "Appendix C"),
         ("Preface", ""),
+        ("Partition walls", ""),
         ("", ""),
     ],
 )

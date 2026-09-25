@@ -4,7 +4,8 @@ from web_toc.domain.models import WebNode
 
 _DIVISION_LETTER_RE = re.compile(r"Division\s+([A-Z])")
 _HEADING_RE = re.compile(
-    r"^(?P<heading>(?:Volume|Division|Part)\s+\S+|Notes to Part\s+\d+|\d+(?:\.\d+)+)"
+    r"^(?P<heading>(?:Volume|Division|Part)\s+\S+|Notes to Part\s+\d+"
+    r"|Appendix\s+[A-Z]\b|\d+(?:\.\d+)+)"
 )
 
 
