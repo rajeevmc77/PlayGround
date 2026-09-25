@@ -4,6 +4,7 @@ viewer serves it - pages at `/<citation>.html`, the asset mirror under
 stylesheets and fonts it will have in the viewer."""
 
 import mimetypes
+import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -48,11 +49,22 @@ class _PageHandler(BaseHTTPRequestHandler):
         """Silenced - one line per asset request would bury the build's own output."""
 
 
+class QuietServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address) -> None:
+        """A browser abandoning a request it no longer needs (a lazy image,
+        a closed tab) is routine here, not an error worth a traceback."""
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 @contextmanager
 def serve_pages(pages_dir: Path) -> Iterator[str]:
     """Yields the base URL of a server on an ephemeral localhost port."""
     handler = partial(_PageHandler, pages_dir=Path(pages_dir))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server = QuietServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

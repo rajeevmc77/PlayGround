@@ -277,6 +277,19 @@ def test_run_reads_revised_content_as_of_the_snapshot_date(output_dir):
     assert cell["location"]["xpath"].endswith("tbody[1]/tr[1]/td[1]")
 
 
+def test_run_reports_table_rows_whose_cells_could_not_be_paired(output_dir, capsys):
+    content = json.loads(json.dumps(_SECTION_CONTENT))
+    content["content"][1]["structure"]["body_rows"] = [{"cells": [_cell("a"), _cell("b")]}]
+    path = output_dir / "web_source" / "content" / f"{SECTION}.json"
+    path.write_text(json.dumps(content))
+
+    tree = _built(output_dir)["tree"]
+
+    assert "location" not in _find(tree, f"{TABLE}-row2-col1")
+    err = capsys.readouterr().err
+    assert f"1 table row(s) with cells left unlocated:\n  {TABLE} row 2" in err
+
+
 def test_main_builds_into_the_given_output_dir(output_dir, capsys):
     with patch("sys.argv", ["build_web_toc.py", "--output-dir", str(output_dir)]):
         main()

@@ -6,8 +6,8 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.vulture]
-# http.server calls these request-handler hooks by name.
-ignore_names = ["do_GET", "log_message"]
+# http.server/socketserver read these handler hooks and settings by name.
+ignore_names = ["do_GET", "log_message", "daemon_threads"]
 
 [tool.pytest.ini_options]
 addopts = "-q -m \"not slow\""

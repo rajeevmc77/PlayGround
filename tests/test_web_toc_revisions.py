@@ -62,6 +62,16 @@ def test_an_item_not_yet_in_effect_on_the_date_is_dropped():
     assert resolve_revisions(content, DATE) == {"rows": []}
 
 
+def test_an_item_whose_version_on_the_date_is_an_empty_placeholder_is_dropped():
+    # Rows added by a later amendment carry an "original" with no cells.
+    placeholder = {"type": "original", "effective_date": "2024-03-08", "cells": []}
+    added = {**_AMENDED, "effective_date": "2024-04-05"}
+    content = {"rows": [{"id": "r1"}, _revised_row(placeholder, added, cells=[{"v": "x"}])]}
+
+    assert resolve_revisions(content, DATE) == {"rows": [{"id": "r1"}]}
+    assert resolve_revisions(content, "2024-04-05")["rows"][1]["cells"] == [{"v": "amended"}]
+
+
 def test_revisions_nested_inside_a_chosen_revision_are_resolved_too():
     inner = _revised_row({**_ORIGINAL, "cells": [{"v": "inner-orig"}]}, _AMENDED)
     outer = {

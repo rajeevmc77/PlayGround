@@ -45,7 +45,12 @@ def _as_of(item: dict, date: str):
     revision = _in_effect(item["revisions"], date)
     if revision is None or revision.get("deleted"):
         return _DROPPED
-    return {**_without(item, _ITEM_HISTORY), **_without(revision, _REVISION_META)}
+    version = _without(revision, _REVISION_META)
+    # An item added by a later amendment has an empty "original" placeholder
+    # (e.g. a row with no cells) - it didn't exist yet, the site renders nothing.
+    if not any(version.values()):
+        return _DROPPED
+    return {**_without(item, _ITEM_HISTORY), **version}
 
 
 def _resolve_list(items: list, date: str) -> list:

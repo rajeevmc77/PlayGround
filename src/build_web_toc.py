@@ -109,6 +109,14 @@ def _print_report(report: dict[str, dict[str, int]]) -> None:
         )
 
 
+def _print_misaligned(rows: list[str]) -> None:
+    if not rows:
+        return
+    print(f"{len(rows)} table row(s) with cells left unlocated:", file=sys.stderr)
+    for row in rows:
+        print(f"  {row}", file=sys.stderr)
+
+
 def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage]]:
     root = build_tree(source.fetch_navigation_tree())
     fetched = _cached_contents(root, source, source.fetch_snapshot()["date"])
@@ -132,8 +140,9 @@ def run(output_dir: str) -> None:
     _set_local_paths(images, out)
     pages = [node.citation for node in page_targets(root)]
     layouts = _load_layouts(out / "web_pages", pages)
-    join_layout(root, images, layouts, set(pages))
+    misaligned = join_layout(root, images, layouts, set(pages))
     _print_report(location_report(root, images))
+    _print_misaligned(misaligned)
     write_json(root, images, str(out / "bcbc_web.json"))
 
 

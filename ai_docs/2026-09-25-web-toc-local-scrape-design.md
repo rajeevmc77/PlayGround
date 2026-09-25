@@ -207,6 +207,40 @@ type and the list of pages with no layout file.
 - `json_writer`: `location` omitted when None, kept when set.
 - Real-data check before the full run: scrape `nbc.divBV2.part9.sect38` alone and assert all 5,949 rows are present and `B.9.38.1.1.Tbl1.Row2974.Col1` has resolved text and a bbox; then run all ~136 pages.
 
+## Findings from the real run (2026-09-25) and the refinements they forced
+
+1. **Content JSON is revisioned.** ~250 items (rows, sentences, clauses,
+   notes, articles) carry `revised: true` + `revisions` (an `original` and
+   dated amendments, some `deleted`). Their own fields hold the *current*
+   version, while the pages are rendered for `--date` (2024-03-08).
+   `web_toc/parsing/revisions.py` reads the JSON as of that date in both
+   builds; `build_web_pages.py` records it in `web_source/snapshot.json`. An
+   item whose in-effect version is empty (an `original` placeholder for
+   something a later amendment added) or `deleted` is dropped.
+2. **Wide tables are split** into a header `<table>`, a `--pinned-col`
+   duplicate of it, and a body `<table>`. `layout_script.GRID_ROWS_JS`
+   (shared by the scraper's row count and the layout pass) concatenates
+   header + body rows and skips the duplicate and cell-nested tables.
+3. **Header-row span placeholders.** In 22 of 331 tables a header row's JSON
+   has empty cells for span-covered positions the site doesn't render. Row
+   counts must still match exactly (else the build fails), but within a row
+   cells are paired left to right skipping *empty* JSON cells, and only if
+   every non-empty cell is paired; otherwise the row's cells stay unlocated
+   and are listed. 5 rows remain unpaired.
+4. **Rendered text includes CSS-generated content** (the `[ … ]` around each
+   compound reference is `::before`/`::after`), so the layout pass walks the
+   DOM with computed styles instead of using `innerText`.
+5. **Headings have no ids**; Part/Section/Subsection/Article are matched by
+   `heading` number against their page's `h1–h6` text.
+
+Result on the full site: 136/136 pages, every table fully loaded (Table
+9.38.1.1.(1): 5,949 rows), located — 100% of rows, tables, figures, notes,
+clauses, subclauses, parts, sections, subsections; 49,158/49,225 cells;
+5,057/5,058 sentences; 2,015/2,022 articles. The unlocated ones are nav nodes
+that did not exist yet on the snapshot date (e.g. 3.2.10.x) and front-matter
+pages without numbered headings. 4 nodes still carry `[REF:` tokens, all
+unlocated.
+
 ## Out of scope
 
 - **Row/Cell keys across sources don't line up.** The PDF splits Table

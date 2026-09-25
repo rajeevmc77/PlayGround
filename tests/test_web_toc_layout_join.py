@@ -139,10 +139,50 @@ def test_a_table_keeps_its_json_content_but_gets_a_location():
     assert table.content == ""
 
 
-@pytest.mark.parametrize("cells_per_row", [[2], [2, 1, 1], [2, 2]])
-def test_a_table_grid_that_differs_from_its_json_fails_loudly(cells_per_row):
+@pytest.mark.parametrize("cells_per_row", [[2], [2, 1, 1]])
+def test_a_table_whose_row_count_differs_from_its_json_fails_loudly(cells_per_row):
     with pytest.raises(GridMismatch, match=TABLE):
         _join(_tree(_table_node(cells_per_row)), {SECTION: _layout()})
+
+
+def _cells_row_table(*contents):
+    """Row 1 has 2 cells (matching the layout); row 2 has the given contents."""
+    table = _table_node([2, len(contents)])
+    for cell, content in zip(table.children[1].children, contents, strict=True):
+        cell.content = content
+    return table
+
+
+@pytest.mark.parametrize(
+    ("contents", "located"),
+    [
+        (("", "[REF:x]"), [False, True]),  # a leading span placeholder
+        (("[REF:x]", ""), [True, False]),  # a trailing one
+        (("", "", "[REF:x]"), [False, False, True]),
+    ],
+)
+def test_empty_json_cells_the_site_does_not_render_are_skipped(contents, located):
+    root = _join(_tree(_cells_row_table(*contents)), {SECTION: _layout()})
+    cells = _find(root, f"{TABLE}-row2").children
+    assert [cell.location is not None for cell in cells] == located
+    placed = next(cell for cell in cells if cell.location)
+    assert placed.location["xpath"].endswith("tr[2]/td[3]")
+    assert placed.content == "cell3"
+
+
+def test_a_row_whose_non_empty_cells_cannot_all_be_paired_is_left_unlocated_and_reported():
+    root = _tree(_cells_row_table("[REF:x]", "[REF:y]"))
+
+    misaligned = join_layout(root, [], {SECTION: _layout()}, {SECTION})
+
+    cells = _find(root, f"{TABLE}-row2").children
+    assert [cell.location for cell in cells] == [None, None]
+    assert _find(root, f"{TABLE}-row2").location is not None  # the row itself is placed
+    assert misaligned == [f"{TABLE} row 2"]
+
+
+def test_join_reports_no_misaligned_rows_when_every_row_pairs():
+    assert join_layout(_tree(_table_node([2, 1])), [], {SECTION: _layout()}, {SECTION}) == []
 
 
 def test_headings_are_located_by_their_number_on_their_own_page():
