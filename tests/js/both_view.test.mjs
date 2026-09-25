@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   classifyImage,
   collectUnifiedLocations,
-  highlightRect,
+  minVisibleBox,
   pageFileRoute,
 } from "../../src/mo_toc/web/static/both_view.mjs";
 
@@ -63,13 +63,13 @@ test("pageFileRoute: URL-encodes citation characters a raw path can't carry, e.g
   );
 });
 
-test("highlightRect: positions the box relative to the panel's document-space origin", () => {
-  const rect = highlightRect({ left: 50, top: 100 }, { x: 0, y: 200 }, { x0: 10, y0: 20, x1: 110, y1: 40 });
-  assert.deepEqual(rect, { left: 60, top: 320, width: 100, height: 20 });
+test("minVisibleBox: bbox is CSS px from the content panel's own top-left, so the box uses it directly", () => {
+  const box = minVisibleBox({ x0: 10, y0: 20, x1: 110, y1: 40 });
+  assert.deepEqual(box, { left: 10, top: 20, width: 100, height: 20 });
 });
 
-test("highlightRect: enforces a minimum visible size for a zero-height bbox", () => {
-  const rect = highlightRect({ left: 0, top: 0 }, { x: 0, y: 0 }, { x0: 10, y0: 20, x1: 10, y1: 20 });
-  assert.equal(rect.width >= 2, true);
-  assert.equal(rect.height >= 2, true);
+test("minVisibleBox: enforces a minimum visible size for a zero-height bbox", () => {
+  const box = minVisibleBox({ x0: 10, y0: 20, x1: 10, y1: 20 });
+  assert.equal(box.width >= 2, true);
+  assert.equal(box.height >= 2, true);
 });

@@ -36,14 +36,14 @@ export function pageFileRoute(pageFile) {
   return `/web-page/${encodeURIComponent(citation)}`;
 }
 
-// bbox is CSS px from the content panel's top-left (see layout_join.py);
-// panelRect/scroll place that panel in the iframe document's own
-// (scroll-independent) coordinate space. A zero-size bbox (seen in the data
-// for some equation captures) still gets a visible box.
-export function highlightRect(panelRect, scroll, bbox) {
+// bbox is CSS px from the content panel's own top-left (see layout_join.py),
+// so a highlight div appended as that panel's own child can use it as-is -
+// no need to locate the panel within the wider page. A zero-size bbox (seen
+// in the data for some equation captures) still gets a visible box.
+export function minVisibleBox(bbox) {
   return {
-    left: panelRect.left + scroll.x + bbox.x0,
-    top: panelRect.top + scroll.y + bbox.y0,
+    left: bbox.x0,
+    top: bbox.y0,
     width: Math.max(bbox.x1 - bbox.x0, 2),
     height: Math.max(bbox.y1 - bbox.y0, 2),
   };

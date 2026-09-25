@@ -12,9 +12,9 @@ import {
 import {
   classifyImage,
   collectUnifiedLocations,
-  highlightRect,
+  minVisibleBox,
   pageFileRoute,
-} from "./both_view.mjs?v=1";
+} from "./both_view.mjs?v=2";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -662,27 +662,33 @@ function attachBothImages(filters) {
 
 async function goToBothPdfLocation(pageNumber, bbox) {
   const viewport = await renderPdfPage("both-pdf-canvas", pageNumber);
-  showPdfHighlight("both-pdf-canvas", "both-pdf-highlight", "both-pdf-pane", viewport, bbox);
+  // "both-pdf-pane" only sizes to its content; "both-pdf-col" is the actual
+  // overflow:auto ancestor that scrolling needs to target.
+  showPdfHighlight("both-pdf-canvas", "both-pdf-highlight", "both-pdf-col", viewport, bbox);
 }
 
 // The content panel every saved page's bbox is measured from (see
 // layout_join.py / the web-toc-local-scrape design doc).
 const WEB_PANEL_XPATH = "/html/body/main/div/main";
 
+// Appends the highlight as the panel's own child and positions it with the
+// bbox directly, rather than computing a page-relative position via
+// getBoundingClientRect()+scroll - immune to whatever positioning context
+// the site's own CSS puts around the panel, and to any scroll/layout timing
+// at the moment of measurement.
 function highlightInFrame(doc, bbox) {
   const panel = doc.evaluate(WEB_PANEL_XPATH, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)
     .singleNodeValue;
   if (!panel) return;
-  const rect = panel.getBoundingClientRect();
-  const scroll = { x: doc.defaultView.scrollX, y: doc.defaultView.scrollY };
-  const box = highlightRect(rect, scroll, bbox);
+  if (doc.defaultView.getComputedStyle(panel).position === "static") panel.style.position = "relative";
+  const box = minVisibleBox(bbox);
   let highlight = doc.getElementById("both-web-injected-highlight");
   if (!highlight) {
     highlight = doc.createElement("div");
     highlight.id = "both-web-injected-highlight";
     highlight.style.cssText =
       "position:absolute; border:2px solid red; background:rgba(255,0,0,0.15); pointer-events:none; z-index:9999;";
-    doc.body.appendChild(highlight);
+    panel.appendChild(highlight);
   }
   Object.assign(highlight.style, {
     left: `${box.left}px`,
@@ -690,7 +696,19 @@ function highlightInFrame(doc, bbox) {
     width: `${box.width}px`,
     height: `${box.height}px`,
   });
-  doc.defaultView.scrollTo(0, Math.max(box.top - 80, 0));
+  highlight.scrollIntoView({ block: "center" });
+}
+
+// The live site's own "reading-view" widget sizes itself at runtime (the
+// SPA measures the viewport in JS); our static page snapshot can't
+// reproduce that, so on some pages it's left collapsed to a few px with
+// overflow hidden, clipping all its content. Force it to its natural
+// height so the saved page's full content is actually visible/scrollable
+// once loaded standalone in our iframe.
+function expandReadingView(doc) {
+  const style = doc.createElement("style");
+  style.textContent = ".reading-view, .reading-view__content { height: auto !important; overflow: visible !important; }";
+  doc.head.appendChild(style);
 }
 
 function showBothWebLocation(location) {
@@ -704,7 +722,10 @@ function showBothWebLocation(location) {
   }
   frame.hidden = false;
   placeholder.hidden = true;
-  frame.onload = () => highlightInFrame(frame.contentDocument, location.bbox);
+  frame.onload = () => {
+    expandReadingView(frame.contentDocument);
+    highlightInFrame(frame.contentDocument, location.bbox);
+  };
   frame.src = `${pageFileRoute(location.page_file)}?t=${Date.now()}`;
 }
 
