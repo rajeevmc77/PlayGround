@@ -1,4 +1,4 @@
-from web_toc.domain.models import WebImage, WebNode
+from web_toc.domain.models import ScrapedPage, WebImage, WebNode
 
 
 def test_web_node_defaults_to_no_children():
@@ -142,3 +142,16 @@ def test_web_image_unified_number_defaults_to_empty_string():
         owner_citation="nbc.divBV2.part9.sect23.subsect13.art7",
     )
     assert img.unified_number == ""
+
+
+def test_web_node_and_image_location_default_to_none():
+    node = WebNode(type="Cell", identifier="col1", citation="c", title="", path="")
+    image = WebImage(id="i", src="s", alt_text="", owner_citation="c")
+    assert node.location is None
+    assert image.location is None
+
+
+def test_scraped_page_incomplete_defaults_to_empty_and_is_independent():
+    first = ScrapedPage(panel="", title="")
+    first.incomplete["t"] = [1, 2]
+    assert ScrapedPage(panel="", title="").incomplete == {}
