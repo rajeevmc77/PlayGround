@@ -5,6 +5,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.vulture]
+# http.server/socketserver read these handler hooks and settings by name.
+ignore_names = ["do_GET", "log_message", "daemon_threads"]
+
 [tool.pytest.ini_options]
 addopts = "-q -m \"not slow\""
 testpaths = ["tests"]

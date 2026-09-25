@@ -1,491 +1,305 @@
-import asyncio
-import time
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+"""build_web_toc.py builds offline from what build_web_pages.py saved - these
+tests lay out a tiny web_source/ + web_pages/ tree on disk and read back the
+bcbc_web.json it writes."""
 
-from build_web_toc import CONTENT_FETCH_CONCURRENCY, _attach_notes, run
+import json
+from unittest.mock import patch
+
+import pytest
+
+from build_web_toc import _attach_notes, main, run
 from web_toc.domain.models import WebNode
 
+ROOT_XPATH = "/html/body/main/div/main"
+SECTION = "nbc.divA.part1.sect1"
+APPENDIX = "nbc.divA.part1.appendix"
+SENTENCE = f"{SECTION}.subsect1.art1.sent1"
+TABLE = f"{SECTION}.subsect1.art1.table1"
+NOTE = f"{APPENDIX}.appnote1"
 
-def _run(coro):
-    return asyncio.run(coro)
-
-
-def _mock_source(mock_source_cls):
-    mock_source = AsyncMock()
-    mock_source_cls.return_value = mock_source
-    mock_source.__aenter__.return_value = mock_source
-    return mock_source
-
-
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.number_images")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_wires_pipeline_and_writes_images_from_every_content_bearing_node(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_number_images,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaf = WebNode(
-        type="section",
-        identifier="1.1",
-        citation="nbc.divA.part1.sect1",
-        title="",
-        path="",
-    )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    mock_source = _mock_source(mock_source_cls)
-    mock_source.fetch_navigation_tree.return_value = {"tree": []}
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
-    # root has no content URL, the leaf section does
-    mock_content_url.side_effect = lambda node, version: (
-        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
-    )
-    mock_source.fetch_content.return_value = {"id": "nbc.divA.part1.sect1"}
-    mock_extract_images.return_value = ["WEB_IMAGE"]
-
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-
-    assert leaf.unified_number == "1.1"
-    mock_source_cls.assert_called_once_with("https://dev.buildingcode.gov.bc.ca", "2024")
-    mock_build_tree.assert_called_once_with({"tree": []})
-    mock_collect_citations.assert_called_once_with(root)
-    mock_source.fetch_content.assert_called_once_with(
-        "/data/2024/content/nbc-diva/part-1/section-1.json"
-    )
-    mock_extract_images.assert_called_once_with(
-        {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
-    )
-    mock_number_images.assert_called_once()
-    assert mock_number_images.call_args.args[0] == ["WEB_IMAGE"]
-    assert isinstance(mock_number_images.call_args.args[1], dict)
-    expected_path = str(Path(tmp_path) / "bcbc_web.json")
-    mock_download_images.assert_called_once_with(
-        ["WEB_IMAGE"], mock_source, str(Path(tmp_path) / "web_images")
-    )
-    mock_write_json.assert_called_once_with(root, ["WEB_IMAGE"], expected_path)
+_NAV = {
+    "tree": [
+        {
+            "id": "nbc.divA",
+            "type": "division",
+            "title": "Division A - Compliance",
+            "path": "/code/nbc.divA",
+            "children": [
+                {
+                    "id": "nbc.divA.part1",
+                    "type": "part",
+                    "number": "1",
+                    "title": "Part 1 - Compliance",
+                    "path": "/code/nbc.divA/1",
+                    "children": [
+                        {
+                            "id": SECTION,
+                            "type": "section",
+                            "number": "1.1",
+                            "title": "1.1. General",
+                            "path": "/code/nbc.divA/1/1",
+                            "children": [
+                                {
+                                    "id": f"{SECTION}.subsect1",
+                                    "type": "subsection",
+                                    "number": "1.1.1",
+                                    "title": "1.1.1. Application",
+                                    "path": "/code/nbc.divA/1/1/1",
+                                    "children": [
+                                        {
+                                            "id": f"{SECTION}.subsect1.art1",
+                                            "type": "article",
+                                            "number": "1.1.1.1",
+                                            "title": "1.1.1.1. Scope",
+                                            "path": "/code/nbc.divA/1/1/1/1",
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                        {
+                            "id": APPENDIX,
+                            "type": "part_appendix",
+                            "title": "Notes to Part 1",
+                            "path": "/code/nbc.divA/1/appendix",
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+}
 
 
-@patch("build_web_toc.assign_unified_numbers")
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_tables")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_attaches_notes_before_resolving_their_tables_and_images(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_extract_tables,
-    mock_download_images,
-    mock_write_json,
-    mock_assign_unified_numbers,
-    tmp_path,
-):
-    leaf = WebNode(
-        type="part_appendix",
-        identifier="",
-        citation="nbc.divA.part1.appendix",
-        title="",
-        path="",
-    )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    mock_source = _mock_source(mock_source_cls)
-    mock_source.fetch_navigation_tree.return_value = {"tree": []}
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.divA.part1.appendix"}
-    mock_content_url.side_effect = lambda node, version: (
-        "/data/2024/content/nbc-diva/part-1/appendix.json" if node is leaf else None
-    )
-    mock_source.fetch_content.return_value = {
-        "id": "nbc.divA.part1.appendix",
-        "application_notes": [
-            {
-                "id": "nbc.divA.part1.appendix.appnote2",
-                "type": "application_note",
-                "number": "1.1.1.1.(3)",
-                "title": "T",
-            }
-        ],
+def _cell(text):
+    return {"content": [{"type": "text", "value": text}]}
+
+
+_SECTION_CONTENT = {
+    "id": SECTION,
+    "content": [
+        {
+            "type": "sentence",
+            "id": SENTENCE,
+            "number": 1,
+            "text": "See [REF:internal:x:shortNum].",
+            "clauses": [{"id": f"{SENTENCE}.clause1", "letter": "a", "text": "[REF:y]"}],
+        },
+        {
+            "type": "table",
+            "id": TABLE,
+            "title": "Nails",
+            "structure": {
+                "header_rows": [{"cells": [_cell("Provision")]}],
+                "body_rows": [{"cells": [_cell("[REF:internal:z:shortNum]")]}],
+            },
+        },
+        {"type": "figure", "id": f"{SECTION}.subsect1.art1.figure1", "graphic": {"src": "g/f1"}},
+    ],
+}
+
+_APPENDIX_CONTENT = {
+    "id": APPENDIX,
+    "application_notes": [
+        {
+            "type": "application_note",
+            "id": NOTE,
+            "number": "1.1.1.1.(1)",
+            "title": "Scope.",
+            "content": [
+                {"type": "text", "content": "Note body."},
+                {
+                    "type": "table",
+                    "id": f"{NOTE}.table1",
+                    "structure": {"header_rows": [], "body_rows": [{"cells": [_cell("n")]}]},
+                },
+            ],
+        }
+    ],
+}
+
+
+def _entry(xpath, text, y):
+    return {
+        "xpath": f"{ROOT_XPATH}/{xpath}",
+        "text": text,
+        "bbox": {"x0": 0.0, "y0": y, "x1": 100.0, "y1": y + 10},
     }
-    mock_extract_images.return_value = []
-    mock_extract_tables.return_value = []
-
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-
-    notes = [child for child in leaf.children if child.type == "Note"]
-    assert len(notes) == 1
-    assert notes[0].identifier == "A-1.1.1.1.(3)"
-
-    tables_citations = mock_extract_tables.call_args.args[1]
-    images_citations = mock_extract_images.call_args.args[1]
-    assert "nbc.divA.part1.appendix.appnote2" in tables_citations
-    assert "nbc.divA.part1.appendix.appnote2" in images_citations
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_tables")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_attaches_and_numbers_tables_from_every_content_bearing_node(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_extract_tables,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaf = WebNode(
-        type="section",
-        identifier="1.1",
-        citation="nbc.divA.part1.sect1",
-        title="",
-        path="",
-    )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    table_node = WebNode(
-        type="Table",
-        identifier="table1",
-        citation="nbc.divA.part1.sect1.table1",
-        title="Diameter of Nails",
-        path="",
-    )
-    mock_source = _mock_source(mock_source_cls)
-    mock_source.fetch_navigation_tree.return_value = {"tree": []}
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
-    mock_content_url.side_effect = lambda node, version: (
-        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
-    )
-    mock_source.fetch_content.return_value = {"id": "nbc.divA.part1.sect1"}
-    mock_extract_images.return_value = []
-    mock_extract_tables.return_value = [("nbc.divA.part1.sect1", table_node)]
-
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-
-    mock_extract_tables.assert_called_once_with(
-        {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
-    )
-    assert leaf.children == [table_node]
-    assert table_node.unified_number == "1.1.Tbl1"
+_SECTION_LAYOUT = {
+    "elements": {
+        SENTENCE: _entry("div[1]/div[2]", "(1) See 1.2.3.4.(2). (a) Article 9.1.2.1.", 40.0),
+        f"{SENTENCE}.clause1": _entry("div[1]/div[2]/div[1]", "(a) Article 9.1.2.1.", 50.0),
+        TABLE: _entry("div[1]/div[3]", "Provision 9.23.5.5. Roof Trusses", 60.0),
+    },
+    "tables": {
+        TABLE: [
+            {
+                **_entry("div[1]/div[3]/table[1]/thead[1]/tr[1]", "Provision", 60.0),
+                "cells": [_entry("div[1]/div[3]/table[1]/thead[1]/tr[1]/th[1]", "Provision", 60.0)],
+            },
+            {
+                **_entry("div[1]/div[3]/table[1]/tbody[1]/tr[1]", "9.23.5.5.", 70.0),
+                "cells": [
+                    _entry(
+                        "div[1]/div[3]/table[1]/tbody[1]/tr[1]/td[1]",
+                        "9.23.5.5. Roof Trusses",
+                        70.0,
+                    )
+                ],
+            },
+        ]
+    },
+    "images": [{"src": "/web-assets/g/f1.jpg", **_entry("div[1]/img[1]", "", 90.0)}],
+    "headings": [
+        _entry("h2[1]", "Section 1.1. General", 0.0),
+        _entry("h3[1]", "1.1.1. Application", 10.0),
+        _entry("h4[1]", "1.1.1.1. Scope", 20.0),
+    ],
+}
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_body")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_attaches_and_numbers_body_text_from_every_content_bearing_node(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_extract_body,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaf = WebNode(
-        type="section",
-        identifier="1.1",
-        citation="nbc.divA.part1.sect1",
-        title="",
-        path="",
-    )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    clause_node = WebNode(
-        type="Clause",
-        identifier="(a)",
-        citation="nbc.divA.part1.sect1.sent1.clause1",
-        title="",
-        path="",
-    )
-    sentence_node = WebNode(
-        type="Sentence",
-        identifier="(1)",
-        citation="nbc.divA.part1.sect1.sent1",
-        title="",
-        path="",
-        children=[clause_node],
-    )
-    mock_source = _mock_source(mock_source_cls)
-    mock_source.fetch_navigation_tree.return_value = {"tree": []}
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
-    mock_content_url.side_effect = lambda node, version: (
-        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
-    )
-    mock_source.fetch_content.return_value = {"id": "nbc.divA.part1.sect1"}
-    mock_extract_images.return_value = []
-    mock_extract_body.return_value = [("nbc.divA.part1.sect1", sentence_node)]
-
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-
-    mock_extract_body.assert_called_once_with(
-        {"id": "nbc.divA.part1.sect1"}, {"root", "nbc.divA.part1.sect1"}, "nbc.divA.part1.sect1"
-    )
-    assert leaf.children == [sentence_node]
-    assert sentence_node.unified_number == "1.1.(1)"
-    assert clause_node.unified_number == "1.1.(1)(a)"
+@pytest.fixture
+def output_dir(tmp_path):
+    source = tmp_path / "web_source"
+    (source / "content").mkdir(parents=True)
+    (source / "navigation.json").write_text(json.dumps(_NAV))
+    (source / "snapshot.json").write_text(json.dumps({"version": "2024", "date": "2024-03-08"}))
+    (source / "content" / f"{SECTION}.json").write_text(json.dumps(_SECTION_CONTENT))
+    (source / "content" / f"{APPENDIX}.json").write_text(json.dumps(_APPENDIX_CONTENT))
+    pages = tmp_path / "web_pages"
+    pages.mkdir()
+    (pages / f"{SECTION}.layout.json").write_text(json.dumps(_SECTION_LAYOUT))
+    (tmp_path / "web_images").mkdir()
+    (tmp_path / "web_images" / f"{SECTION}.subsect1.art1.figure1.jpg").write_bytes(b"jpg")
+    return tmp_path
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_skips_nodes_where_content_url_returns_none(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaf = WebNode(type="index", identifier="", citation="nbc.2020.vol2.index", title="", path="")
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    mock_source = _mock_source(mock_source_cls)
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.2020.vol2.index"}
-    mock_content_url.return_value = None  # index/conversions: no URL at all
-
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-
-    mock_source.fetch_content.assert_not_called()
-    mock_extract_images.assert_not_called()
-    mock_download_images.assert_called_once_with(
-        [], mock_source, str(Path(tmp_path) / "web_images")
-    )
-    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "bcbc_web.json"))
+def _built(output_dir):
+    run(str(output_dir))
+    return json.loads((output_dir / "bcbc_web.json").read_text())
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_skips_nodes_where_fetch_content_returns_none(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaf = WebNode(
-        type="section", identifier="1.1", citation="nbc.divA.part1.sect1", title="", path=""
-    )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    mock_source = _mock_source(mock_source_cls)
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
-    # root has no content URL, the leaf section does
-    mock_content_url.side_effect = lambda node, version: (
-        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
-    )
-    mock_source.fetch_content.return_value = None  # content URL exists but fetch failed/empty
-
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-
-    mock_source.fetch_content.assert_called_once_with(
-        "/data/2024/content/nbc-diva/part-1/section-1.json"
-    )
-    mock_extract_images.assert_not_called()
-    mock_download_images.assert_called_once_with(
-        [], mock_source, str(Path(tmp_path) / "web_images")
-    )
-    mock_write_json.assert_called_once_with(root, [], str(Path(tmp_path) / "bcbc_web.json"))
+def _find(node, citation):
+    if node["citation"] == citation:
+        return node
+    for child in node["children"]:
+        found = _find(child, citation)
+        if found is not None:
+            return found
+    return None
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_fetches_content_bearing_nodes_concurrently(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaves = [
-        WebNode(
-            type="section",
-            identifier=str(n),
-            citation=f"nbc.divA.part1.sect{n}",
-            title="",
-            path="",
-        )
-        for n in range(6)
+def test_run_builds_the_tree_tables_and_body_from_the_local_cache(output_dir):
+    tree = _built(output_dir)["tree"]
+    article = _find(tree, f"{SECTION}.subsect1.art1")
+    # tables are attached before body text, as they always have been
+    assert [child["type"] for child in article["children"]] == ["Table", "Sentence"]
+    table = _find(tree, TABLE)
+    assert [len(row["children"]) for row in table["children"]] == [1, 1]
+    assert table["unified_number"].endswith(".Tbl1")
+    assert _find(tree, f"{SENTENCE}.clause1")["unified_number"].endswith("(1)(a)")
+
+
+def test_run_fills_rendered_text_and_locations_from_the_saved_layout(output_dir):
+    tree = _built(output_dir)["tree"]
+    sentence = _find(tree, SENTENCE)
+    assert sentence["content"] == "(1) See 1.2.3.4.(2). (a) Article 9.1.2.1."
+    assert sentence["location"] == {
+        "page_file": f"web_pages/{SECTION}.html",
+        "xpath": f"{ROOT_XPATH}/div[1]/div[2]",
+        "bbox": {"x0": 0.0, "y0": 40.0, "x1": 100.0, "y1": 50.0},
+    }
+    cell = _find(tree, f"{TABLE}-row2-col1")
+    assert cell["content"] == "9.23.5.5. Roof Trusses"
+    assert cell["location"]["xpath"].endswith("tbody[1]/tr[1]/td[1]")
+    assert _find(tree, f"{SECTION}.subsect1")["location"]["xpath"] == f"{ROOT_XPATH}/h3[1]"
+
+
+def test_run_keeps_json_content_and_no_location_for_a_page_without_a_layout(output_dir, capsys):
+    tree = _built(output_dir)["tree"]
+    note = _find(tree, NOTE)
+    assert note["content"] == "Note body."
+    assert "location" not in note
+    err = capsys.readouterr().err
+    assert f"no layout for {APPENDIX}" in err
+    assert "Sentence: 1 located, 0 unlocated" in err
+
+
+def test_run_attaches_notes_before_resolving_their_tables(output_dir):
+    tree = _built(output_dir)["tree"]
+    note = _find(tree, NOTE)
+    assert [child["citation"] for child in note["children"]] == [f"{NOTE}.table1"]
+
+
+def test_run_points_images_at_their_local_file_and_location(output_dir):
+    (image,) = _built(output_dir)["images"]
+    assert image["local_path"] == f"web_images/{SECTION}.subsect1.art1.figure1.jpg"
+    assert image["location"]["xpath"] == f"{ROOT_XPATH}/div[1]/img[1]"
+    assert image["unified_number"]
+
+
+def test_run_leaves_local_path_empty_for_an_image_that_was_never_downloaded(output_dir):
+    (output_dir / "web_images" / f"{SECTION}.subsect1.art1.figure1.jpg").unlink()
+    (image,) = _built(output_dir)["images"]
+    assert image["local_path"] == ""
+
+
+def test_run_skips_nodes_with_no_cached_content(output_dir):
+    (output_dir / "web_source" / "content" / f"{SECTION}.json").unlink()
+    tree = _built(output_dir)["tree"]
+    assert _find(tree, SENTENCE) is None
+    assert _find(tree, NOTE) is not None
+
+
+def test_run_reads_revised_content_as_of_the_snapshot_date(output_dir):
+    # As served, the row's current (2025) version is deleted - no cells; on
+    # the 2024-03-08 snapshot date its original single cell applies.
+    content = json.loads(json.dumps(_SECTION_CONTENT))
+    content["content"][1]["structure"]["body_rows"] = [
+        {
+            "revised": True,
+            "cells": [],
+            "revisions": [
+                {"type": "original", "effective_date": "2024-03-08", "cells": [_cell("orig")]},
+                {"type": "revision", "effective_date": "2025-06-16", "deleted": True, "cells": []},
+            ],
+        }
     ]
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=leaves)
-    mock_source = _mock_source(mock_source_cls)
-    mock_source.fetch_navigation_tree.return_value = {"tree": []}
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", *(leaf.citation for leaf in leaves)}
-    mock_content_url.side_effect = lambda node, version: (
-        f"/data/2024/content/{node.citation}.json" if node in leaves else None
-    )
+    path = output_dir / "web_source" / "content" / f"{SECTION}.json"
+    path.write_text(json.dumps(content))
 
-    async def _slow_fetch(url):
-        await asyncio.sleep(0.2)
-        return {"id": url}
+    tree = _built(output_dir)["tree"]
 
-    mock_source.fetch_content.side_effect = _slow_fetch
-    mock_extract_images.return_value = []
-
-    start = time.monotonic()
-    _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-    elapsed = time.monotonic() - start
-
-    assert elapsed < 0.2 * len(leaves), (
-        f"expected concurrent content fetches to run faster than serial "
-        f"({0.2 * len(leaves)}s), took {elapsed}s"
-    )
-    assert mock_source.fetch_content.call_count == len(leaves)
+    cell = _find(tree, f"{TABLE}-row2-col1")
+    assert cell is not None
+    assert cell["location"]["xpath"].endswith("tbody[1]/tr[1]/td[1]")
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_closes_the_source_even_when_a_fetch_raises(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-):
-    leaf = WebNode(
-        type="section", identifier="1.1", citation="nbc.divA.part1.sect1", title="", path=""
-    )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[leaf])
-    mock_source = _mock_source(mock_source_cls)
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", "nbc.divA.part1.sect1"}
-    mock_content_url.side_effect = lambda node, version: (
-        "/data/2024/content/nbc-diva/part-1/section-1.json" if node is leaf else None
-    )
-    mock_source.fetch_content.side_effect = RuntimeError("boom")
+def test_run_reports_table_rows_whose_cells_could_not_be_paired(output_dir, capsys):
+    content = json.loads(json.dumps(_SECTION_CONTENT))
+    content["content"][1]["structure"]["body_rows"] = [{"cells": [_cell("a"), _cell("b")]}]
+    path = output_dir / "web_source" / "content" / f"{SECTION}.json"
+    path.write_text(json.dumps(content))
 
-    try:
-        _run(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-    except RuntimeError:
-        pass
+    tree = _built(output_dir)["tree"]
 
-    mock_source.__aexit__.assert_awaited_once()
+    assert "location" not in _find(tree, f"{TABLE}-row2-col1")
+    err = capsys.readouterr().err
+    assert f"1 table row(s) with cells left unlocated:\n  {TABLE} row 2" in err
 
 
-@patch("build_web_toc.write_json")
-@patch("build_web_toc.download_images")
-@patch("build_web_toc.extract_images")
-@patch("build_web_toc.content_url")
-@patch("build_web_toc.collect_citations")
-@patch("build_web_toc.build_tree")
-@patch("build_web_toc.HttpxWebSource")
-def test_run_logs_fetch_progress_only_as_the_semaphore_admits_each_request(
-    mock_source_cls,
-    mock_build_tree,
-    mock_collect_citations,
-    mock_content_url,
-    mock_extract_images,
-    mock_download_images,
-    mock_write_json,
-    tmp_path,
-    capsys,
-):
-    leaves = [
-        WebNode(
-            type="section",
-            identifier=str(n),
-            citation=f"nbc.divA.part1.sect{n}",
-            title="",
-            path="",
-        )
-        for n in range(CONTENT_FETCH_CONCURRENCY + 2)
-    ]
-    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=leaves)
-    mock_source = _mock_source(mock_source_cls)
-    mock_source.fetch_navigation_tree.return_value = {"tree": []}
-    mock_build_tree.return_value = root
-    mock_collect_citations.return_value = {"root", *(leaf.citation for leaf in leaves)}
-    mock_content_url.side_effect = lambda node, version: (
-        f"/data/2024/content/{node.citation}.json" if node in leaves else None
-    )
+def test_main_builds_into_the_given_output_dir(output_dir, capsys):
+    with patch("sys.argv", ["build_web_toc.py", "--output-dir", str(output_dir)]):
+        main()
+    assert (output_dir / "bcbc_web.json").exists()
+    assert f"Wrote {output_dir}/bcbc_web.json" in capsys.readouterr().err
 
-    gate = asyncio.Event()
 
-    async def _blocked_fetch(url):
-        await gate.wait()
-        return {"id": url}
-
-    mock_source.fetch_content.side_effect = _blocked_fetch
-    mock_extract_images.return_value = []
-
-    async def scenario():
-        task = asyncio.create_task(run("https://dev.buildingcode.gov.bc.ca", "2024", str(tmp_path)))
-        for _ in range(20):
-            await asyncio.sleep(0)
-        blocked_output = capsys.readouterr().err
-        gate.set()
-        await task
-        return blocked_output
-
-    blocked_output = _run(scenario())
-
-    fetch_lines_while_blocked = blocked_output.count("Fetching ")
-    assert fetch_lines_while_blocked == CONTENT_FETCH_CONCURRENCY, (
-        f"expected exactly {CONTENT_FETCH_CONCURRENCY} in-flight fetches to be logged while the "
-        f"remaining requests wait on the semaphore, but saw {fetch_lines_while_blocked}"
-    )
+def test_run_without_a_cached_source_says_to_scrape_first(tmp_path):
+    with pytest.raises(FileNotFoundError, match="build_web_pages.py"):
+        run(str(tmp_path))
 
 
 def test_attach_notes_puts_part10_note_under_its_part_appendix():

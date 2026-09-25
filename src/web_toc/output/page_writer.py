@@ -31,10 +31,16 @@ def asset_file(assets_dir: Path, site_path: str) -> Path | None:
     return assets_dir / relative if relative else None
 
 
-def page_file(pages_dir: Path, citation: str) -> Path | None:
+def citation_file(directory: Path, citation: str, suffix: str) -> Path | None:
+    """`directory/<citation><suffix>`, or None if the citation isn't a safe
+    single file name."""
     if not _SAFE_CITATION_RE.match(citation) or ".." in citation:
         return None
-    return pages_dir / f"{citation}.html"
+    return directory / f"{citation}{suffix}"
+
+
+def page_file(pages_dir: Path, citation: str) -> Path | None:
+    return citation_file(pages_dir, citation, ".html")
 
 
 def write_page(pages_dir: Path, citation: str, html: str) -> None:

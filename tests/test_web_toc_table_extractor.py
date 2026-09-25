@@ -1,5 +1,5 @@
 from web_toc.domain.models import WebNode
-from web_toc.parsing.table_extractor import attach_tables, extract_tables
+from web_toc.parsing.table_extractor import attach_tables, extract_tables, table_row_counts
 
 
 def _real_shaped_table(table_id="nbc.divBV2.part9.sect23.subsect3.art1.table1"):
@@ -141,3 +141,45 @@ def test_attach_tables_ignores_a_table_whose_owner_citation_is_not_found():
     attach_tables(root, [("does.not.exist", table_node)])
 
     assert root.children == []
+
+
+def test_extract_tables_reads_a_cell_whose_content_is_a_bare_string():
+    # Some revision entries on the site give a cell's content as plain text.
+    table = {
+        "id": "t1",
+        "type": "table",
+        "structure": {"body_rows": [{"cells": [{"content": " See [REF:x] "}, {}]}]},
+    }
+
+    ((_, node),) = extract_tables(table, {"t1"}, "t1")
+
+    assert [cell.content for cell in node.children[0].children] == ["See [REF:x]", ""]
+
+
+def _rows_table(table_id, header_rows, body_rows):
+    return {
+        "id": table_id,
+        "type": "table",
+        "structure": {"header_rows": [{}] * header_rows, "body_rows": [{}] * body_rows},
+    }
+
+
+def test_table_row_counts_counts_header_and_body_rows_of_every_nested_table():
+    content = {
+        "articles": [
+            {"content": [_rows_table("t1", 1, 3)]},
+            {"sentences": [{"content": [_rows_table("t2", 0, 2)]}]},
+        ]
+    }
+
+    assert table_row_counts(content) == {"t1": 4, "t2": 2}
+
+
+def test_table_row_counts_skips_tables_without_an_id_or_structure():
+    content = [{"type": "table"}, {"type": "table", "id": "t3"}]
+
+    assert table_row_counts(content) == {"t3": 0}
+
+
+def test_table_row_counts_of_empty_content_is_empty():
+    assert table_row_counts({}) == {}

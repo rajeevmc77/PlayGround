@@ -12,6 +12,8 @@ from web_toc.parsing.owner_resolution import attach_owned_nodes, resolve_owner
 
 
 def _cell_text(cell: dict) -> str:
+    if isinstance(cell.get("content"), str):  # some revision entries give plain text
+        return cell["content"].strip()
     return " ".join(
         part.get("value", "") for part in cell.get("content", []) if part.get("type") == "text"
     ).strip()
@@ -81,6 +83,20 @@ def extract_tables(
         owner = resolve_owner(table_id, citations, fallback_citation)
         owned_tables.append((owner, _table_node(table)))
     return owned_tables
+
+
+def table_row_counts(content) -> dict[str, int]:
+    """Rows each table must have once rendered (header + body) - the target
+    the scraper keeps lazy-loading a long table's rows up to."""
+    counts = {}
+    for table in _walk_tables(content):
+        if table.get("id") is None:
+            continue
+        structure = table.get("structure", {})
+        counts[table["id"]] = len(structure.get("header_rows", [])) + len(
+            structure.get("body_rows", [])
+        )
+    return counts
 
 
 def attach_tables(root: WebNode, owned_tables: list[tuple[str, WebNode]]) -> None:

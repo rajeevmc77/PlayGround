@@ -67,3 +67,39 @@ def test_write_json_creates_parent_directories(tmp_path):
     out_path = tmp_path / "nested" / "web_toc.json"
     write_json(root, [], str(out_path))
     assert out_path.exists()
+
+
+_LOCATION = {
+    "page_file": "web_pages/p.html",
+    "xpath": "/html/body/main/div/main/div[1]",
+    "bbox": {"x0": 1.0, "y0": 2.0, "x1": 3.0, "y1": 4.0},
+}
+
+
+def test_write_json_drops_unset_locations_and_keeps_set_ones(tmp_path):
+    located = WebNode(
+        type="Sentence", identifier="(1)", citation="s", title="", path="", location=_LOCATION
+    )
+    unlocated = WebNode(type="Sentence", identifier="(2)", citation="s2", title="", path="")
+    root = WebNode(
+        type="root",
+        identifier="",
+        citation="root",
+        title="",
+        path="/",
+        children=[located, unlocated],
+    )
+    images = [
+        WebImage(id="a", src="x", alt_text="", owner_citation="s", location=_LOCATION),
+        WebImage(id="b", src="y", alt_text="", owner_citation="s"),
+    ]
+
+    out_path = tmp_path / "web.json"
+    write_json(root, images, str(out_path))
+
+    payload = json.loads(out_path.read_text())
+    assert "location" not in payload["tree"]
+    assert payload["tree"]["children"][0]["location"] == _LOCATION
+    assert "location" not in payload["tree"]["children"][1]
+    assert payload["images"][0]["location"] == _LOCATION
+    assert "location" not in payload["images"][1]
