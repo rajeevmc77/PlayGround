@@ -53,6 +53,4 @@ def _note_node(note: dict) -> WebNode:
 
 
 def extract_notes(content: dict, owner_citation: str) -> list[tuple[str, WebNode]]:
-    return [
-        (owner_citation, _note_node(note)) for note in _walk_notes(content) if note.get("id")
-    ]
+    return [(owner_citation, _note_node(note)) for note in _walk_notes(content) if note.get("id")]

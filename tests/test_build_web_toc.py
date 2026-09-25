@@ -497,7 +497,12 @@ def test_attach_notes_puts_part10_note_under_its_part_appendix():
         path="",
     )
     part = WebNode(
-        type="part", identifier="10", citation="nbc.divB.part10", title="", path="", children=[appendix]
+        type="part",
+        identifier="10",
+        citation="nbc.divB.part10",
+        title="",
+        path="",
+        children=[appendix],
     )
     root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[part])
     content = {

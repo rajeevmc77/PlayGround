@@ -126,7 +126,9 @@ def test_note_texts_match_when_one_is_a_prefix_of_the_other():
 def test_genuinely_different_note_titles_are_still_reported():
     pdf = {"n": {"type": "Note", "title": "Heritage Buildings. Many local"}}
     web = {"n": {"type": "Note", "title": "Secondary Suites."}}
-    assert text_mismatches(pdf, web) == [("n", "heritage buildings. many local", "secondary suites.")]
+    assert text_mismatches(pdf, web) == [
+        ("n", "heritage buildings. many local", "secondary suites.")
+    ]
 
 
 def test_empty_note_title_is_not_a_prefix_match():
@@ -157,7 +159,9 @@ def test_table_text_drops_trailing_note_markers_without_forming_part_clause():
 
 
 def test_genuinely_different_table_titles_are_still_reported():
-    pdf = {"t": {"type": "Table", "title": "Data for British Columbia Forming Part of Article 1.1."}}
+    pdf = {
+        "t": {"type": "Table", "title": "Data for British Columbia Forming Part of Article 1.1."}
+    }
     web = {"t": {"type": "Table", "title": "Table C-2 Data for Canada"}}
     assert text_mismatches(pdf, web) == [("t", "data for british columbia", "data for canada")]
 

@@ -47,7 +47,9 @@ def test_write_json_drops_empty_heading_keys_recursively(tmp_path):
         heading="Part 1",
         children=[grandchild],
     )
-    root = WebNode(type="root", identifier="", citation="root", title="", path="/", children=[child])
+    root = WebNode(
+        type="root", identifier="", citation="root", title="", path="/", children=[child]
+    )
 
     out_path = tmp_path / "web.json"
     write_json(root, [], str(out_path))
