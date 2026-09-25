@@ -153,16 +153,35 @@ def _update_state_after_open(ntype: str, node: Node, state: _BuildState) -> None
     state.article_bodies.append((node, state.current_body))
 
 
+def _heading_text(match, title: str) -> str:
+    """The literal heading words - "Part 1", "Section 9.10.", "Notes to Part 1" -
+    without any title the same trigger line also carried."""
+    if not title or match.lastindex is None:
+        return match.group(0).strip()
+    return match.string[: match.start(match.lastindex)].strip()
+
+
+def _heading_title(
+    ntype: str, lines: list[PageLine], next_idx: int, title: str, heading: str
+) -> tuple[str, int]:
+    if ntype == "BackMatter":
+        return title, next_idx
+    title, next_idx = _consume_heading_title(lines, next_idx, title)
+    if ntype == "NotesContainer":
+        # The website's own title; the folded-in Part name ("Compliance") is
+        # dropped - the parent Part already carries it.
+        return heading, next_idx
+    return title, next_idx
+
+
 def _open_node(
     ntype: str, match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
 ) -> int:
     identifier, title, citation = _citation_for(ntype, match, state.division)
-    bbox = BBox(*lines[idx].bbox)
-    next_idx = idx + 1
+    heading = _heading_text(match, title)
     if ntype == "Division":
         state.division = identifier
-    if ntype != "BackMatter":
-        title, next_idx = _consume_heading_title(lines, next_idx, title)
+    title, next_idx = _heading_title(ntype, lines, idx + 1, title, heading)
 
     rank = RANK[ntype]
     parent = _close_stack_to_rank(state, rank)
@@ -173,7 +192,8 @@ def _open_node(
         title=title,
         page=page_index + 1,
         end_page=page_index + 1,
-        bbox=bbox,
+        bbox=BBox(*lines[idx].bbox),
+        heading=heading,
     )
     parent.children.append(node)
     state.stack.append((rank, node))
@@ -191,6 +211,7 @@ def _open_note(match, page_index: int, bbox: BBox, state: _BuildState) -> None:
         page=page_index + 1,
         end_page=page_index + 1,
         bbox=bbox,
+        heading=identifier,
     )
     state.stack[-1][1].children.append(node)
     state.current_body = None
