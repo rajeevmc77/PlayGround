@@ -34,6 +34,7 @@ from web_toc.parsing.note_extractor import extract_notes
 from web_toc.parsing.numbering_config import WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
 from web_toc.parsing.owner_resolution import attach_owned_nodes
 from web_toc.parsing.page_targets import page_targets
+from web_toc.parsing.revisions import resolve_revisions
 from web_toc.parsing.table_extractor import attach_tables, extract_tables
 from web_toc.parsing.tree_builder import build_tree, collect_citations
 
@@ -49,13 +50,18 @@ def _walk(node: WebNode) -> Iterator[WebNode]:
         yield from _walk(child)
 
 
-def _cached_contents(root: WebNode, source: LocalWebSource) -> list[tuple[WebNode, dict]]:
-    """Every node build_web_pages.py cached content JSON for."""
-    return [
-        (node, content)
-        for node in list(_walk(root))
-        if (content := source.fetch_content(node.citation)) is not None
-    ]
+def _cached_contents(
+    root: WebNode, source: LocalWebSource, date: str
+) -> list[tuple[WebNode, dict]]:
+    """Every node build_web_pages.py cached content JSON for, read as of the
+    date its pages were rendered for."""
+    fetched = []
+    for node in list(_walk(root)):
+        served = source.fetch_content(node.citation)
+        content = resolve_revisions(served, date) if served is not None else None
+        if content is not None:
+            fetched.append((node, content))
+    return fetched
 
 
 def _attach_notes(root, fetched, citations: set[str]) -> set[str]:
@@ -105,7 +111,7 @@ def _print_report(report: dict[str, dict[str, int]]) -> None:
 
 def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage]]:
     root = build_tree(source.fetch_navigation_tree())
-    fetched = _cached_contents(root, source)
+    fetched = _cached_contents(root, source, source.fetch_snapshot()["date"])
     citations = _attach_notes(root, fetched, collect_citations(root))
     images, owned_tables, owned_sentences = _extract_owned(fetched, citations)
     attach_tables(root, owned_tables)

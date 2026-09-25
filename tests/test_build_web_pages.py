@@ -247,6 +247,40 @@ def test_run_caches_the_navigation_tree_and_every_content_json(tmp_path):
     assert cached == _SECTION_CONTENT
 
 
+def test_run_records_which_version_and_date_the_snapshot_is_of(tmp_path):
+    _build(tmp_path, _FakeBrowser(_default_pages()), _content_http())
+    snapshot = json.loads((tmp_path / "web_source" / "snapshot.json").read_text())
+    assert snapshot == {"version": "2024", "date": "2024-03-08"}
+
+
+def test_run_expects_the_rows_in_effect_on_the_scrape_date(tmp_path):
+    deleted_later = {
+        "revised": True,
+        "cells": [],
+        "revisions": [
+            {"type": "original", "effective_date": "2024-03-08", "cells": [{}]},
+            {"type": "revision", "effective_date": "2025-06-16", "deleted": True, "cells": []},
+        ],
+    }
+    not_yet = {
+        "revised": True,
+        "revisions": [{"type": "revision", "effective_date": "2025-06-16", "cells": [{}]}],
+    }
+    content = {
+        "id": "nbc.divA.part1.sect1",
+        "content": [
+            {
+                "type": "table",
+                "id": "t1",
+                "structure": {"header_rows": [], "body_rows": [{}, deleted_later, not_yet]},
+            }
+        ],
+    }
+    browser = _FakeBrowser(_default_pages())
+    _build(tmp_path, browser, _FakeHttp(contents={SECTION_CONTENT_URL: content}))
+    assert browser.expected_rows[SECTION_URL] == {"t1": 2}
+
+
 def test_run_asks_the_browser_for_every_row_the_content_json_says_a_table_has(tmp_path):
     browser = _FakeBrowser(_default_pages())
     _build(tmp_path, browser, _content_http())

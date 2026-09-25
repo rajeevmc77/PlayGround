@@ -32,12 +32,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from web_toc.domain.models import ScrapedPage, WebNode
 from web_toc.output.image_downloader import download_images
 from web_toc.output.page_writer import AssetSource, citation_file, download_assets, write_page
-from web_toc.output.source_cache import cache_contents, write_navigation
+from web_toc.output.source_cache import cache_contents, write_navigation, write_snapshot
 from web_toc.parsing.image_extractor import extract_images
 from web_toc.parsing.local_page_server import serve_pages
 from web_toc.parsing.page_html import clean_panel, compose_page, image_paths
 from web_toc.parsing.page_source import PageSource, PlaywrightPageSource
 from web_toc.parsing.page_targets import page_targets, page_url
+from web_toc.parsing.revisions import resolve_revisions
 from web_toc.parsing.site_css import build_nav_css, css_url_paths, rebase_css_urls
 from web_toc.parsing.site_source import HttpxWebSource
 from web_toc.parsing.table_extractor import table_row_counts
@@ -192,8 +193,11 @@ async def _scrape_site(
 ) -> tuple[dict[str, str], list[dict], dict[str, dict[str, list[int]]]]:
     nav = await http.fetch_navigation_tree()
     write_navigation(out / "web_source", nav)
+    write_snapshot(out / "web_source", version, date)
     root = build_tree(nav)
-    contents = await cache_contents(http, root, version, out / "web_source")
+    served = await cache_contents(http, root, version, out / "web_source")
+    # As of the date the pages are rendered for, so the rows expected match.
+    contents = {c: resolve_revisions(content, date) or {} for c, content in served.items()}
     targets = _selected_targets(root, only)
     urls = [page_url(base_url, node, version, date) for node in targets]
     expected = [table_row_counts(contents.get(node.citation, {})) for node in targets]

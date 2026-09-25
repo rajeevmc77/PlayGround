@@ -8,6 +8,7 @@ from web_toc.output.source_cache import (
     CONTENT_FETCH_CONCURRENCY,
     cache_contents,
     write_navigation,
+    write_snapshot,
 )
 from web_toc.parsing.local_source import LocalWebSource
 
@@ -99,6 +100,17 @@ def test_local_source_reads_cached_content_by_citation(tmp_path):
 
     assert source.fetch_content("nbc.divA.part1.sect1") == {"id": "s1"}
     assert source.fetch_content("nbc.divA.part1.sect9") is None
+
+
+def test_write_snapshot_and_local_source_round_trip(tmp_path):
+    write_snapshot(tmp_path, "2024", "2024-03-08")
+
+    assert LocalWebSource(tmp_path).fetch_snapshot() == {"version": "2024", "date": "2024-03-08"}
+
+
+def test_local_source_without_a_snapshot_says_how_to_build_it(tmp_path):
+    with pytest.raises(FileNotFoundError, match="build_web_pages.py"):
+        LocalWebSource(tmp_path).fetch_snapshot()
 
 
 def test_local_source_refuses_an_unsafe_citation(tmp_path):

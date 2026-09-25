@@ -17,6 +17,7 @@ from web_toc.parsing.content_url import content_url
 from web_toc.parsing.site_source import WebSource
 
 NAVIGATION_FILE = "navigation.json"
+SNAPSHOT_FILE = "snapshot.json"
 CONTENT_DIR = "content"
 
 # I/O-bound HTTP fetches, not CPU work - a bounded semaphore overlaps the
@@ -28,9 +29,19 @@ def content_file(source_dir: Path, citation: str) -> Path | None:
     return citation_file(Path(source_dir) / CONTENT_DIR, citation, ".json")
 
 
-def write_navigation(source_dir: Path, nav: dict) -> None:
+def _write(source_dir: Path, name: str, data: dict) -> None:
     Path(source_dir).mkdir(parents=True, exist_ok=True)
-    (Path(source_dir) / NAVIGATION_FILE).write_text(json.dumps(nav), encoding="utf-8")
+    (Path(source_dir) / name).write_text(json.dumps(data), encoding="utf-8")
+
+
+def write_navigation(source_dir: Path, nav: dict) -> None:
+    _write(source_dir, NAVIGATION_FILE, nav)
+
+
+def write_snapshot(source_dir: Path, version: str, date: str) -> None:
+    """Which code version and effective date the saved pages were rendered
+    for - the offline build reads revised content as of this same date."""
+    _write(source_dir, SNAPSHOT_FILE, {"version": version, "date": date})
 
 
 def _walk(node: WebNode) -> Iterator[WebNode]:

@@ -156,6 +156,7 @@ def output_dir(tmp_path):
     source = tmp_path / "web_source"
     (source / "content").mkdir(parents=True)
     (source / "navigation.json").write_text(json.dumps(_NAV))
+    (source / "snapshot.json").write_text(json.dumps({"version": "2024", "date": "2024-03-08"}))
     (source / "content" / f"{SECTION}.json").write_text(json.dumps(_SECTION_CONTENT))
     (source / "content" / f"{APPENDIX}.json").write_text(json.dumps(_APPENDIX_CONTENT))
     pages = tmp_path / "web_pages"
@@ -241,6 +242,30 @@ def test_run_skips_nodes_with_no_cached_content(output_dir):
     tree = _built(output_dir)["tree"]
     assert _find(tree, SENTENCE) is None
     assert _find(tree, NOTE) is not None
+
+
+def test_run_reads_revised_content_as_of_the_snapshot_date(output_dir):
+    # As served, the row's current (2025) version is deleted - no cells; on
+    # the 2024-03-08 snapshot date its original single cell applies.
+    content = json.loads(json.dumps(_SECTION_CONTENT))
+    content["content"][1]["structure"]["body_rows"] = [
+        {
+            "revised": True,
+            "cells": [],
+            "revisions": [
+                {"type": "original", "effective_date": "2024-03-08", "cells": [_cell("orig")]},
+                {"type": "revision", "effective_date": "2025-06-16", "deleted": True, "cells": []},
+            ],
+        }
+    ]
+    path = output_dir / "web_source" / "content" / f"{SECTION}.json"
+    path.write_text(json.dumps(content))
+
+    tree = _built(output_dir)["tree"]
+
+    cell = _find(tree, f"{TABLE}-row2-col1")
+    assert cell is not None
+    assert cell["location"]["xpath"].endswith("tbody[1]/tr[1]/td[1]")
 
 
 def test_run_without_a_cached_source_says_to_scrape_first(tmp_path):
