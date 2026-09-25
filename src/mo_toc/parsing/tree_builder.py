@@ -29,6 +29,7 @@ from mo_toc.parsing.pdf_source import PageLine, PdfSource
 
 RE_NOTE_ENTRY = re.compile(r"^([A-Z]-\S+(?:\s+(?:and|to)\s+\(\d+\))*)\s+(.*)$")
 RE_ENDS_WITH_CONJUNCTION = re.compile(r"\b(?:and|or)\s*$", re.IGNORECASE)
+RE_PAGE_NUMBER = re.compile(r"^\d+$")
 
 
 @dataclass
@@ -315,12 +316,25 @@ def _try_handle_note_line(pline: PageLine, page_index: int, state: _BuildState) 
     return _continue_current_note(pline, page_index, state)
 
 
+def _is_trailing_page_number(lines: list[PageLine], idx: int) -> bool:
+    """The PDF's own running footer: a bare page number rendered as the very
+    last line on the page, with no heading/marker shape of its own. Left in,
+    it falls through to plain body text and gets wedged into the middle of
+    whatever Sentence/Clause continuation happens to be open across the page
+    break - e.g. "...using the formula 16 where Is=..." where "16" is the
+    footer, not part of the sentence."""
+    return idx == len(lines) - 1 and bool(RE_PAGE_NUMBER.match(lines[idx].text))
+
+
 def _process_page(
     lines: list[PageLine], page_index: int, state: _BuildState, consumed: set[int]
 ) -> None:
     idx = 0
     while idx < len(lines):
         if idx in consumed:
+            idx += 1
+            continue
+        if _is_trailing_page_number(lines, idx):
             idx += 1
             continue
         pline = lines[idx]
