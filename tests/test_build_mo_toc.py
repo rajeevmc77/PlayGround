@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from build_mo_toc import drop_images_over_tables, main, run
+from build_mo_toc import build_document, drop_images_over_tables, main, run
 from mo_toc.domain.models import BBox, Node
 from mo_toc.parsing.image_extractor import RawImage
 from mo_toc.parsing.numbering_config import (
@@ -95,6 +95,40 @@ def test_run_wires_pipeline_in_order(
         "write_images",
         "match_images",
         "write_json",
+    ]
+
+
+@patch("build_mo_toc.attach_tables")
+@patch("build_mo_toc.stitch_continuations")
+@patch("build_mo_toc.nest_notes_under_parts")
+@patch("build_mo_toc.build_tree_from_lines")
+@patch("build_mo_toc.fill_continuation_gaps")
+def test_build_document_wires_nesting_in_order(
+    mock_fill_continuation_gaps,
+    mock_build_tree_from_lines,
+    mock_nest_notes_under_parts,
+    mock_stitch_continuations,
+    mock_attach_tables,
+):
+    mock_fill_continuation_gaps.return_value = []
+    mock_build_tree_from_lines.return_value = ("VOLUME", [])
+    mock_stitch_continuations.return_value = []
+
+    manager = MagicMock()
+    manager.attach_mock(mock_fill_continuation_gaps, "fill_continuation_gaps")
+    manager.attach_mock(mock_build_tree_from_lines, "build_tree_from_lines")
+    manager.attach_mock(mock_nest_notes_under_parts, "nest_notes_under_parts")
+    manager.attach_mock(mock_stitch_continuations, "stitch_continuations")
+    manager.attach_mock(mock_attach_tables, "attach_tables")
+
+    build_document([], [], [])
+
+    assert [c[0] for c in manager.mock_calls] == [
+        "fill_continuation_gaps",
+        "build_tree_from_lines",
+        "nest_notes_under_parts",
+        "stitch_continuations",
+        "attach_tables",
     ]
 
 

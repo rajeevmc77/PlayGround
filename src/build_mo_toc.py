@@ -17,6 +17,7 @@ from mo_toc.output.image_writer import write_images
 from mo_toc.output.json_writer import write_json
 from mo_toc.parsing.image_extractor import RawImage
 from mo_toc.parsing.image_matcher import match_images
+from mo_toc.parsing.notes_nesting import nest_notes_under_parts
 from mo_toc.parsing.numbering_config import (
     MO_TOC_IDENTIFIER_TYPES,
     MO_TOC_SUFFIX_TYPES,
@@ -59,6 +60,7 @@ def build_document(all_lines, table_regions_by_page, all_drawing_rects):
     volume, captions = build_tree_from_lines(
         all_lines, len(all_lines), consumed_by_page=_consumed_by_page(table_regions_by_page)
     )
+    nest_notes_under_parts(volume)
     attach_tables(volume, stitch_continuations(table_regions_by_page), captions)
     return volume, captions, table_regions_by_page
 
