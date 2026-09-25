@@ -13,6 +13,8 @@ page (subsections/articles are cut from their section's page). Match rules:
 - part/section/subsection/article by their heading number against the
   page's h1-h6 text (headings have no ids);
 - images by `src` on their owner's page.
+Equations have no counterpart in the tree to match: each one the layout
+measured becomes its own "equation" WebImage (equation_images).
 Pure: no file or browser I/O.
 """
 
@@ -21,6 +23,8 @@ from collections import Counter, defaultdict
 from collections.abc import Iterator
 
 from web_toc.domain.models import WebImage, WebNode
+from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
+from web_toc.parsing.owner_resolution import resolve_owner
 from web_toc.parsing.page_html import ASSET_PREFIX
 
 PAGES_DIR = "web_pages"
@@ -162,6 +166,28 @@ def join_layout(
     return misaligned
 
 
+def _equation_image(page: str, entry: dict, citations: set[str]) -> WebImage:
+    return WebImage(
+        id=entry["key"],
+        src=f"{EQUATION_ASSET_DIR}/{entry['key']}",
+        alt_text=entry["text"],
+        owner_citation=resolve_owner(entry["owner"], citations, page),
+        kind="equation",
+        location=_location(page, entry),
+    )
+
+
+def equation_images(layouts: dict[str, dict], citations: set[str]) -> list[WebImage]:
+    """One located "equation" WebImage per formula the pages' layouts
+    measured, owned by the node its holding element's id resolves to (or,
+    held by nothing with an id, by its page), in page then document order."""
+    return [
+        _equation_image(page, entry, citations)
+        for page, layout in layouts.items()
+        for entry in layout.get("equations", [])
+    ]
+
+
 def _walk(node: WebNode) -> Iterator[WebNode]:
     yield node
     for child in node.children:
@@ -170,7 +196,8 @@ def _walk(node: WebNode) -> Iterator[WebNode]:
 
 def _typed_locations(root: WebNode, images: list[WebImage]) -> Iterator[tuple[str, dict | None]]:
     yield from ((node.type, node.location) for node in _walk(root) if node.type != "root")
-    yield from (("Image", image.location) for image in images)
+    for image in images:
+        yield ("Equation" if image.kind == "equation" else "Image"), image.location
 
 
 def location_report(root: WebNode, images: list[WebImage]) -> dict[str, dict[str, int]]:

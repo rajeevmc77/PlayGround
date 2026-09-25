@@ -1,7 +1,12 @@
 import pytest
 
 from web_toc.domain.models import WebImage, WebNode
-from web_toc.parsing.layout_join import GridMismatch, join_layout, location_report
+from web_toc.parsing.layout_join import (
+    GridMismatch,
+    equation_images,
+    join_layout,
+    location_report,
+)
 
 ROOT = "/html/body/main/div/main"
 SECTION = "nbc.divB.part9.sect38"
@@ -257,3 +262,51 @@ def test_location_report_counts_located_and_unlocated_nodes_and_images_by_type()
     assert report["part"] == {"located": 0, "unlocated": 1}
     assert report["Image"] == {"located": 1, "unlocated": 0}
     assert "root" not in report
+
+
+def _equation(key, owner, n):
+    return {"key": key, "owner": owner, **_entry(f"div[1]/div[2]/img[{n}]", f"eq {key}", 30 + n)}
+
+
+def test_each_measured_equation_becomes_an_equation_image_owned_by_its_holder():
+    layout = {"equations": [_equation("es1", f"{SENTENCE}.clause1", 1)]}
+
+    [image] = equation_images({SECTION: layout}, {SENTENCE, f"{SENTENCE}.clause1"})
+
+    assert (image.id, image.kind, image.alt_text) == ("es1", "equation", "eq es1")
+    assert image.src == "equations/es1"
+    assert image.owner_citation == f"{SENTENCE}.clause1"
+    assert image.location == {
+        "page_file": f"web_pages/{SECTION}.html",
+        "xpath": f"{ROOT}/div[1]/div[2]/img[1]",
+        "bbox": _box(31),
+    }
+
+
+def test_an_equation_holder_that_is_no_node_resolves_up_its_id_or_to_its_page():
+    layout = {
+        "equations": [
+            _equation("n1", f"{SENTENCE}.para2", 1),  # a paragraph inside the sentence
+            _equation(f"{SECTION}.eq1", "", 2),  # held by nothing with an id
+        ]
+    }
+
+    images = equation_images({SECTION: layout}, {SENTENCE})
+
+    assert [image.owner_citation for image in images] == [SENTENCE, SECTION]
+
+
+def test_no_measured_equations_means_no_equation_images():
+    assert equation_images({SECTION: _layout()}, {SENTENCE}) == []
+    assert equation_images({}, {SENTENCE}) == []
+
+
+def test_location_report_counts_equations_apart_from_figures():
+    figure = WebImage(id="f1", src="", alt_text="", owner_citation=SENTENCE)
+    equation = WebImage(id="e1", src="", alt_text="", owner_citation=SENTENCE, kind="equation")
+    equation.location = {"page_file": "p", "xpath": "x", "bbox": _box(0)}
+
+    report = location_report(_node("root", "root"), [figure, equation])
+
+    assert report["Image"] == {"located": 0, "unlocated": 1}
+    assert report["Equation"] == {"located": 1, "unlocated": 0}

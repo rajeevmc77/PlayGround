@@ -241,6 +241,37 @@ that did not exist yet on the snapshot date (e.g. 3.2.10.x) and front-matter
 pages without numbered headings. 4 nodes still carry `[REF:` tokens, all
 unlocated.
 
+## Equations as images (follow-up)
+
+The site renders every formula (content JSON `display`/`inline` nodes, with
+`latex`, `mathml` and `plainText`) with MathJax 3 CHTML inside a
+`.equation-block`. Each glyph is an empty `mjx-c` drawn by CSS `::before`, so
+the generated-content text walk above read each formula twice: once
+letter-spaced (`s t o r e y s × 4 . 9`), then again from the hidden MathML.
+
+Each `.equation-block` is now one unit, handled as an image:
+
+- **Capture** (`build_web_pages.py`, after the pages are saved, before the
+  layout pass): each saved page is served locally and every equation's tight
+  `mjx-math` glyph box is screenshotted at 2× to
+  `web_images/equations/<key>.png` (for comparing with the PDF's formula
+  images) and `web_pages/assets/equations/<key>.png`.
+- **Key:** `<owner id>.<data-node-id>`. The owner is the nearest enclosing
+  element with an id. The site reuses one node id for the same formula in
+  several places, so the owner is what makes the key unique. A block with no
+  node id becomes `<owner id>.eq`, and a repeat within one owner becomes `-n`.
+- **Rewrite:** each `mjx-container` is replaced with an
+  `<img class="equation-image">` of its PNG at the glyphs' size and offset, so
+  the viewer shows the image and the page no longer depends on MathJax fonts.
+- **Layout and build:** the layout pass lists these images under `equations`
+  (not `images`); they add no text to what holds them. `build_web_toc.py`
+  turns each one into a `WebImage` with `kind: "equation"`, alt text set to
+  the formula's plain text or LaTeX, `local_path`, `location`, and a
+  `unified_number` of `<scope>.EqN`, counted apart from figures' `.FigN`.
+
+Full site: 133/133 equations captured and located, none left as MathJax. For
+example, 9.15.3.4.(2)(b) now reads "b) the following formula where W = …".
+
 ## Out of scope
 
 - **Row/Cell keys across sources don't line up.** The PDF splits Table

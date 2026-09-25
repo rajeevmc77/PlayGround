@@ -233,3 +233,11 @@ def test_number_images_without_skip_numbers_everything_resolvable():
     number_images(images, {"a": "B.9.1.1.1"})
 
     assert [i.unified_number for i in images] == ["B.9.1.1.1.Fig1", "B.9.1.1.1.Fig2"]
+
+
+def test_number_images_uses_the_given_label():
+    images = [_StubImage("a"), _StubImage("a")]
+
+    number_images(images, {"a": "B.9.15.3.4"}, label="Eq")
+
+    assert [i.unified_number for i in images] == ["B.9.15.3.4.Eq1", "B.9.15.3.4.Eq2"]

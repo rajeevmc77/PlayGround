@@ -99,10 +99,18 @@ LAYOUT_JS = f"""() => {{
       ...entry(row), cells: [...row.cells].map(entry),
     }}));
   }}
-  const images = [...root.querySelectorAll('img')].map((img) => ({{
+  const images = [...root.querySelectorAll('img:not(.equation-image)')].map((img) => ({{
     src: img.getAttribute('src') || '', xpath: xpathOf(img),
     text: img.getAttribute('alt') || '', bbox: bboxOf(img),
   }}));
+  // The captured formula images (equation_script.py); a pinned-column copy
+  // of a header cell is the same equation again, so it is left out.
+  const equations = [...root.querySelectorAll('img.equation-image')]
+    .filter((img) => !img.closest('.table-block__table--pinned-col'))
+    .map((img) => ({{
+      key: img.dataset.equation, owner: img.dataset.owner,
+      text: img.getAttribute('alt') || '', xpath: xpathOf(img), bbox: bboxOf(img),
+    }}));
   const headings = [...root.querySelectorAll('h1, h2, h3, h4, h5, h6')].map(entry);
-  return {{ elements, tables, images, headings }};
+  return {{ elements, tables, images, equations, headings }};
 }}"""

@@ -27,8 +27,9 @@ from web_toc.domain.models import WebImage, WebNode
 from web_toc.output.json_writer import write_json
 from web_toc.output.page_writer import citation_file
 from web_toc.parsing.body_extractor import attach_body, extract_body
+from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
 from web_toc.parsing.image_extractor import extract_images
-from web_toc.parsing.layout_join import join_layout, location_report
+from web_toc.parsing.layout_join import equation_images, join_layout, location_report
 from web_toc.parsing.local_source import LocalWebSource
 from web_toc.parsing.note_extractor import extract_notes
 from web_toc.parsing.numbering_config import WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
@@ -82,9 +83,15 @@ def _extract_owned(fetched, citations: set[str]):
     return images, owned_tables, owned_sentences
 
 
+def _local_file(image: WebImage) -> str:
+    if image.kind == "equation":
+        return f"{IMAGES_DIR}/{EQUATION_ASSET_DIR}/{image.id}.png"
+    return f"{IMAGES_DIR}/{image.id}.jpg"
+
+
 def _set_local_paths(images: list[WebImage], out: Path) -> None:
     for image in images:
-        relative = f"{IMAGES_DIR}/{image.id}.jpg"
+        relative = _local_file(image)
         if (out / relative).is_file():
             image.local_path = relative
 
@@ -117,7 +124,8 @@ def _print_misaligned(rows: list[str]) -> None:
         print(f"  {row}", file=sys.stderr)
 
 
-def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage]]:
+def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage], dict[str, str]]:
+    """The numbered tree, its figures, and the numbering's scope map."""
     root = build_tree(source.fetch_navigation_tree())
     fetched = _cached_contents(root, source, source.fetch_snapshot()["date"])
     citations = _attach_notes(root, fetched, collect_citations(root))
@@ -131,16 +139,25 @@ def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage]]:
     # with its owning node's cross-source key.
     scope_by_citation = assign_unified_numbers(root.children, WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES)
     number_images(images, scope_by_citation)
-    return root, images
+    return root, images, scope_by_citation
+
+
+def _equations(root: WebNode, layouts: dict[str, dict], scope_by_citation) -> list[WebImage]:
+    """The formula images captured from the saved pages, keyed `...EqN` in
+    their owner's scope - figures and equations count separately."""
+    equations = equation_images(layouts, collect_citations(root))
+    number_images(equations, scope_by_citation, label="Eq")
+    return equations
 
 
 def run(output_dir: str) -> None:
     out = Path(output_dir)
-    root, images = _build_tree(LocalWebSource(out / "web_source"))
-    _set_local_paths(images, out)
+    root, figures, scope_by_citation = _build_tree(LocalWebSource(out / "web_source"))
     pages = [node.citation for node in page_targets(root)]
     layouts = _load_layouts(out / "web_pages", pages)
-    misaligned = join_layout(root, images, layouts, set(pages))
+    misaligned = join_layout(root, figures, layouts, set(pages))
+    images = figures + _equations(root, layouts, scope_by_citation)
+    _set_local_paths(images, out)
     _print_report(location_report(root, images))
     _print_misaligned(misaligned)
     write_json(root, images, str(out / "bcbc_web.json"))

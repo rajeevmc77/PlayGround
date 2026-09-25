@@ -246,6 +246,45 @@ def test_run_leaves_local_path_empty_for_an_image_that_was_never_downloaded(outp
     assert image["local_path"] == ""
 
 
+def _with_equation(output_dir, png=True):
+    """A clause holding one captured equation (build_web_pages.py's capture)."""
+    layout = {
+        **_SECTION_LAYOUT,
+        "equations": [
+            {
+                "key": "es1",
+                "owner": f"{SENTENCE}.clause1",
+                **_entry("div[1]/div[2]/div[1]/img[1]", "W=w×4.9", 55.0),
+            }
+        ],
+    }
+    (output_dir / "web_pages" / f"{SECTION}.layout.json").write_text(json.dumps(layout))
+    if png:
+        (output_dir / "web_images" / "equations").mkdir()
+        (output_dir / "web_images" / "equations" / "es1.png").write_bytes(b"png")
+
+
+def test_run_lists_each_captured_equation_as_an_image_after_the_figures(output_dir, capsys):
+    _with_equation(output_dir)
+
+    figure, equation = _built(output_dir)["images"]
+
+    assert (figure["kind"], equation["kind"]) == ("figure", "equation")
+    assert equation["id"] == "es1"
+    assert equation["alt_text"] == "W=w×4.9"
+    assert equation["owner_citation"] == f"{SENTENCE}.clause1"
+    assert equation["local_path"] == "web_images/equations/es1.png"
+    assert equation["location"]["xpath"] == f"{ROOT_XPATH}/div[1]/div[2]/div[1]/img[1]"
+    assert equation["unified_number"] == figure["unified_number"].replace(".Fig1", ".Eq1")
+    assert "Equation: 1 located, 0 unlocated" in capsys.readouterr().err
+
+
+def test_run_leaves_local_path_empty_for_an_equation_never_captured(output_dir):
+    _with_equation(output_dir, png=False)
+    _, equation = _built(output_dir)["images"]
+    assert equation["local_path"] == ""
+
+
 def test_run_skips_nodes_with_no_cached_content(output_dir):
     (output_dir / "web_source" / "content" / f"{SECTION}.json").unlink()
     tree = _built(output_dir)["tree"]
