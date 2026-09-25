@@ -4,7 +4,13 @@ DATE = "2024-03-08"
 
 
 def _revised_row(*revisions, **current):
-    return {"id": "row393", "type": "body_row", "revised": True, **current, "revisions": list(revisions)}
+    return {
+        "id": "row393",
+        "type": "body_row",
+        "revised": True,
+        **current,
+        "revisions": list(revisions),
+    }
 
 
 _ORIGINAL = {"type": "original", "effective_date": "2024-03-08", "cells": [{"v": "orig"}]}
@@ -26,7 +32,11 @@ def test_content_without_revisions_is_returned_unchanged():
 
 def test_a_revised_item_takes_the_revision_in_effect_on_the_date():
     row = _revised_row(_ORIGINAL, _AMENDED, cells=[{"v": "amended"}])
-    assert resolve_revisions(row, DATE) == {"id": "row393", "type": "body_row", "cells": [{"v": "orig"}]}
+    assert resolve_revisions(row, DATE) == {
+        "id": "row393",
+        "type": "body_row",
+        "cells": [{"v": "orig"}],
+    }
     assert resolve_revisions(row, "2025-06-16")["cells"] == [{"v": "amended"}]
 
 

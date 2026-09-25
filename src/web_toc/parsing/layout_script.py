@@ -16,6 +16,19 @@ Returns null when ROOT_XPATH doesn't resolve to exactly one content panel.
 
 ROOT_XPATH = "/html/body/main/div/main"
 
+# `gridRows(block)`: the rendered rows of the table whose id sits on `block`,
+# in order. A wide table is split into a header <table> and a body <table>
+# (plus a `--pinned-col` duplicate of the header for its sticky first
+# column); a table nested inside one of its cells is not one of its rows.
+# Shared by the scraper's row counting and the layout pass.
+GRID_ROWS_JS = """const gridRows = (block) => [...block.querySelectorAll('table')]
+  .filter((table) => {
+    if (table.classList.contains('table-block__table--pinned-col')) return false;
+    const cell = table.parentElement.closest('td, th');
+    return !cell || !block.contains(cell);
+  })
+  .flatMap((table) => [...table.rows]);"""
+
 LAYOUT_JS = f"""() => {{
   const ROOT = '{ROOT_XPATH}';
   const found = document.evaluate(ROOT, document, null,
@@ -77,11 +90,12 @@ LAYOUT_JS = f"""() => {{
   for (const el of root.querySelectorAll('[id]')) {{
     if (inHtml(el)) elements[el.id] = entry(el);
   }}
+  {GRID_ROWS_JS}
   const tables = {{}};
   for (const table of root.querySelectorAll('table')) {{
     const owner = table.closest('[id]');
     if (!owner || !root.contains(owner) || owner.id in tables) continue;
-    tables[owner.id] = [...table.rows].map((row) => ({{
+    tables[owner.id] = gridRows(owner).map((row) => ({{
       ...entry(row), cells: [...row.cells].map(entry),
     }}));
   }}

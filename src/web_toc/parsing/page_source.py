@@ -21,7 +21,7 @@ from playwright.async_api import (
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from web_toc.domain.models import ScrapedPage
-from web_toc.parsing.layout_script import LAYOUT_JS
+from web_toc.parsing.layout_script import GRID_ROWS_JS, LAYOUT_JS
 from web_toc.parsing.scroll_plan import short_tables
 
 READY_SELECTOR = "main.ui-ContentPanel .reading-view__content, main.ui-ContentPanel .partRenderer"
@@ -62,31 +62,31 @@ _NAV_CSS_JS = """(pattern) => {
 }"""
 
 
-# A table's id sits on its wrapping block, not the <table> itself; counting
-# `table.rows` (not every descendant <tr>) keeps a table nested inside one of
-# its cells from inflating the count.
-_TABLE_JS = """const tableOf = (id) => {
-  const el = document.getElementById(id);
-  return el && (el.tagName === 'TABLE' ? el : el.querySelector('table'));
-};"""
+# A table's id sits on its wrapping block, not on a <table>; its rows are
+# counted the same way the layout pass reads them (layout_script.gridRows).
+_TABLE_JS = f"""{GRID_ROWS_JS}
+const rowsOf = (id) => {{
+  const block = document.getElementById(id);
+  return block ? gridRows(block) : [];
+}};"""
 
 _ROW_COUNTS_JS = f"""(ids) => {{ {_TABLE_JS}
-  return Object.fromEntries(ids.map((id) => [id, tableOf(id) ? tableOf(id).rows.length : 0]));
+  return Object.fromEntries(ids.map((id) => [id, rowsOf(id).length]));
 }}"""
 
 # Jumps a few rows back first, so the last row re-enters the viewport even
 # when it was already visible - the site loads more on that transition.
 _SCROLL_LAST_ROWS_JS = f"""(ids) => {{ {_TABLE_JS}
   for (const id of ids) {{
-    const table = tableOf(id);
-    if (!table || !table.rows.length) continue;
-    table.rows[Math.max(0, table.rows.length - 10)].scrollIntoView();
-    table.rows[table.rows.length - 1].scrollIntoView();
+    const rows = rowsOf(id);
+    if (!rows.length) continue;
+    rows[Math.max(0, rows.length - 10)].scrollIntoView();
+    rows[rows.length - 1].scrollIntoView();
   }}
 }}"""
 
 _GREW_JS = f"""([ids, before]) => {{ {_TABLE_JS}
-  return ids.some((id) => tableOf(id) && tableOf(id).rows.length > before[id]);
+  return ids.some((id) => rowsOf(id).length > before[id]);
 }}"""
 
 # Consecutive scroll attempts with no new rows before a table is given up on.

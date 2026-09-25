@@ -22,6 +22,8 @@ _REVISION_META = frozenset(
         "note",
     }
 )
+# The item's own history markers - dropped once one version is chosen.
+_ITEM_HISTORY = frozenset({"revisions", "revised"})
 _DROPPED = object()
 
 
@@ -32,25 +34,33 @@ def _in_effect(revisions: list[dict], date: str) -> dict | None:
     return max(effective, key=lambda r: (r.get("effective_date", ""), r.get("sequence", 0)))
 
 
-def _effective_item(item: dict, date: str):
+def _without(fields: dict, keys: frozenset) -> dict:
+    return {key: value for key, value in fields.items() if key not in keys}
+
+
+def _as_of(item: dict, date: str):
+    """The item itself, or - if revised - the version in effect on `date`."""
+    if not isinstance(item.get("revisions"), list):
+        return item
     revision = _in_effect(item["revisions"], date)
     if revision is None or revision.get("deleted"):
         return _DROPPED
-    base = {k: v for k, v in item.items() if k not in ("revisions", "revised")}
-    base.update({k: v for k, v in revision.items() if k not in _REVISION_META})
-    return base
+    return {**_without(item, _ITEM_HISTORY), **_without(revision, _REVISION_META)}
+
+
+def _resolve_list(items: list, date: str) -> list:
+    resolved = (_resolve(item, date) for item in items)
+    return [item for item in resolved if item is not _DROPPED]
 
 
 def _resolve(node, date: str):
     if isinstance(node, list):
-        resolved = (_resolve(item, date) for item in node)
-        return [item for item in resolved if item is not _DROPPED]
+        return _resolve_list(node, date)
     if not isinstance(node, dict):
         return node
-    if isinstance(node.get("revisions"), list):
-        node = _effective_item(node, date)
-        if node is _DROPPED:
-            return _DROPPED
+    node = _as_of(node, date)
+    if node is _DROPPED:
+        return _DROPPED
     return {key: _resolve(value, date) for key, value in node.items()}
 
 

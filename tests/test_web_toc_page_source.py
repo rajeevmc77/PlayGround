@@ -58,11 +58,20 @@ addRows();
 </script></body></html>"""
 
 
+_SPLIT_TABLE_PAGE = """<!DOCTYPE html><html><head><title>Split</title></head><body>
+<main id="main-content"><div class="MainLayout"><main class="ui-ContentPanel">
+<div class="reading-view__content"><div id="wide">
+<table class="table-block__table--split-header"><tr><th>H</th></tr></table>
+<table class="table-block__table--split-header table-block__table--pinned-col"><tr><th>H</th></tr>
+</table><table class="table-block__table--split-body"><tr><td>a<table><tr><td>n</td></tr></table>
+</td></tr><tr><td>b</td></tr></table></div></div></main></div></main></body></html>"""
+
+
 def _tr_count(page):
     return page.panel.count("<tr")
 
 
-async def _scrape_all(urls, nav_url, lazy_url):
+async def _scrape_all(urls, nav_url, lazy_url, split_url):
     async with PlaywrightPageSource(ready_timeout_ms=1500, growth_timeout_ms=400) as source:
         pages = {key: await source.fetch_page(url) for key, url in urls.items()}
         nav_all = await source.fetch_nav_css(nav_url, r"nav-tree|breadcrumbs")
@@ -70,6 +79,7 @@ async def _scrape_all(urls, nav_url, lazy_url):
         pages["lazy_complete"] = await source.fetch_page(lazy_url, {"t1": 23})
         pages["lazy_short"] = await source.fetch_page(lazy_url, {"t1": 30, "absent": 2})
         pages["lazy_unscrolled"] = await source.fetch_page(lazy_url)
+        pages["split"] = await source.fetch_page(split_url, {"wide": 3})
     return pages, nav_all, nav_tree_only
 
 
@@ -83,6 +93,7 @@ def scraped(tmp_path_factory):
         ("forbidden", _UNRENDERED_PAGE),
         ("nav", _NAV_CSS_PAGE),
         ("lazy", _LAZY_TABLE_PAGE),
+        ("split", _SPLIT_TABLE_PAGE),
     ):
         (root / f"{name}.html").write_text(html)
     urls = {
@@ -91,7 +102,12 @@ def scraped(tmp_path_factory):
         "missing": (root / "missing.html").as_uri(),
     }
     pages, nav_all, nav_tree_only = asyncio.run(
-        _scrape_all(urls, (root / "nav.html").as_uri(), (root / "lazy.html").as_uri())
+        _scrape_all(
+            urls,
+            (root / "nav.html").as_uri(),
+            (root / "lazy.html").as_uri(),
+            (root / "split.html").as_uri(),
+        )
     )
     return {"pages": pages, "nav_all": nav_all, "nav_tree_only": nav_tree_only}
 
@@ -120,6 +136,12 @@ def test_fetch_page_reports_tables_that_never_reach_their_expected_rows(scraped)
     page = scraped["pages"]["lazy_short"]
     assert _tr_count(page) == 23
     assert page.incomplete == {"t1": [23, 30], "absent": [0, 2]}
+
+
+def test_fetch_page_counts_a_split_tables_header_and_body_rows_once(scraped):
+    # header (1) + body (2); the pinned-column duplicate and the table nested
+    # in a cell are not rows of the grid.
+    assert scraped["pages"]["split"].incomplete == {}
 
 
 def test_fetch_page_without_expected_rows_does_not_scroll(scraped):

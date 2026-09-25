@@ -73,7 +73,9 @@ def _layout(rows=((1, 2), (3,))):
                 {
                     **_entry(f"div[1]/div[3]/table[1]/tbody[1]/tr[{r + 1}]", "row", 10 + r),
                     "cells": [
-                        _entry(f"div[1]/div[3]/table[1]/tbody[1]/tr[{r + 1}]/td[{c}]", f"cell{c}", c)
+                        _entry(
+                            f"div[1]/div[3]/table[1]/tbody[1]/tr[{r + 1}]/td[{c}]", f"cell{c}", c
+                        )
                         for c in row
                     ],
                 }
@@ -144,8 +146,11 @@ def test_a_table_grid_that_differs_from_its_json_fails_loudly(cells_per_row):
 
 
 def test_headings_are_located_by_their_number_on_their_own_page():
-    root = _join(_tree(), {SECTION: _layout(), "nbc.divB.part9": _layout()},
-                 pages=(SECTION, "nbc.divB.part9"))
+    root = _join(
+        _tree(),
+        {SECTION: _layout(), "nbc.divB.part9": _layout()},
+        pages=(SECTION, "nbc.divB.part9"),
+    )
     assert _find(root, "nbc.divB.part9").location["xpath"] == f"{ROOT}/h1[1]"
     assert _find(root, SECTION).location["xpath"] == f"{ROOT}/h2[1]"
     assert _find(root, f"{SECTION}.subsect1").location["xpath"] == f"{ROOT}/h3[1]"

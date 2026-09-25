@@ -134,12 +134,20 @@ _SECTION_LAYOUT = {
     },
     "tables": {
         TABLE: [
-            {**_entry("div[1]/div[3]/table[1]/thead[1]/tr[1]", "Provision", 60.0), "cells": [
-                _entry("div[1]/div[3]/table[1]/thead[1]/tr[1]/th[1]", "Provision", 60.0)
-            ]},
-            {**_entry("div[1]/div[3]/table[1]/tbody[1]/tr[1]", "9.23.5.5.", 70.0), "cells": [
-                _entry("div[1]/div[3]/table[1]/tbody[1]/tr[1]/td[1]", "9.23.5.5. Roof Trusses", 70.0)
-            ]},
+            {
+                **_entry("div[1]/div[3]/table[1]/thead[1]/tr[1]", "Provision", 60.0),
+                "cells": [_entry("div[1]/div[3]/table[1]/thead[1]/tr[1]/th[1]", "Provision", 60.0)],
+            },
+            {
+                **_entry("div[1]/div[3]/table[1]/tbody[1]/tr[1]", "9.23.5.5.", 70.0),
+                "cells": [
+                    _entry(
+                        "div[1]/div[3]/table[1]/tbody[1]/tr[1]/td[1]",
+                        "9.23.5.5. Roof Trusses",
+                        70.0,
+                    )
+                ],
+            },
         ]
     },
     "images": [{"src": "/web-assets/g/f1.jpg", **_entry("div[1]/img[1]", "", 90.0)}],

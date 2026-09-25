@@ -31,6 +31,10 @@ Applies.</div>
 <div id="t1"><table><thead><tr><th>Provision</th><th>Statement</th></tr></thead>
 <tbody><tr><td colspan="2">9.3.1.1. General</td></tr><tr><td>(1)</td><td>F20 - OS2.1</td></tr>
 </tbody></table></div>
+<div id="t2"><table class="table-block__table--split-header"><tr><th>H1</th><th>H2</th></tr></table>
+<table class="table-block__table--split-header table-block__table--pinned-col"><tr><th>H1</th></tr>
+</table><table class="table-block__table--split-body"><tr><td>a</td><td>b<table><tr><td>nested</td>
+</tr></table></td></tr><tr><td>c</td><td>d</td></tr></table></div>
 <img src="/web-assets/graphics/a.jpg" alt="A figure" style="width:10px;height:10px">
 <div style="height:600px"></div>
 </div></main></div></main></body></html>"""
@@ -91,12 +95,14 @@ def test_root_xpath_is_the_saved_pages_content_panel():
     assert ROOT_XPATH == "/html/body/main/div/main"
 
 
+def _all_entries(layout):
+    rows = layout["tables"]["t1"]
+    cells = [cell for row in rows for cell in row["cells"]]
+    return [*layout["elements"].values(), *rows, *cells, *layout["images"], *layout["headings"]]
+
+
 def test_every_xpath_starts_at_the_content_panel(measured):
-    layout = measured["page"]
-    xpaths = [entry["xpath"] for entry in layout["elements"].values()]
-    xpaths += [row["xpath"] for row in layout["tables"]["t1"]]
-    xpaths += [cell["xpath"] for row in layout["tables"]["t1"] for cell in row["cells"]]
-    xpaths += [entry["xpath"] for entry in layout["images"] + layout["headings"]]
+    xpaths = [entry["xpath"] for entry in _all_entries(measured["page"])]
     assert xpaths
     assert all(xp.startswith(f"{ROOT_XPATH}/") for xp in xpaths)
 
@@ -123,6 +129,19 @@ def test_tables_keep_every_row_and_cell_in_document_order(measured):
     assert [len(row["cells"]) for row in rows] == [2, 1, 2]
     assert [cell["text"] for cell in rows[2]["cells"]] == ["(1)", "F20 - OS2.1"]
     assert rows[1]["text"] == "9.3.1.1. General"
+
+
+def test_a_split_table_is_one_grid_of_its_header_and_body_tables(measured):
+    # Wide tables render a header <table>, a pinned-first-column duplicate
+    # of it, and a body <table>; a table nested in a cell is not a row.
+    rows = measured["page"]["tables"]["t2"]
+    assert [[cell["text"] for cell in row["cells"]] for row in rows] == [
+        ["H1", "H2"],
+        ["a", "b nested"],
+        ["c", "d"],
+    ]
+    assert rows[0]["xpath"].endswith("div[4]/table[1]/tbody[1]/tr[1]")
+    assert rows[1]["xpath"].endswith("div[4]/table[3]/tbody[1]/tr[1]")
 
 
 def test_images_and_headings_are_listed(measured):

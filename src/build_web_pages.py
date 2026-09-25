@@ -75,7 +75,10 @@ async def scrape_pages(
 ) -> list[ScrapedPage | None]:
     semaphore = asyncio.Semaphore(PAGE_FETCH_CONCURRENCY)
     return await asyncio.gather(
-        *(_scrape_one(browser, semaphore, url, rows) for url, rows in zip(urls, expected, strict=True))
+        *(
+            _scrape_one(browser, semaphore, url, rows)
+            for url, rows in zip(urls, expected, strict=True)
+        )
     )
 
 
@@ -235,7 +238,9 @@ def main() -> None:
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--only", help="scrape just this page citation (kept pages stay)")
     args = parser.parse_args()
-    incomplete = asyncio.run(run(args.base_url, args.version, args.date, args.output_dir, args.only))
+    incomplete = asyncio.run(
+        run(args.base_url, args.version, args.date, args.output_dir, args.only)
+    )
     print(f"Wrote {args.output_dir}/web_pages/ and {args.output_dir}/web_source/", file=sys.stderr)
     for citation, tables in incomplete.items():
         print(f"INCOMPLETE {citation}: {tables} (rendered, expected rows)", file=sys.stderr)
