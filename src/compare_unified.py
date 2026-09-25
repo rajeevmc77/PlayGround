@@ -47,6 +47,9 @@ LEVEL_OF = {
 }
 LEVELS = [*dict.fromkeys(LEVEL_OF.values()), "image"]
 _REF_RE = re.compile(r"\[REF:[^\]]*:([^\]:]*)\]")
+_TABLE_PREFIX_RE = re.compile(r"^\s*table\s+\S+\s+", re.IGNORECASE)
+_FORMING_PART_RE = re.compile(r"\s*\bforming part of\b.*$", re.IGNORECASE | re.DOTALL)
+_TRAILING_MARKERS_RE = re.compile(r"(?:\s*\(\d+\))+\s*$")
 
 
 @dataclass(frozen=True)
@@ -97,21 +100,47 @@ def level_counts(pdf_keys: dict, web_keys: dict) -> list[LevelCount]:
     ]
 
 
-def comparable_text(node: dict) -> str:
+def _table_text(text: str) -> str:
+    """Drops the web's leading "Table <id>" and the PDF's trailing
+    "Forming Part of ..." clause plus any "(n)" note markers left after it."""
+    text = _TABLE_PREFIX_RE.sub("", text)
+    text = _FORMING_PART_RE.sub("", text)
+    return _TRAILING_MARKERS_RE.sub("", text)
+
+
+def _raw_text(node: dict) -> str:
+    if node.get("type") == "Note":
+        return node.get("title") or ""  # the PDF Note carries no content
     text = node.get("content") or node.get("title") or ""
-    heading = node.get("heading", "")
-    if heading and text.startswith(heading):
-        stripped = text[len(heading) :].lstrip(" -")
-        if stripped:
-            text = stripped
+    return _table_text(text) if node.get("type") == "Table" else text
+
+
+def _strip_heading(text: str, heading: str) -> str:
+    if not heading or not text.startswith(heading):
+        return text
+    return text[len(heading) :].lstrip(" -") or text
+
+
+def comparable_text(node: dict) -> str:
+    text = _strip_heading(_raw_text(node), node.get("heading", ""))
     return " ".join(_REF_RE.sub(r"\1", text).lower().split())
+
+
+def _texts_match(node_type: str, pdf_text: str, web_text: str) -> bool:
+    """Exact, except a PDF Note title runs on into the first body line, so
+    at the note level one text being a prefix of the other also matches."""
+    if pdf_text == web_text:
+        return True
+    if node_type != "Note" or not pdf_text or not web_text:
+        return False
+    return pdf_text.startswith(web_text) or web_text.startswith(pdf_text)
 
 
 def text_mismatches(pdf_nodes: dict, web_nodes: dict) -> list[tuple[str, str, str]]:
     mismatches = []
     for key in sorted(pdf_nodes.keys() & web_nodes.keys()):
         pdf_text, web_text = comparable_text(pdf_nodes[key]), comparable_text(web_nodes[key])
-        if pdf_text != web_text:
+        if not _texts_match(pdf_nodes[key].get("type", ""), pdf_text, web_text):
             mismatches.append((key, pdf_text, web_text))
     return mismatches
 

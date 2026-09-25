@@ -112,6 +112,56 @@ def test_text_mismatches_detects_different_note_titles():
     assert text_mismatches(pdf, web) == [("note_key", "notes to part 1", "notes to part 2")]
 
 
+def test_comparable_text_uses_note_title_never_content():
+    note = {"type": "Note", "title": "Heritage Buildings.", "content": "Many local governments"}
+    assert comparable_text(note) == "heritage buildings."
+
+
+def test_note_texts_match_when_one_is_a_prefix_of_the_other():
+    pdf = {"n": {"type": "Note", "title": "Factory-Constructed Buildings. The Code applies the"}}
+    web = {"n": {"type": "Note", "title": "Factory-Constructed Buildings.", "content": "The Code"}}
+    assert text_mismatches(pdf, web) == []
+
+
+def test_genuinely_different_note_titles_are_still_reported():
+    pdf = {"n": {"type": "Note", "title": "Heritage Buildings. Many local"}}
+    web = {"n": {"type": "Note", "title": "Secondary Suites."}}
+    assert text_mismatches(pdf, web) == [("n", "heritage buildings. many local", "secondary suites.")]
+
+
+def test_empty_note_title_is_not_a_prefix_match():
+    pdf = {"n": {"type": "Note", "title": "Heritage Buildings."}}
+    web = {"n": {"type": "Note", "title": ""}}
+    assert text_mismatches(pdf, web) == [("n", "heritage buildings.", "")]
+
+
+def test_prefix_match_applies_to_notes_only():
+    pdf = {"a": {"type": "Article", "title": "Scope and Application"}}
+    web = {"a": {"type": "article", "title": "Scope"}}
+    assert text_mismatches(pdf, web) == [("a", "scope and application", "scope")]
+
+
+def test_table_text_drops_web_table_prefix_and_pdf_forming_part_clause():
+    web = {"type": "Table", "title": "Table A-1.4.1.2.(1) TDGR, WHMIS Class Descriptors"}
+    pdf = {
+        "type": "Table",
+        "title": "TDGR, WHMIS Class Descriptors(1)(2) Forming Part of Sentence 1.4.1.2.(1)",
+    }
+    assert comparable_text(web) == comparable_text(pdf) == "tdgr, whmis class descriptors"
+
+
+def test_table_text_drops_trailing_note_markers_without_forming_part_clause():
+    assert comparable_text({"type": "Table", "title": "Documents Referenced(1)"}) == (
+        "documents referenced"
+    )
+
+
+def test_genuinely_different_table_titles_are_still_reported():
+    pdf = {"t": {"type": "Table", "title": "Data for British Columbia Forming Part of Article 1.1."}}
+    web = {"t": {"type": "Table", "title": "Table C-2 Data for Canada"}}
+    assert text_mismatches(pdf, web) == [("t", "data for british columbia", "data for canada")]
+
+
 def test_format_report_has_header_and_one_row_per_level():
     report = format_report([LevelCount("part", 15, 15, 14)])
     lines = report.splitlines()
