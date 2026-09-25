@@ -12,6 +12,8 @@ from web_toc.parsing.owner_resolution import attach_owned_nodes, resolve_owner
 
 
 def _cell_text(cell: dict) -> str:
+    if isinstance(cell.get("content"), str):  # some revision entries give plain text
+        return cell["content"].strip()
     return " ".join(
         part.get("value", "") for part in cell.get("content", []) if part.get("type") == "text"
     ).strip()

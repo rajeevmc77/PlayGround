@@ -143,6 +143,19 @@ def test_attach_tables_ignores_a_table_whose_owner_citation_is_not_found():
     assert root.children == []
 
 
+def test_extract_tables_reads_a_cell_whose_content_is_a_bare_string():
+    # Some revision entries on the site give a cell's content as plain text.
+    table = {
+        "id": "t1",
+        "type": "table",
+        "structure": {"body_rows": [{"cells": [{"content": " See [REF:x] "}, {}]}]},
+    }
+
+    ((_, node),) = extract_tables(table, {"t1"}, "t1")
+
+    assert [cell.content for cell in node.children[0].children] == ["See [REF:x]", ""]
+
+
 def _rows_table(table_id, header_rows, body_rows):
     return {
         "id": table_id,
