@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -11,11 +12,7 @@ import pytest
 from build_mo_toc import build_document, drop_images_over_tables, main, run
 from mo_toc.domain.models import BBox, Node
 from mo_toc.parsing.image_extractor import RawImage
-from mo_toc.parsing.numbering_config import (
-    MO_TOC_IDENTIFIER_TYPES,
-    MO_TOC_SUFFIX_TYPES,
-    MO_TOC_TYPE_MARKERS,
-)
+from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES
 from mo_toc.parsing.table_extractor import TableAnchor, TableRegion
 
 
@@ -34,6 +31,7 @@ def test_run_writes_bcbc_pdf_json_not_mo_toc_json(tmp_path):
 
 
 @patch("build_mo_toc.write_json")
+@patch("build_mo_toc.number_images")
 @patch("build_mo_toc.match_images")
 @patch("build_mo_toc.write_images")
 @patch("build_mo_toc.drop_images_over_tables")
@@ -47,6 +45,7 @@ def test_run_wires_pipeline_in_order(
     mock_drop_images,
     mock_write_images,
     mock_match_images,
+    mock_number_images,
     mock_write_json,
     tmp_path,
 ):
@@ -57,6 +56,7 @@ def test_run_wires_pipeline_in_order(
         "DRAWING_RECTS",
     )
     mock_build_document.return_value = ("VOLUME", ["CAPTION"], "STITCHED_REGIONS")
+    mock_assign_numbers.return_value = {"SCOPE": "MAP"}
     mock_drop_images.return_value = ["FILTERED_RAW_IMAGE"]
     mock_write_images.return_value = ["IMAGE_ASSET"]
     mock_match_images.return_value = ["MATCHED_IMAGE_ASSET"]
@@ -68,21 +68,24 @@ def test_run_wires_pipeline_in_order(
     manager.attach_mock(mock_drop_images, "drop_images_over_tables")
     manager.attach_mock(mock_write_images, "write_images")
     manager.attach_mock(mock_match_images, "match_images")
+    manager.attach_mock(mock_number_images, "number_images")
     manager.attach_mock(mock_write_json, "write_json")
 
     run("some.pdf", str(tmp_path))
 
     mock_extract_all_pages.assert_called_once_with("some.pdf")
     mock_build_document.assert_called_once_with("ALL_LINES", "TABLE_REGIONS", "DRAWING_RECTS")
-    mock_assign_numbers.assert_called_once_with(
-        ["VOLUME"],
-        MO_TOC_TYPE_MARKERS,
-        identifier_types=MO_TOC_IDENTIFIER_TYPES,
-        suffix_types=MO_TOC_SUFFIX_TYPES,
-    )
+    mock_assign_numbers.assert_called_once_with(["VOLUME"], MO_TOC_RULES, MO_TOC_SCOPE_TYPES)
     mock_drop_images.assert_called_once_with("RAW_IMAGES", "STITCHED_REGIONS")
     mock_write_images.assert_called_once_with(["FILTERED_RAW_IMAGE"], str(tmp_path / "images"))
     mock_match_images.assert_called_once_with(["IMAGE_ASSET"], ["CAPTION"], "VOLUME")
+    mock_number_images.assert_called_once()
+    images_arg, scope_arg = mock_number_images.call_args.args
+    assert images_arg == ["MATCHED_IMAGE_ASSET"]
+    assert scope_arg == {"SCOPE": "MAP"}
+    skip = mock_number_images.call_args.kwargs["skip"]
+    assert skip(SimpleNamespace(decorative=True)) is True
+    assert skip(SimpleNamespace(decorative=False)) is False
     mock_write_json.assert_called_once_with(
         "VOLUME", ["CAPTION"], ["MATCHED_IMAGE_ASSET"], str(tmp_path / "bcbc_pdf.json")
     )
@@ -94,6 +97,7 @@ def test_run_wires_pipeline_in_order(
         "drop_images_over_tables",
         "write_images",
         "match_images",
+        "number_images",
         "write_json",
     ]
 

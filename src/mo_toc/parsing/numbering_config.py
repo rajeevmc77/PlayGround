@@ -1,35 +1,41 @@
-"""Maps mo_toc Node.type values to a unified-numbering marker: None for one of
-the nine canonical document levels, or a short prefix for everything else."""
+"""mo_toc's cross-source numbering rules: which shared.numbering.Rule builds
+each Node.type's unified_number (see
+ai_docs/2026-09-25-cross-source-unified-numbering-design.md)."""
 
-MO_TOC_TYPE_MARKERS: dict[str, str | None] = {
-    "Volume": None,
-    "Division": None,
-    "Part": None,
-    "Section": None,
-    "Subsection": None,
-    "Article": None,
-    "Sentence": None,
-    "Clause": None,
-    "Subclause": None,
-    "FrontMatter": "FM",
-    "BackMatter": "BM",
-    "Appendix": "App",
-    "AppendixPart": "AppPt",
-    "AppendixSection": "AppSec",
-    "AppendixArticle": "AppArt",
-    "NotesContainer": "Notes",
-    "Note": "Note",
-    "TableGroup": "Tbl",
-    "Table": "Tbl",
+from shared.numbering import Rule
+
+_ABSOLUTE = Rule("absolute")
+
+MO_TOC_RULES: dict[str, Rule] = {
+    # The MO package is one volume; the volume never enters descendants' keys.
+    "Volume": Rule("fixed", "V1"),
+    "FrontMatter": Rule("fixed", "FM"),
+    "BackMatter": Rule("fixed", "BM"),
+    "Division": Rule("root"),
+    "Appendix": Rule("root", "App"),
+    "Part": _ABSOLUTE,
+    "Section": _ABSOLUTE,
+    "Subsection": _ABSOLUTE,
+    "Article": _ABSOLUTE,
+    "Note": _ABSOLUTE,
+    "AppendixPart": _ABSOLUTE,
+    "AppendixSection": _ABSOLUTE,
+    "AppendixArticle": _ABSOLUTE,
+    "Sentence": Rule("child"),
+    "Clause": Rule("suffix"),
+    "Subclause": Rule("suffix"),
+    "NotesContainer": Rule("literal", "Notes"),
+    # The web's "spectables" pages; same ordinal prefix so the two line up.
+    "TableGroup": Rule("ordinal", "Spec"),
+    "Table": Rule("ordinal", "Tbl", scoped=True),
+    "Row": Rule("ordinal", "Row"),
+    "Cell": Rule("ordinal", "Col"),
 }
 
-# Division numbers by its lettered identifier (e.g. "B") instead of position;
-# Sentence numbers by its own display label (e.g. "(1)") the same way, still
-# dot-joined onto its parent Article - e.g. "...6.5.(1)".
-# Row and Cell number by their own identifier (e.g. "Row1", "Cell1") directly.
-MO_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"Division", "Sentence", "Row", "Cell"})
-
-# Clause/Subclause already carry their display label - "(a)", "(i)" - in
-# Node.identifier; append it directly with no dot, run onto the Sentence
-# segment - e.g. "...6.5.(1)(a)(i)".
-MO_TOC_SUFFIX_TYPES: frozenset[str] = frozenset({"Clause", "Subclause"})
+# Nodes that own tables/images for ordinal counting. Appendix sub-levels are
+# deliberately absent: the web keeps Appendix C/D tables directly under the
+# appendix, so the PDF counts them there too (Appendix restarts the chain,
+# which already makes it a scope).
+MO_TOC_SCOPE_TYPES: frozenset[str] = frozenset(
+    {"Part", "Section", "Subsection", "Article", "NotesContainer", "Note", "TableGroup"}
+)

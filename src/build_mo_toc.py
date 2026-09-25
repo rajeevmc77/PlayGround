@@ -18,11 +18,7 @@ from mo_toc.output.json_writer import write_json
 from mo_toc.parsing.image_extractor import RawImage
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.notes_nesting import nest_notes_under_parts
-from mo_toc.parsing.numbering_config import (
-    MO_TOC_IDENTIFIER_TYPES,
-    MO_TOC_SUFFIX_TYPES,
-    MO_TOC_TYPE_MARKERS,
-)
+from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES
 from mo_toc.parsing.parallel_extraction import extract_all_pages
 from mo_toc.parsing.table_extractor import (
     TableRegion,
@@ -32,7 +28,7 @@ from mo_toc.parsing.table_extractor import (
 )
 from mo_toc.parsing.tree_builder import build_tree_from_lines
 from mo_toc.parsing.vector_cluster import exclude_overlapping_rects
-from shared.numbering import assign_unified_numbers
+from shared.numbering import assign_unified_numbers, number_images
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PDF = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
@@ -107,20 +103,20 @@ def drop_images_over_tables(
     return [image for image in raw_images if not _is_droppable(image, table_bboxes_by_page)]
 
 
+def _is_decorative(image) -> bool:
+    return image.decorative
+
+
 def run(pdf_path: str, output_dir: str) -> None:
     all_lines, raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(pdf_path)
     volume, captions, table_regions_by_page = build_document(
         all_lines, table_regions_by_page, all_drawing_rects
     )
-    assign_unified_numbers(
-        [volume],
-        MO_TOC_TYPE_MARKERS,
-        identifier_types=MO_TOC_IDENTIFIER_TYPES,
-        suffix_types=MO_TOC_SUFFIX_TYPES,
-    )
+    scope_by_citation = assign_unified_numbers([volume], MO_TOC_RULES, MO_TOC_SCOPE_TYPES)
     raw_images = drop_images_over_tables(raw_images, table_regions_by_page)
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
+    number_images(images, scope_by_citation, skip=_is_decorative)
     write_json(volume, captions, images, str(Path(output_dir) / "bcbc_pdf.json"))
 
 
