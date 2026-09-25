@@ -331,3 +331,32 @@ def test_consumed_line_indices_are_excluded_from_article_body():
     # would otherwise hide this, so this test also guards Task 3's fix).
     assert "detected table" in article_without.children[0].content
     assert "detected table" not in article_with.children[0].content
+
+
+def test_trailing_bare_page_number_is_not_absorbed_into_sentence_content():
+    # The PDF's own running footer is a bare page number rendered as the
+    # very last line on the page. It carries no heading/marker shape, so it
+    # falls through to plain body text and, when a Sentence's continuation
+    # spans the page break, gets wedged into the middle of its content -
+    # e.g. "...using the formula 16 where Is=..." where "16" is the footer,
+    # not part of the sentence.
+    pages = [
+        [
+            line(50, 40, "Part 1", BLACK),
+            line(70, 40, "Compliance", BLACK),
+            line(90, 40, "Section  1.1.   General", BLACK),
+            line(110, 40, "1.1.1. Application", BLACK),
+            line(130, 40, "1.1.1.1. Application of this Code", BLACK),
+            line(150, 40, "1) Fire protection shall conform to the formula", BODY),
+            line(713, 40, "16", BODY),  # trailing footer page number
+        ],
+        [
+            line(50, 40, "where Is is the importance factor.", BODY),
+        ],
+    ]
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    article = root.children[0].children[0].children[0].children[0].children[0]
+    sentence = article.children[0]
+    assert sentence.content == (
+        "Fire protection shall conform to the formula where Is is the importance factor."
+    )
