@@ -5,7 +5,7 @@
 
 // Body content extracted below article level. The site's own navigation
 // tree stops at articles; these live only inside the reading page.
-const BODY_TYPES = new Set(["Sentence", "Clause", "Subclause", "Table", "Row", "Cell"]);
+const BODY_TYPES = new Set(["Sentence", "Clause", "Subclause", "Table", "Row", "Cell", "Note"]);
 
 // The site's navigation data titles numbered levels "1.1 General", but its
 // tree, headings and breadcrumbs all render them "1.1. General".

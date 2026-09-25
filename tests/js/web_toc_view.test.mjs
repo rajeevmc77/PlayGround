@@ -60,6 +60,13 @@ test("isNavNode is false for body content below article level", () => {
   }
 });
 
+test("isNavNode is false for a Note, so the live site's nav tree gets no entries for application notes", () => {
+  assert.equal(isNavNode(node("Note", "x")), false);
+  const appendix = node("part_appendix", "nbc.divA.part1.appendix", "Notes to Part 1");
+  appendix.children = [node("Note", "nbc.divA.part1.appendix.appnote2"), node("Table", "t1")];
+  assert.deepEqual(appendix.children.filter(isNavNode), []);
+});
+
 test("navIndent matches the site's own padding per depth", () => {
   assert.deepEqual([0, 1, 2, 3, 4, 5].map(navIndent), [0, 32, 48, 64, 80, 96]);
 });
