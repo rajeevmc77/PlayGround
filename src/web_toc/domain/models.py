@@ -11,6 +11,7 @@ class WebNode:
     children: list["WebNode"] = field(default_factory=list)
     unified_number: str = ""
     content: str = ""
+    heading: str = ""
 
 
 @dataclass
@@ -20,6 +21,7 @@ class WebImage:
     alt_text: str
     owner_citation: str
     local_path: str = ""
+    unified_number: str = ""
 
 
 @dataclass

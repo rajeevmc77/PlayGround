@@ -1,4 +1,6 @@
-from web_toc.parsing.tree_builder import build_tree, collect_citations
+import pytest
+
+from web_toc.parsing.tree_builder import build_tree, collect_citations, heading_for
 
 
 def _nav_fixture():
@@ -109,3 +111,39 @@ def test_collect_citations_on_leaf_node_returns_single_citation():
     root = build_tree(_nav_fixture())
     section = root.children[0].children[0].children[0].children[0]
     assert collect_citations(section) == {"nbc.divA.part1.sect1"}
+
+
+@pytest.mark.parametrize(
+    ("title", "heading"),
+    [
+        ("Part 1 - Compliance", "Part 1"),
+        ("Division A - Compliance, Objectives and Functional Statements", "Division A"),
+        ("Volume 2", "Volume 2"),
+        ("Notes to Part 1", "Notes to Part 1"),
+        ("10.1.1.1 Scope", "10.1.1.1"),
+        ("10.1 General", "10.1"),
+        ("Preface", ""),
+        ("", ""),
+    ],
+)
+def test_heading_for(title, heading):
+    assert heading_for(title) == heading
+
+
+def test_nav_nodes_get_heading_and_keep_verbatim_title():
+    root = build_tree(
+        {
+            "tree": [
+                {
+                    "id": "nbc.divA.part1",
+                    "type": "part",
+                    "number": "1",
+                    "title": "Part 1 - Compliance",
+                    "path": "/x",
+                }
+            ]
+        }
+    )
+    part = root.children[0]
+    assert part.heading == "Part 1"
+    assert part.title == "Part 1 - Compliance"

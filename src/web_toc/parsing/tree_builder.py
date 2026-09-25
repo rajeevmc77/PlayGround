@@ -3,6 +3,9 @@ import re
 from web_toc.domain.models import WebNode
 
 _DIVISION_LETTER_RE = re.compile(r"Division\s+([A-Z])")
+_HEADING_RE = re.compile(
+    r"^(?P<heading>(?:Volume|Division|Part)\s+\S+|Notes to Part\s+\d+|\d+(?:\.\d+)+)"
+)
 
 
 def build_tree(nav_data: dict) -> WebNode:
@@ -14,6 +17,14 @@ def build_tree(nav_data: dict) -> WebNode:
         path="/",
         children=[_convert(raw) for raw in nav_data["tree"]],
     )
+
+
+def heading_for(title: str) -> str:
+    """The literal heading words at the front of a nav title ("Part 1",
+    "10.1.1.1", "Notes to Part 1"). The title itself stays verbatim - the
+    web tab's sidebar labels are built from it."""
+    match = _HEADING_RE.match(title.strip())
+    return match.group("heading") if match else ""
 
 
 def _identifier_for(raw: dict) -> str:
@@ -32,6 +43,7 @@ def _convert(raw: dict) -> WebNode:
         title=raw.get("title", ""),
         path=raw.get("path", ""),
         children=[_convert(child) for child in raw.get("children", [])],
+        heading=heading_for(raw.get("title", "")),
     )
 
 
