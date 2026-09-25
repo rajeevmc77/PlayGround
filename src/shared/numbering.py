@@ -116,7 +116,8 @@ def _number(nodes: list, ctx: _Context, walk: _Walk) -> None:
         rule = _rule_for(node, walk)
         node.unified_number = _unique(_key_for(node, rule, ctx, walk), rule, walk)
         child_ctx = _child_context(node, node.unified_number, rule, ctx, walk)
-        walk.scope_by_citation[node.citation] = child_ctx.scope_key or node.unified_number
+        # First wins: a later node reusing a citation must not re-key its images.
+        walk.scope_by_citation.setdefault(node.citation, child_ctx.scope_key or node.unified_number)
         _number(node.children, child_ctx, walk)
 
 

@@ -196,6 +196,19 @@ def test_returns_scope_key_per_citation():
     assert scope["fm-cit"] == "FM"
 
 
+def test_duplicate_citation_keeps_the_first_nodes_scope():
+    first = _StubNode("Article", "1.1.1.1", "dup")
+    second = _StubNode("Article", "1.1.1.2", "dup")
+    division = _StubNode("Division", "A", "d", [first, second])
+    image = _StubImage("dup")
+
+    scope = assign_unified_numbers([division], RULES, SCOPES)
+    number_images([image], scope)
+
+    assert scope["dup"] == "A.1.1.1.1"
+    assert image.unified_number == "A.1.1.1.1.Fig1"
+
+
 def test_empty_node_list_returns_empty_map():
     assert assign_unified_numbers([], RULES) == {}
 
