@@ -70,7 +70,11 @@ Rules:
   walked up to its article/note. Images are a flat list; each image entry gets
   a `unified_number` field.
 - **Duplicates**: if a file produces the same key twice, the later one gets a
-  `~2` (`~3`, …) suffix so keys stay unique within a file.
+  `~2` (`~3`, …) suffix so keys stay unique within a file. Exception: keys
+  that restart the chain (Volume, Division, division appendix, front/back
+  matter) are never suffixed — the web splits Division B across Volume 1 and
+  Volume 2, and both Division nodes must stay `B` so Part 9's keys (`B.9…`)
+  still match the PDF's. Their descendants' keys don't collide (different Parts).
 - Front matter / Preface keys are unique but **not** expected to match.
 
 Known limitation: the PDF sometimes rasterises one figure as several images
@@ -99,8 +103,14 @@ text; `title` stays the descriptive name.
   `nbc.divBV2.part9.appendix` becomes `B.9.Notes`, same as PDF `Notes-B-9`).
 - PDF: `heading` is the trigger line the heading regex already matches (e.g.
   `RE_NOTES_CONTAINER` in `mo_toc/parsing/heading_rules.py`), which is currently discarded.
-- Web: split from the nav title — `"Part 1 - Compliance"` → heading `Part 1`,
-  title `Compliance`; `"Notes to Part 1"` → heading `Notes to Part 1`.
+- Web: `heading` is taken from the front of the nav title — `"Part 1 - Compliance"`
+  → heading `Part 1`; `"10.1.1.1 Scope"` → heading `10.1.1.1`; `"Notes to Part 1"`
+  → heading `Notes to Part 1`. The web `title` itself is **left verbatim** (the
+  site's own nav title): the viewer's web tab builds its sidebar labels from it
+  (`web_toc_view.mjs` relies on the title starting with the identifier), and the
+  site-exact naming requirement from the earlier web-TOC work still holds. So the
+  table above's `title` column applies to the PDF; the compare report strips the
+  `heading` prefix from web titles before comparing text.
 
 ## Notes placement
 
