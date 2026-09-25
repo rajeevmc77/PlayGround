@@ -86,9 +86,17 @@ text; `title` stays the descriptive name.
 | Division | `Division A` | `Compliance, Objectives and Functional Statements` |
 | Part | `Part 1` | `Compliance` |
 | Section | `Section 9.10.` / `9.10` | `Fire Protection` |
-| Notes to Part | `Notes to Part 1` | `Compliance` (PDF) / empty (web) |
+| Notes to Part | `Notes to Part 1` | `Notes to Part 1` (both files) |
 | Note | `A-1.1.1.1.(3)` | `Factory-Constructed Buildings.` |
 
+- **Notes to Part title**: in both files the Notes-to-Part node's `title` is
+  exactly `Notes to Part N`, matching the website's own heading. Today the PDF
+  stores the next heading line (the Part's name, e.g. `Compliance`) as the
+  title and discards `Notes to Part 1`; that repeated Part name is dropped,
+  since the parent Part already carries it. Its `unified_number` is
+  `<division>.<part>.Notes` in both files — e.g. PDF `Notes-A-1` and web
+  `nbc.divA.part1.appendix` both become `A.1.Notes` (web Volume 2 Part 9's
+  `nbc.divBV2.part9.appendix` becomes `B.9.Notes`, same as PDF `Notes-B-9`).
 - PDF: `heading` is the trigger line the heading regex already matches (e.g.
   `RE_NOTES_CONTAINER` in `mo_toc/parsing/heading_rules.py`), which is currently discarded.
 - Web: split from the nav title — `"Part 1 - Compliance"` → heading `Part 1`,
@@ -141,6 +149,10 @@ TDD throughout:
   trailing dots, unknown type, duplicates (`~2`).
 - Notes re-parenting: normal case, Part with no Notes, container with no
   matching Part (raises).
+- Notes-to-Part node: title is `Notes to Part N` in both pipelines and
+  unified_number is `<division>.<part>.Notes` (incl. web Volume 2 Part 9 → `B.9.Notes`).
+  The full-rebuild compare report must show all 12 `Notes` keys in both files
+  with identical titles.
 - Web Note extraction from an `application_note` fixture; appnote table/figure ownership.
 - Image keys: clause-level owner walked up to article; decorative skipped; ordinals.
 - Cross-source fixture: a small PDF-shaped tree and web-shaped tree for the
