@@ -13,11 +13,14 @@ def test_chain_restarting_levels():
     assert WEB_TOC_RULES["division_appendix"] == Rule("root", "App")
 
 
-def test_body_notes_and_table_levels():
+def test_body_levels():
     assert WEB_TOC_RULES["Sentence"] == Rule("child")
     assert WEB_TOC_RULES["Clause"] == Rule("suffix")
     assert WEB_TOC_RULES["Subclause"] == Rule("suffix")
     assert WEB_TOC_RULES["part_appendix"] == Rule("literal", "Notes")
+
+
+def test_notes_and_table_levels():
     assert WEB_TOC_RULES["spectables"] == Rule("ordinal", "Spec")
     assert WEB_TOC_RULES["index"] == Rule("ordinal", "Idx")
     assert WEB_TOC_RULES["conversions"] == Rule("ordinal", "Conv")

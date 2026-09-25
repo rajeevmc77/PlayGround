@@ -18,7 +18,7 @@ def _node(
     )
 
 
-def test_real_mo_toc_tree_gets_cross_source_keys():
+def _build_real_mo_toc_tree():
     subclause = _node("Subclause", "(i)", "A-1.1.1.1.(1)(a)(i)")
     clause = _node("Clause", "(a)", "A-1.1.1.1.(1)(a)", children=[subclause])
     table = _node("Table", "1.1.1.1.", "Table:1.1.1.1.")
@@ -35,17 +35,43 @@ def test_real_mo_toc_tree_gets_cross_source_keys():
 
     scope = assign_unified_numbers([volume], MO_TOC_RULES, MO_TOC_SCOPE_TYPES)
 
-    assert volume.unified_number == "V1"
-    assert front.unified_number == "FM"
-    assert division.unified_number == "A"
-    assert part.unified_number == "A.1"
-    assert section.unified_number == "A.1.1"
-    assert subsection.unified_number == "A.1.1.1"
-    assert article.unified_number == "A.1.1.1.1"
-    assert sentence.unified_number == "A.1.1.1.1.(1)"
-    assert clause.unified_number == "A.1.1.1.1.(1)(a)"
-    assert subclause.unified_number == "A.1.1.1.1.(1)(a)(i)"
-    assert table.unified_number == "A.1.1.1.1.Tbl1"
-    assert notes.unified_number == "A.1.Notes"
-    assert note.unified_number == "A.A-1.1.1.1.(3)"
-    assert scope["A-1.1.1.1.(1)(a)(i)"] == "A.1.1.1.1"
+    return {
+        "volume": volume,
+        "front": front,
+        "division": division,
+        "part": part,
+        "section": section,
+        "subsection": subsection,
+        "article": article,
+        "sentence": sentence,
+        "clause": clause,
+        "subclause": subclause,
+        "table": table,
+        "notes": notes,
+        "note": note,
+        "scope": scope,
+    }
+
+
+def test_real_mo_toc_tree_gets_cross_source_keys_for_structure():
+    nodes = _build_real_mo_toc_tree()
+
+    assert nodes["volume"].unified_number == "V1"
+    assert nodes["front"].unified_number == "FM"
+    assert nodes["division"].unified_number == "A"
+    assert nodes["part"].unified_number == "A.1"
+    assert nodes["section"].unified_number == "A.1.1"
+    assert nodes["subsection"].unified_number == "A.1.1.1"
+    assert nodes["article"].unified_number == "A.1.1.1.1"
+
+
+def test_real_mo_toc_tree_gets_cross_source_keys_for_leaves_and_scope():
+    nodes = _build_real_mo_toc_tree()
+
+    assert nodes["sentence"].unified_number == "A.1.1.1.1.(1)"
+    assert nodes["clause"].unified_number == "A.1.1.1.1.(1)(a)"
+    assert nodes["subclause"].unified_number == "A.1.1.1.1.(1)(a)(i)"
+    assert nodes["table"].unified_number == "A.1.1.1.1.Tbl1"
+    assert nodes["notes"].unified_number == "A.1.Notes"
+    assert nodes["note"].unified_number == "A.A-1.1.1.1.(3)"
+    assert nodes["scope"]["A-1.1.1.1.(1)(a)(i)"] == "A.1.1.1.1"
