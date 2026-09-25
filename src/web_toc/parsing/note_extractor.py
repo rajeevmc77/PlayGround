@@ -1,11 +1,11 @@
 """Walks a part/division appendix content JSON for the site's
 {"type": "application_note", "number": "1.1.1.1.(3)", ...} entries and builds
 one Note WebNode per note - the web counterpart of the PDF's
-"A-1.1.1.1.(3) ..." Note nodes. Owner resolution is the same strip-and-match
-used for figures and tables."""
+"A-1.1.1.1.(3) ..." Note nodes. Every note is owned by the part/division
+appendix whose content held it (the site's own grouping), not by
+strip-and-match: Part 10's appnote ids strip to the Part itself."""
 
 from web_toc.domain.models import WebNode
-from web_toc.parsing.owner_resolution import resolve_owner
 
 _NON_TEXT_TYPES = frozenset({"table", "figure"})
 
@@ -52,11 +52,7 @@ def _note_node(note: dict) -> WebNode:
     )
 
 
-def extract_notes(
-    content: dict, citations: set[str], fallback_citation: str
-) -> list[tuple[str, WebNode]]:
+def extract_notes(content: dict, owner_citation: str) -> list[tuple[str, WebNode]]:
     return [
-        (resolve_owner(note["id"], citations, fallback_citation), _note_node(note))
-        for note in _walk_notes(content)
-        if note.get("id")
+        (owner_citation, _note_node(note)) for note in _walk_notes(content) if note.get("id")
     ]

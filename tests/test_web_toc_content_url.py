@@ -21,6 +21,13 @@ def test_part_appendix_node_returns_appendix_url():
     assert content_url(node, "2024") == "/data/2024/content/nbc-divbv2/part-9/appendix.json"
 
 
+def test_part_appendix_with_section_segment_maps_to_part_appendix_url():
+    # Part 10's nav citation carries a section segment the content URL does not
+    # (verified against the live site: part-10/appendix.json is the JSON one).
+    node = _node("part_appendix", "nbc.divB.part10.sect4.appendix")
+    assert content_url(node, "2024") == "/data/2024/content/nbc-divb/part-10/appendix.json"
+
+
 def test_division_appendix_node_lowercases_letter():
     node = _node("division_appendix", "nbc.divB.appendixC")
     assert content_url(node, "2024") == "/data/2024/content/nbc-divb/appendix-c.json"

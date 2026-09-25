@@ -68,12 +68,9 @@ def _fetched(targets, contents):
 
 def _attach_notes(root, fetched, citations: set[str]) -> set[str]:
     """Notes go in first so an appnote's own tables/figures resolve to the
-    Note rather than its part_appendix. Returns the widened citation set."""
-    notes = [
-        owned
-        for node, content in fetched
-        for owned in extract_notes(content, citations, node.citation)
-    ]
+    Note rather than its part_appendix. Each Note is owned by the node whose
+    content held it. Returns the widened citation set."""
+    notes = [owned for node, content in fetched for owned in extract_notes(content, node.citation)]
     attach_owned_nodes(root, notes)
     return citations | {note.citation for _, note in notes}
 

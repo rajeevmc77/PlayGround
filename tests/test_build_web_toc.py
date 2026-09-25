@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from build_web_toc import CONTENT_FETCH_CONCURRENCY, run
+from build_web_toc import CONTENT_FETCH_CONCURRENCY, _attach_notes, run
 from web_toc.domain.models import WebNode
 
 
@@ -486,3 +486,30 @@ def test_run_logs_fetch_progress_only_as_the_semaphore_admits_each_request(
         f"expected exactly {CONTENT_FETCH_CONCURRENCY} in-flight fetches to be logged while the "
         f"remaining requests wait on the semaphore, but saw {fetch_lines_while_blocked}"
     )
+
+
+def test_attach_notes_puts_part10_note_under_its_part_appendix():
+    appendix = WebNode(
+        type="part_appendix",
+        identifier="",
+        citation="nbc.divB.part10.sect4.appendix",
+        title="",
+        path="",
+    )
+    part = WebNode(
+        type="part", identifier="10", citation="nbc.divB.part10", title="", path="", children=[appendix]
+    )
+    root = WebNode(type="root", identifier="", citation="root", title="", path="", children=[part])
+    content = {
+        "id": "nbc.divB.part10.sect4.appendix",
+        "application_notes": [
+            {"id": "nbc.divB.part10.appendix.appnote1", "type": "application_note", "number": "10."}
+        ],
+    }
+    citations = {"root", "nbc.divB.part10", "nbc.divB.part10.sect4.appendix"}
+
+    widened = _attach_notes(root, [(appendix, content)], citations)
+
+    assert [c.citation for c in appendix.children] == ["nbc.divB.part10.appendix.appnote1"]
+    assert [c.type for c in part.children] == ["part_appendix"]
+    assert "nbc.divB.part10.appendix.appnote1" in widened
