@@ -24,13 +24,24 @@ independent tools live here:
    interactive web viewer (`src/serve_mo_toc.py`) that scrolls to and highlights the exact
    clicked location. See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
    A second, independent index (`src/web_toc/`, `src/build_web_toc.py`) is sourced from the
-   live BC Building Code website's own navigation tree and content JSON instead of the PDF, and
-   is served as a fourth tab in the same viewer. That tab reproduces the live site itself:
-   `src/build_web_pages.py` renders each of the site's own reading pages in headless Chromium
-   (Playwright, many tabs concurrently), saves its `main.ui-ContentPanel` to
-   `output/web_pages/<citation>.html`, and mirrors every stylesheet/font/image it uses under
-   `output/web_pages/assets/` (plus `site-nav.css`, the site's nav-tree/breadcrumbs rules for
-   the sidebar). Subsection/article views are cut from their section page the way the site
+   BC Building Code website instead of the PDF, and is served as a fourth tab in the same
+   viewer. It is built in two steps (see `ai_docs/2026-09-25-web-toc-local-scrape-design.md`):
+   `src/build_web_pages.py` is the **only** step that touches the network — it caches the
+   site's navigation tree + every content JSON under `output/web_source/` (with
+   `snapshot.json` recording the version/effective date), renders each of the site's own
+   reading pages in headless Chromium (Playwright, many tabs concurrently) scrolled until every
+   table row the JSON lists has lazy-loaded (long tables load 120 rows per scroll; the run
+   exits non-zero if a table stays short), saves its `main.ui-ContentPanel` to
+   `output/web_pages/<citation>.html`, mirrors every stylesheet/font/image under
+   `output/web_pages/assets/` (plus `site-nav.css`), downloads figures to `output/web_images/`,
+   then serves the saved pages locally and measures them into
+   `output/web_pages/<citation>.layout.json`. `src/build_web_toc.py` then runs **offline**:
+   structure/numbering from the cached JSON (read as of the snapshot date — revised items
+   carry dated `revisions`), and each node's rendered text plus
+   `location: {page_file, xpath, bbox}` from the layout files. Every `xpath` starts at the
+   saved page's content panel `/html/body/main/div/main` and every `bbox` is CSS px from that
+   panel's top-left corner, so the PDF page and the saved HTML can be shown side by side.
+   Subsection/article views are cut from their section page the way the site
    does it, so only ~136 pages are scraped. Both indexes key every node by `unified_number`
    (built from the code's own numbering, identical in both files for the same node); heading
    nodes also carry a `heading` field with the literal heading words, e.g. `Part 1`.
@@ -47,8 +58,9 @@ and prints which path works and why.
   `Path(__file__).resolve().parent.parent`, not the current working directory, so they run
   correctly regardless of where they're invoked from.
 - `web_toc/` — the BC Building Code website indexing library (mirrors `mo_toc/`'s
-  domain/parsing/output split), fetching from `https://dev.buildingcode.gov.bc.ca` rather
-  than reading a local PDF. `build_web_toc.py` is its CLI entry point.
+  domain/parsing/output split), sourced from `https://dev.buildingcode.gov.bc.ca` rather
+  than a local PDF. `build_web_pages.py` snapshots the site locally; `build_web_toc.py`
+  builds the index offline from that snapshot.
 - `shared/` — small pure-function helpers with no dependency on either indexing
   library, shared between `mo_toc/` and `web_toc/` (currently just the unified
   document-level numbering algorithm used by both `build_mo_toc.py` and
@@ -134,7 +146,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (569 tests — 551 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
+- A real test suite (634 tests — 616 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
   and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full
