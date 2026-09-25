@@ -13,6 +13,8 @@ def _prune_node(node_dict: dict) -> dict:
         node_dict.pop("content", None)
     if node_dict["type"] in _NO_TITLE_TYPES:
         node_dict.pop("title", None)
+    if not node_dict.get("heading"):
+        node_dict.pop("heading", None)
     node_dict["children"] = [_prune_node(child) for child in node_dict["children"]]
     return node_dict
 

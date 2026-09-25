@@ -13,7 +13,10 @@ from collections.abc import Callable
 from web_toc.domain.models import WebNode
 
 _SECTION_RE = re.compile(r"^(?P<div>.+)\.part(?P<part>\d+)\.sect(?P<sect>\d+)$")
-_PART_APPENDIX_RE = re.compile(r"^(?P<div>.+)\.part(?P<part>\d+)\.appendix$")
+# Part 10's appendix citation carries a section segment
+# (nbc.divB.part10.sect4.appendix) its content URL does not (part-10/appendix.json,
+# verified against the live site).
+_PART_APPENDIX_RE = re.compile(r"^(?P<div>.+)\.part(?P<part>\d+)(?:\.sect\d+)?\.appendix$")
 _DIVISION_APPENDIX_RE = re.compile(r"^(?P<div>.+)\.appendix(?P<letter>[A-Za-z])$")
 _SPECTABLES_RE = re.compile(r"^(?P<div>.+)\.part(?P<part>\d+)\.spectables(?P<num>\d+)$")
 

@@ -1,6 +1,31 @@
 from mo_toc.domain.models import BBox, Caption, ImageAsset, Node
 
 
+def test_node_heading_defaults_to_empty_string():
+    node = Node(
+        type="Part",
+        identifier="1",
+        citation="A-1",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    assert node.heading == ""
+
+
+def test_image_asset_unified_number_defaults_to_empty_string():
+    image = ImageAsset(
+        page=1,
+        bbox=BBox(0, 0, 1, 1),
+        width=1,
+        height=1,
+        phash=None,
+        image_path="images/img_0.png",
+    )
+    assert image.unified_number == ""
+
+
 def test_bbox_as_tuple():
     box = BBox(1.0, 2.0, 3.0, 4.0)
     assert box.as_tuple() == (1.0, 2.0, 3.0, 4.0)

@@ -34,6 +34,17 @@ def test_web_node_unified_number_defaults_to_empty_string():
     assert node.unified_number == ""
 
 
+def test_web_node_heading_defaults_to_empty_string():
+    node = WebNode(
+        type="section",
+        identifier="1.1",
+        citation="nbc.divA.part1.sect1",
+        title="General",
+        path="/code/nbc.divA/1/1",
+    )
+    assert node.heading == ""
+
+
 def test_web_node_unified_number_can_be_set():
     node = WebNode(
         type="part",
@@ -121,3 +132,13 @@ def test_web_image_local_path_can_be_set():
         img.local_path
         == "web_images/nbc.divBV2.part9.sect23.subsect13.art7.table1.row4.figure23.jpg"
     )
+
+
+def test_web_image_unified_number_defaults_to_empty_string():
+    img = WebImage(
+        id="nbc.divBV2.part9.sect23.subsect13.art7.table1.row4.figure23",
+        src="bc-graphics/gg00556a",
+        alt_text="Three storey building configuration",
+        owner_citation="nbc.divBV2.part9.sect23.subsect13.art7",
+    )
+    assert img.unified_number == ""

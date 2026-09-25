@@ -1,30 +1,44 @@
-"""Maps web_toc WebNode.type values to a unified-numbering marker: None for one
-of the six canonical document levels this tree reaches, or a short prefix for
-everything else. The synthetic "root" wrapper node is deliberately absent —
-it is never passed to assign_unified_numbers (only its children are)."""
+"""web_toc's cross-source numbering rules - the web counterpart of
+mo_toc.parsing.numbering_config, built so both produce the same key for the
+same node. The synthetic "root" wrapper is never numbered (only its children
+are passed in)."""
 
-WEB_TOC_TYPE_MARKERS: dict[str, str | None] = {
-    "volume": None,
-    "division": None,
-    "part": None,
-    "section": None,
-    "subsection": None,
-    "article": None,
-    "part_appendix": "App",
-    "division_appendix": "App",
-    "index": "Idx",
-    "conversions": "Conv",
-    "spectables": "Spec",
-    "Table": "Tbl",
+from shared.numbering import Rule
+
+_ABSOLUTE = Rule("absolute")
+
+WEB_TOC_RULES: dict[str, Rule] = {
+    "volume": Rule("root", "V"),
+    # The unnumbered "Preface" division is the PDF's front matter.
+    "division": Rule("root", fallback="FM"),
+    "division_appendix": Rule("root", "App"),
+    "part": _ABSOLUTE,
+    "section": _ABSOLUTE,
+    "subsection": _ABSOLUTE,
+    "article": _ABSOLUTE,
+    "Note": _ABSOLUTE,
+    "Sentence": Rule("child"),
+    "Clause": Rule("suffix"),
+    "Subclause": Rule("suffix"),
+    "part_appendix": Rule("literal", "Notes"),
+    "spectables": Rule("ordinal", "Spec"),
+    "index": Rule("ordinal", "Idx"),
+    "conversions": Rule("ordinal", "Conv"),
+    "Table": Rule("ordinal", "Tbl", scoped=True),
+    "Row": Rule("ordinal", "Row"),
+    "Cell": Rule("ordinal", "Col"),
 }
 
-# Division numbers by its lettered identifier (e.g. "B") instead of position;
-# Row, Cell, and Sentence number by their own identifier (e.g. "row1", "col1",
-# "(1)") directly - same convention as mo_toc's MO_TOC_IDENTIFIER_TYPES.
-WEB_TOC_IDENTIFIER_TYPES: frozenset[str] = frozenset({"division", "Row", "Cell", "Sentence"})
-
-# Clause/Subclause already carry their display label - "(a)", "(i)" - in
-# WebNode.identifier; append it directly with no dot, run onto the Sentence
-# segment - e.g. "...(1)(a)(i)". Same convention as mo_toc's
-# MO_TOC_SUFFIX_TYPES.
-WEB_TOC_SUFFIX_TYPES: frozenset[str] = frozenset({"Clause", "Subclause"})
+WEB_TOC_SCOPE_TYPES: frozenset[str] = frozenset(
+    {
+        "part",
+        "section",
+        "subsection",
+        "article",
+        "part_appendix",
+        "Note",
+        "spectables",
+        "index",
+        "conversions",
+    }
+)

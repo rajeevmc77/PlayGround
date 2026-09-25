@@ -106,6 +106,83 @@ def test_notes_container_holds_note():
     assert notes_container.children[0].identifier == "A-1.1.1.1"
 
 
+def test_heading_records_literal_heading_words():
+    volume, _ = build_tree_from_lines(
+        [
+            [
+                line(50, 40, "Division A", BLACK),
+                line(70, 40, "Part 1", BLACK),
+                line(90, 40, "Compliance", BLACK),
+                line(110, 40, "Section 1.1. General", BLACK),
+                line(130, 40, "1.1.1.1. Application of this Code", BLACK),
+            ]
+        ],
+        1,
+    )
+    division = volume.children[1]
+    part = division.children[0]
+    section = part.children[0]
+    article = section.children[0]
+    assert division.heading == "Division A"
+    assert (part.heading, part.title) == ("Part 1", "Compliance")
+    assert (section.heading, section.title) == ("Section 1.1.", "General")
+    assert (article.heading, article.title) == ("1.1.1.1.", "Application of this Code")
+
+
+def test_heading_collapses_internal_whitespace():
+    volume, _ = build_tree_from_lines(
+        [
+            [
+                line(50, 40, "Division A", BLACK),
+                line(70, 40, "Part 3", BLACK),
+                line(90, 40, "Section  3.9.   General", BLACK),
+            ]
+        ],
+        1,
+    )
+    section = volume.children[1].children[0].children[0]
+    assert section.heading == "Section 3.9."
+
+
+def test_table_group_and_back_matter_have_no_heading_words():
+    volume, _ = build_tree_from_lines(
+        [
+            [
+                line(50, 40, "Division B", BLACK),
+                line(70, 40, "Part 9", BLACK),
+                line(90, 40, "Span Tables", BLACK),
+            ],
+            [line(50, 40, "PROVINCE OF BRITISH COLUMBIA", BOLD)],
+        ],
+        2,
+    )
+    table_group = volume.children[1].children[0].children[0]
+    back_matter = volume.children[-1]
+    assert (table_group.type, table_group.heading) == ("TableGroup", "")
+    assert (back_matter.type, back_matter.heading) == ("BackMatter", "")
+
+
+def test_notes_container_title_is_notes_to_part_n():
+    volume, _ = build_tree_from_lines(
+        [
+            [
+                line(50, 40, "Division A", BLACK),
+                line(70, 40, "Part 1", BLACK),
+                line(90, 40, "Compliance", BLACK),
+                line(110, 40, "Notes to Part 1", BLACK),
+                line(130, 40, "Compliance", BLACK),
+                line(150, 40, "A-1.1.1.1.(3) Factory-Constructed Buildings.", BODY),
+            ]
+        ],
+        1,
+    )
+    notes = volume.children[1].children[1]
+    assert notes.type == "NotesContainer"
+    assert notes.title == "Notes to Part 1"
+    assert notes.heading == "Notes to Part 1"
+    assert notes.children[0].heading == "A-1.1.1.1.(3)"
+
+
 def test_note_bbox_spans_continuation_lines_on_same_page():
     pages = [
         [line(50, 40, "Random front matter text.", BODY)],  # page 0: FrontMatter

@@ -17,7 +17,8 @@ independent tools live here:
 2. **MO Package TOC + Image viewer** (`src/mo_toc/`) — parses
    `MO Package BCBC MRK signed.pdf` into a full hierarchical index (Volume → FrontMatter /
    Division → Part → Section → Subsection → Article → Sentence → Clause → Subclause,
-   Notes to Part → Note, Appendix chain, BackMatter) plus a flat Table/Figure caption index
+   with each Part's "Notes to Part" → Note nested under that Part as its last child,
+   Appendix chain, BackMatter) plus a flat Table/Figure caption index
    and a full embedded-image index — every node carries a page number and a precise
    bounding box. Served as JSON/Markdown (`src/build_mo_toc.py`) and through an
    interactive web viewer (`src/serve_mo_toc.py`) that scrolls to and highlights the exact
@@ -30,7 +31,10 @@ independent tools live here:
    `output/web_pages/<citation>.html`, and mirrors every stylesheet/font/image it uses under
    `output/web_pages/assets/` (plus `site-nav.css`, the site's nav-tree/breadcrumbs rules for
    the sidebar). Subsection/article views are cut from their section page the way the site
-   does it, so only ~136 pages are scraped.
+   does it, so only ~136 pages are scraped. `src/compare_unified.py` compares the two indexes
+   by `unified_number` (keys built from the code's own numbering, identical in both files for
+   the same node; heading nodes also carry a `heading` field with the literal heading words,
+   e.g. `Part 1`) and reports per-level agreement; `--diff` lists matched keys whose text differs.
 
 A standalone CLI companion, `src/check_directory_access.py`, checks (outside the web app) 
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,
@@ -113,7 +117,7 @@ Run these and fix everything they report before calling a task complete:
 Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker for the
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
-`src/build_web_toc.py`, `src/build_web_pages.py`, `src/shared/`, and `tests/` (including
+`src/build_web_toc.py`, `src/build_web_pages.py`, `src/compare_unified.py`, `src/shared/`, and `tests/` (including
 `tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
 — not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
@@ -131,7 +135,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (91+ tests, `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
+- A real test suite (569 tests — 551 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
   and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full

@@ -32,6 +32,7 @@ class Node:
     children: list["Node"] = field(default_factory=list)
     unified_number: str = ""
     content: str = ""
+    heading: str = ""
 
 
 @dataclass
@@ -60,3 +61,4 @@ class ImageAsset:
     caption_title: str | None = None
     title: str = ""
     decorative: bool = False
+    unified_number: str = ""

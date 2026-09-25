@@ -1,158 +1,235 @@
 from dataclasses import dataclass, field
 
-from shared.numbering import assign_unified_numbers
+import pytest
+
+from shared.numbering import Rule, assign_unified_numbers, normalize_identifier, number_images
 
 
 @dataclass
 class _StubNode:
     type: str
+    identifier: str = ""
+    citation: str = ""
     children: list["_StubNode"] = field(default_factory=list)
     unified_number: str = ""
 
 
-def test_assigns_plain_numbers_for_canonical_types():
-    article = _StubNode(type="article")
-    part = _StubNode(type="part", children=[article])
-    volume = _StubNode(type="volume", children=[part])
-    markers = {"volume": None, "part": None, "article": None}
-
-    assign_unified_numbers([volume], markers)
-
-    assert volume.unified_number == "1"
-    assert part.unified_number == "1.1"
-    assert article.unified_number == "1.1.1"
-
-
-def test_counts_positions_per_type_not_globally():
-    part_a = _StubNode(type="part")
-    notes = _StubNode(type="notes")
-    part_b = _StubNode(type="part")
-    markers = {"part": None, "notes": "Notes"}
-
-    assign_unified_numbers([part_a, notes, part_b], markers)
-
-    assert part_a.unified_number == "1"
-    assert notes.unified_number == "Notes1"
-    assert part_b.unified_number == "2"
-
-
-def test_marker_type_gets_prefixed_segment():
-    appendix = _StubNode(type="appendix")
-    part = _StubNode(type="part", children=[appendix])
-    markers = {"part": None, "appendix": "App"}
-
-    assign_unified_numbers([part], markers)
-
-    assert appendix.unified_number == "1.App1"
-
-
-def test_nested_marker_chain():
-    appendix_part = _StubNode(type="appendix_part")
-    appendix = _StubNode(type="appendix", children=[appendix_part])
-    markers = {"appendix": "App", "appendix_part": "AppPt"}
-
-    assign_unified_numbers([appendix], markers)
-
-    assert appendix.unified_number == "App1"
-    assert appendix_part.unified_number == "App1.AppPt1"
-
-
-def test_unmapped_type_falls_back_to_type_name_as_marker():
-    mystery = _StubNode(type="mystery")
-    markers = {"part": None}
-
-    assign_unified_numbers([mystery], markers)
-
-    assert mystery.unified_number == "mystery1"
-
-
-def test_leaf_node_with_no_children_does_not_crash():
-    leaf = _StubNode(type="article", children=[])
-
-    assign_unified_numbers([leaf], {"article": None})
-
-    assert leaf.unified_number == "1"
-
-
-def test_multiple_top_level_siblings_get_sequential_numbers():
-    vol1 = _StubNode(type="volume")
-    vol2 = _StubNode(type="volume")
-
-    assign_unified_numbers([vol1, vol2], {"volume": None})
-
-    assert vol1.unified_number == "1"
-    assert vol2.unified_number == "2"
-
-
-def test_parent_number_is_prefixed_when_given():
-    child = _StubNode(type="section")
-
-    assign_unified_numbers([child], {"section": None}, parent_number="9")
-
-    assert child.unified_number == "9.1"
-
-
-def test_position_above_nine_is_not_zero_padded():
-    siblings = [_StubNode(type="article") for _ in range(10)]
-
-    assign_unified_numbers(siblings, {"article": None})
-
-    assert siblings[9].unified_number == "10"
-
-
 @dataclass
-class _StubIdentifierNode:
-    type: str
-    identifier: str = ""
-    children: list["_StubIdentifierNode"] = field(default_factory=list)
+class _StubImage:
+    owner_citation: str
+    decorative: bool = False
     unified_number: str = ""
 
 
-def test_identifier_type_uses_identifier_instead_of_position():
-    division = _StubIdentifierNode(type="division", identifier="B")
-    volume = _StubIdentifierNode(type="volume", children=[division])
-    markers = {"volume": None, "division": None}
-
-    assign_unified_numbers([volume], markers, identifier_types=frozenset({"division"}))
-
-    assert volume.unified_number == "1"
-    assert division.unified_number == "1.B"
-
-
-def test_identifier_type_still_counts_positions_for_siblings():
-    division_a = _StubIdentifierNode(type="division", identifier="A")
-    division_b = _StubIdentifierNode(type="division", identifier="B")
-    markers = {"division": None}
-
-    assign_unified_numbers(
-        [division_a, division_b], markers, identifier_types=frozenset({"division"})
-    )
-
-    assert division_a.unified_number == "A"
-    assert division_b.unified_number == "B"
+RULES = {
+    "Volume": Rule("root", "V"),
+    "Division": Rule("root", fallback="FM"),
+    "Appendix": Rule("root", "App"),
+    "FrontMatter": Rule("fixed", "FM"),
+    "Part": Rule("absolute"),
+    "Article": Rule("absolute"),
+    "Note": Rule("absolute"),
+    "Sentence": Rule("child"),
+    "Clause": Rule("suffix"),
+    "Notes": Rule("literal", "Notes"),
+    "Table": Rule("ordinal", "Tbl", scoped=True),
+    "Row": Rule("ordinal", "Row"),
+}
+SCOPES = frozenset({"Article", "Note"})
 
 
-def test_suffix_type_appends_identifier_without_a_dot():
-    sentence = _StubIdentifierNode(type="sentence", identifier="(1)")
-    article = _StubIdentifierNode(type="article", children=[sentence])
-    markers = {"article": None, "sentence": None}
-
-    assign_unified_numbers([article], markers, suffix_types=frozenset({"sentence"}))
-
-    assert article.unified_number == "1"
-    assert sentence.unified_number == "1(1)"
+def test_normalize_identifier_strips_trailing_dot_and_collapses_spaces():
+    assert normalize_identifier("9.10.18.2.") == "9.10.18.2"
+    assert normalize_identifier(" A-3.1.4.1.(1)  and (2) ") == "A-3.1.4.1.(1) and (2)"
+    assert normalize_identifier("") == ""
 
 
-def test_suffix_types_chain_without_dots_between_each_other():
-    subclause = _StubIdentifierNode(type="subclause", identifier="(i)")
-    clause = _StubIdentifierNode(type="clause", identifier="(a)", children=[subclause])
-    sentence = _StubIdentifierNode(type="sentence", identifier="(1)", children=[clause])
-    article = _StubIdentifierNode(type="article", children=[sentence])
-    markers = {"article": None, "sentence": None, "clause": None, "subclause": None}
-    suffix_types = frozenset({"sentence", "clause", "subclause"})
+def _numbered_volume_chain():
+    clause = _StubNode("Clause", "(a)", "c")
+    sentence = _StubNode("Sentence", "(2)", "s", [clause])
+    article = _StubNode("Article", "9.10.18.2.", "a", [sentence])
+    part = _StubNode("Part", "9", "p", [article])
+    division = _StubNode("Division", "B", "d", [part])
+    volume = _StubNode("Volume", "2", "v", [division])
+    assign_unified_numbers([volume], RULES, SCOPES)
+    return volume, division, part, article, sentence, clause
 
-    assign_unified_numbers([article], markers, suffix_types=suffix_types)
 
-    assert sentence.unified_number == "1(1)"
-    assert clause.unified_number == "1(1)(a)"
-    assert subclause.unified_number == "1(1)(a)(i)"
+def test_official_numbers_build_the_key_and_volume_is_left_out():
+    volume, division, part, *_ = _numbered_volume_chain()
+
+    assert volume.unified_number == "V2"
+    assert division.unified_number == "B"
+    assert part.unified_number == "B.9"
+
+
+def test_official_numbers_build_article_sentence_and_clause_keys():
+    *_, article, sentence, clause = _numbered_volume_chain()
+
+    assert article.unified_number == "B.9.10.18.2"
+    assert sentence.unified_number == "B.9.10.18.2.(2)"
+    assert clause.unified_number == "B.9.10.18.2.(2)(a)"
+
+
+def test_missing_sibling_does_not_shift_later_keys():
+    part10 = _StubNode("Part", "10", "p10")
+    division = _StubNode("Division", "B", "d", [part10])  # Part 9 absent
+
+    assign_unified_numbers([division], RULES)
+
+    assert part10.unified_number == "B.10"
+
+
+def test_literal_appends_fixed_segment_to_parent():
+    notes = _StubNode("Notes", "1", "n")
+    part = _StubNode("Part", "1", "p", [notes])
+    division = _StubNode("Division", "A", "d", [part])
+
+    assign_unified_numbers([division], RULES)
+
+    assert notes.unified_number == "A.1.Notes"
+
+
+def test_note_key_is_division_plus_official_note_number():
+    note = _StubNode("Note", "A-1.1.1.1.(3)", "note")
+    notes = _StubNode("Notes", "1", "n", [note])
+    part = _StubNode("Part", "1", "p", [notes])
+    division = _StubNode("Division", "A", "d", [part])
+
+    assign_unified_numbers([division], RULES, SCOPES)
+
+    assert note.unified_number == "A.A-1.1.1.1.(3)"
+
+
+def test_scoped_table_ordinal_counts_within_owning_article_not_tree_parent():
+    table_in_sentence = _StubNode("Table", "x", "t1")
+    sentence = _StubNode("Sentence", "(1)", "s", [table_in_sentence])
+    table_in_article = _StubNode("Table", "y", "t2")
+    article = _StubNode("Article", "1.1.1.1", "a", [sentence, table_in_article])
+    division = _StubNode("Division", "A", "d", [article])
+
+    assign_unified_numbers([division], RULES, SCOPES)
+
+    assert table_in_sentence.unified_number == "A.1.1.1.1.Tbl1"
+    assert table_in_article.unified_number == "A.1.1.1.1.Tbl2"
+
+
+def test_unscoped_ordinal_counts_under_parent():
+    rows = [_StubNode("Row", "", f"r{i}") for i in range(2)]
+    table = _StubNode("Table", "t", "t", rows)
+    article = _StubNode("Article", "1.1.1.1", "a", [table])
+    division = _StubNode("Division", "A", "d", [article])
+
+    assign_unified_numbers([division], RULES, SCOPES)
+
+    assert [r.unified_number for r in rows] == ["A.1.1.1.1.Tbl1.Row1", "A.1.1.1.1.Tbl1.Row2"]
+
+
+def test_empty_identifier_uses_fallback_then_ordinal():
+    article = _StubNode("Article", "", "a")
+    preface = _StubNode("Division", "", "pre", [article])
+
+    assign_unified_numbers([preface], RULES)
+
+    assert preface.unified_number == "FM"
+    assert article.unified_number == "FM.Article1"
+
+
+def test_unmapped_type_is_an_ordinal_named_after_its_type():
+    mystery = _StubNode("mystery", "", "m")
+    division = _StubNode("Division", "A", "d", [mystery])
+
+    assign_unified_numbers([division], RULES)
+
+    assert mystery.unified_number == "A.mystery1"
+
+
+def test_duplicate_key_gets_tilde_suffix():
+    first = _StubNode("Part", "1", "p1")
+    second = _StubNode("Part", "1", "p2")
+    division = _StubNode("Division", "A", "d", [first, second])
+
+    assign_unified_numbers([division], RULES)
+
+    assert first.unified_number == "A.1"
+    assert second.unified_number == "A.1~2"
+
+
+def test_division_split_across_volumes_keeps_one_key():
+    part1 = _StubNode("Part", "1", "p1")
+    part9 = _StubNode("Part", "9", "p9")
+    vol1 = _StubNode("Volume", "1", "v1", [_StubNode("Division", "B", "d1", [part1])])
+    vol2 = _StubNode("Volume", "2", "v2", [_StubNode("Division", "B", "d2", [part9])])
+
+    assign_unified_numbers([vol1, vol2], RULES)
+
+    assert vol2.children[0].unified_number == "B"
+    assert part9.unified_number == "B.9"
+
+
+def test_fixed_and_root_prefix_rules():
+    front = _StubNode("FrontMatter", "FrontMatter", "fm")
+    appendix = _StubNode("Appendix", "D", "app")
+
+    assign_unified_numbers([front, appendix], RULES)
+
+    assert front.unified_number == "FM"
+    assert appendix.unified_number == "AppD"
+
+
+def test_unknown_rule_kind_raises():
+    with pytest.raises(KeyError):
+        assign_unified_numbers([_StubNode("X", "1", "x")], {"X": Rule("bogus")})
+
+
+def test_returns_scope_key_per_citation():
+    clause = _StubNode("Clause", "(a)", "clause-cit")
+    sentence = _StubNode("Sentence", "(1)", "sent-cit", [clause])
+    article = _StubNode("Article", "1.1.1.1", "art-cit", [sentence])
+    front = _StubNode("FrontMatter", "", "fm-cit")
+    division = _StubNode("Division", "A", "div-cit", [article])
+
+    scope = assign_unified_numbers([front, division], RULES, SCOPES)
+
+    assert scope["clause-cit"] == "A.1.1.1.1"
+    assert scope["art-cit"] == "A.1.1.1.1"
+    assert scope["fm-cit"] == "FM"
+
+
+def test_duplicate_citation_keeps_the_first_nodes_scope():
+    first = _StubNode("Article", "1.1.1.1", "dup")
+    second = _StubNode("Article", "1.1.1.2", "dup")
+    division = _StubNode("Division", "A", "d", [first, second])
+    image = _StubImage("dup")
+
+    scope = assign_unified_numbers([division], RULES, SCOPES)
+    number_images([image], scope)
+
+    assert scope["dup"] == "A.1.1.1.1"
+    assert image.unified_number == "A.1.1.1.1.Fig1"
+
+
+def test_empty_node_list_returns_empty_map():
+    assert assign_unified_numbers([], RULES) == {}
+
+
+def test_number_images_counts_per_scope_and_skips():
+    images = [
+        _StubImage("clause-cit"),
+        _StubImage("clause-cit", decorative=True),
+        _StubImage("art-cit"),
+        _StubImage("unknown-cit"),
+    ]
+    scope = {"clause-cit": "A.1.1.1.1", "art-cit": "A.1.1.1.1"}
+
+    number_images(images, scope, skip=lambda image: image.decorative)
+
+    assert [i.unified_number for i in images] == ["A.1.1.1.1.Fig1", "", "A.1.1.1.1.Fig2", ""]
+
+
+def test_number_images_without_skip_numbers_everything_resolvable():
+    images = [_StubImage("a"), _StubImage("a")]
+
+    number_images(images, {"a": "B.9.1.1.1"})
+
+    assert [i.unified_number for i in images] == ["B.9.1.1.1.Fig1", "B.9.1.1.1.Fig2"]
