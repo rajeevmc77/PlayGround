@@ -1,69 +1,61 @@
 #!/usr/bin/env python3
-"""Parses the live BC Building Code website's navigation tree + per-section
-content into output/bcbc_web.json: a hierarchical index plus every embedded
-figure, table, and Sentence/Clause/Subclause body-text node, each matched to
-the deepest document node it belongs to.
+"""Builds output/bcbc_web.json offline from the local snapshot that
+build_web_pages.py saved: a hierarchical index plus every embedded figure,
+table, and Sentence/Clause/Subclause body-text node, each matched to the
+deepest document node it belongs to, carrying the text the site renders and
+a location - {page_file, xpath, bbox} - in the locally saved page.
+
+Structure (ids, numbering, table grid) comes from the cached navigation tree
+and content JSON under output/web_source/; text and locations come from
+output/web_pages/<citation>.layout.json.
 
 Usage:
+    python3 src/build_web_pages.py   # once, needs the network
     python3 src/build_web_toc.py
-    python3 src/build_web_toc.py --base-url https://dev.buildingcode.gov.bc.ca --version 2024
 """
 
 import argparse
-import asyncio
+import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from shared.numbering import assign_unified_numbers, number_images
-from web_toc.output.image_downloader import download_images
+from web_toc.domain.models import WebImage, WebNode
 from web_toc.output.json_writer import write_json
+from web_toc.output.page_writer import citation_file
 from web_toc.parsing.body_extractor import attach_body, extract_body
-from web_toc.parsing.content_url import content_url
 from web_toc.parsing.image_extractor import extract_images
+from web_toc.parsing.layout_join import join_layout, location_report
+from web_toc.parsing.local_source import LocalWebSource
 from web_toc.parsing.note_extractor import extract_notes
 from web_toc.parsing.numbering_config import WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
 from web_toc.parsing.owner_resolution import attach_owned_nodes
-from web_toc.parsing.site_source import HttpxWebSource
+from web_toc.parsing.page_targets import page_targets
 from web_toc.parsing.table_extractor import attach_tables, extract_tables
 from web_toc.parsing.tree_builder import build_tree, collect_citations
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BASE_URL = "https://dev.buildingcode.gov.bc.ca"
-DEFAULT_VERSION = "2024"
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
-
-# I/O-bound HTTP fetches, not CPU work - a bounded semaphore overlaps the
-# per-request latency without hammering the site with unbounded concurrency.
-CONTENT_FETCH_CONCURRENCY = 8
+IMAGES_DIR = "web_images"
+LAYOUT_SUFFIX = ".layout.json"
 
 
-def _walk(node):
+def _walk(node: WebNode) -> Iterator[WebNode]:
     yield node
     for child in node.children:
         yield from _walk(child)
 
 
-def _content_bearing_nodes(root, version):
-    for node in _walk(root):
-        url = content_url(node, version)
-        if url is not None:
-            yield node, url
-
-
-async def _fetch_content(source, semaphore, url):
-    async with semaphore:
-        print(f"Fetching {url} ...", file=sys.stderr)
-        return await source.fetch_content(url)
-
-
-def _fetched(targets, contents):
-    for (node, url), content in zip(targets, contents, strict=True):
-        if content is None:
-            print(f"  skipped (no content at {url})", file=sys.stderr)
-            continue
-        yield node, content
+def _cached_contents(root: WebNode, source: LocalWebSource) -> list[tuple[WebNode, dict]]:
+    """Every node build_web_pages.py cached content JSON for."""
+    return [
+        (node, content)
+        for node in list(_walk(root))
+        if (content := source.fetch_content(node.citation)) is not None
+    ]
 
 
 def _attach_notes(root, fetched, citations: set[str]) -> set[str]:
@@ -84,46 +76,66 @@ def _extract_owned(fetched, citations: set[str]):
     return images, owned_tables, owned_sentences
 
 
-async def run(base_url: str, version: str, output_dir: str) -> None:
-    async with HttpxWebSource(base_url, version) as source:
-        root = build_tree(await source.fetch_navigation_tree())
-        citations = collect_citations(root)
+def _set_local_paths(images: list[WebImage], out: Path) -> None:
+    for image in images:
+        relative = f"{IMAGES_DIR}/{image.id}.jpg"
+        if (out / relative).is_file():
+            image.local_path = relative
 
-        targets = list(_content_bearing_nodes(root, version))
-        semaphore = asyncio.Semaphore(CONTENT_FETCH_CONCURRENCY)
-        contents = await asyncio.gather(
-            *(_fetch_content(source, semaphore, url) for _, url in targets)
+
+def _load_layouts(pages_dir: Path, page_citations: list[str]) -> dict[str, dict]:
+    layouts = {}
+    for citation in page_citations:
+        path = citation_file(pages_dir, citation, LAYOUT_SUFFIX)
+        if path is None or not path.exists():
+            print(f"  no layout for {citation} (page not scraped)", file=sys.stderr)
+            continue
+        layouts[citation] = json.loads(path.read_text(encoding="utf-8"))
+    return layouts
+
+
+def _print_report(report: dict[str, dict[str, int]]) -> None:
+    print("Locations found:", file=sys.stderr)
+    for type_, counts in sorted(report.items()):
+        print(
+            f"  {type_}: {counts['located']} located, {counts['unlocated']} unlocated",
+            file=sys.stderr,
         )
 
-        fetched = list(_fetched(targets, contents))
-        citations = _attach_notes(root, fetched, citations)
-        images, owned_tables, owned_sentences = _extract_owned(fetched, citations)
 
-        attach_tables(root, owned_tables)
-        attach_body(root, owned_sentences)
-        # Runs after attach_tables/attach_body so the nodes they just added
-        # get numbered too - matching the pdf pipeline's build_mo_toc.py,
-        # which also numbers only after its own attach_tables call. Images
-        # are numbered from the same scope map so a figure's key lines up
-        # with its owning node's cross-source key.
-        scope_by_citation = assign_unified_numbers(
-            root.children, WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
-        )
-        number_images(images, scope_by_citation)
+def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage]]:
+    root = build_tree(source.fetch_navigation_tree())
+    fetched = _cached_contents(root, source)
+    citations = _attach_notes(root, fetched, collect_citations(root))
+    images, owned_tables, owned_sentences = _extract_owned(fetched, citations)
+    attach_tables(root, owned_tables)
+    attach_body(root, owned_sentences)
+    # Runs after attach_tables/attach_body so the nodes they just added
+    # get numbered too - matching the pdf pipeline's build_mo_toc.py,
+    # which also numbers only after its own attach_tables call. Images
+    # are numbered from the same scope map so a figure's key lines up
+    # with its owning node's cross-source key.
+    scope_by_citation = assign_unified_numbers(root.children, WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES)
+    number_images(images, scope_by_citation)
+    return root, images
 
-        await download_images(images, source, str(Path(output_dir) / "web_images"))
 
-    write_json(root, images, str(Path(output_dir) / "bcbc_web.json"))
+def run(output_dir: str) -> None:
+    out = Path(output_dir)
+    root, images = _build_tree(LocalWebSource(out / "web_source"))
+    _set_local_paths(images, out)
+    pages = [node.citation for node in page_targets(root)]
+    layouts = _load_layouts(out / "web_pages", pages)
+    join_layout(root, images, layouts, set(pages))
+    _print_report(location_report(root, images))
+    write_json(root, images, str(out / "bcbc_web.json"))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
-    parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args()
-    print(f"Parsing {args.base_url} (version {args.version}) ...", file=sys.stderr)
-    asyncio.run(run(args.base_url, args.version, args.output_dir))
+    run(args.output_dir)
     print(f"Wrote {args.output_dir}/bcbc_web.json", file=sys.stderr)
 
 
