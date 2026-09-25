@@ -6,6 +6,10 @@ step that talks to the site; build_web_toc.py then builds offline from it:
 - output/web_pages/: each rendered reading page (`main.ui-ContentPanel`),
   scrolled until every table row the content JSON lists has lazy-loaded, plus
   a local mirror of every stylesheet, font and image the pages use.
+- output/web_pages/assets/equations/ and output/web_images/equations/: a PNG
+  of every MathJax-rendered equation, captured from the saved local copy;
+  the saved page then shows that PNG in place of MathJax (see
+  equation_script.py).
 - output/web_pages/<citation>.layout.json: every element's xpath, rendered
   text and bbox, measured on the saved local copy (see layout_script.py).
 - output/web_images/: every figure's image file.
@@ -25,14 +29,17 @@ import argparse
 import asyncio
 import json
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import TypeVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from web_toc.domain.models import ScrapedPage, WebNode
+from web_toc.domain.models import EquationCapture, ScrapedPage, WebNode
 from web_toc.output.image_downloader import download_images
 from web_toc.output.page_writer import AssetSource, citation_file, download_assets, write_page
 from web_toc.output.source_cache import cache_contents, write_navigation, write_snapshot
+from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
 from web_toc.parsing.image_extractor import extract_images
 from web_toc.parsing.local_page_server import serve_pages
 from web_toc.parsing.page_html import clean_panel, compose_page, image_paths
@@ -55,6 +62,11 @@ DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 PAGE_FETCH_CONCURRENCY = 6
 NAV_CSS_PATTERN = "nav-tree|breadcrumbs"
 LAYOUT_SUFFIX = ".layout.json"
+# Equation PNGs are captured at twice their CSS px size, sharp enough to set
+# beside the PDF's own rasterised formula images.
+EQUATION_SCALE = 2
+
+T = TypeVar("T")
 
 
 async def _scrape_one(
@@ -145,22 +157,61 @@ async def _render_all(
     return scraped, nav_rules
 
 
-async def _measure_one(
-    browser: PageSource, semaphore: asyncio.Semaphore, base_url: str, citation: str
-) -> tuple[str, dict | None]:
-    async with semaphore:
-        return citation, await browser.fetch_layout(f"{base_url}/{citation}.html")
+async def _over_local_pages(
+    pages_dir: Path,
+    citations: list[str],
+    visit: Callable[[PageSource, str], Awaitable[T]],
+    device_scale_factor: float = 1,
+) -> list[tuple[str, T]]:
+    """Runs `visit(browser, page url)` over each saved page as the viewer
+    will render it - served locally, with the local asset mirror."""
+    semaphore = asyncio.Semaphore(PAGE_FETCH_CONCURRENCY)
+    with serve_pages(pages_dir) as base_url:
+        async with PlaywrightPageSource(device_scale_factor=device_scale_factor) as browser:
+
+            async def one(citation: str) -> tuple[str, T]:
+                async with semaphore:
+                    return citation, await visit(browser, f"{base_url}/{citation}.html")
+
+            return await asyncio.gather(*(one(citation) for citation in citations))
+
+
+def _save_equations(pages_dir: Path, images_dir: Path, capture: EquationCapture) -> None:
+    """Each PNG goes to the page asset mirror (what the rewritten page
+    shows) and to web_images/ (next to the figures, for comparing with the
+    PDF's formula images)."""
+    for key, png in capture.images.items():
+        targets = [
+            citation_file(directory / EQUATION_ASSET_DIR, key, ".png")
+            for directory in (pages_dir / "assets", images_dir)
+        ]
+        if None in targets:
+            print(f"  skipped equation {key!r} (not a safe file name)", file=sys.stderr)
+            continue
+        for target in targets:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(png)
+
+
+async def capture_equations(pages_dir: Path, images_dir: Path, citations: list[str]) -> None:
+    """Swaps every MathJax equation on the saved pages for a PNG of itself."""
+    results = await _over_local_pages(
+        pages_dir,
+        citations,
+        lambda browser, url: browser.capture_equations(url),
+        device_scale_factor=EQUATION_SCALE,
+    )
+    for citation, capture in results:
+        if capture is not None:
+            write_page(pages_dir, citation, capture.html)
+            _save_equations(pages_dir, images_dir, capture)
 
 
 async def measure_layouts(pages_dir: Path, citations: list[str]) -> None:
-    """Measures each saved page as the viewer will render it - served
-    locally, with the local asset mirror - and writes <citation>.layout.json."""
-    semaphore = asyncio.Semaphore(PAGE_FETCH_CONCURRENCY)
-    with serve_pages(pages_dir) as base_url:
-        async with PlaywrightPageSource() as browser:
-            results = await asyncio.gather(
-                *(_measure_one(browser, semaphore, base_url, c) for c in citations)
-            )
+    """Measures each saved page and writes <citation>.layout.json."""
+    results = await _over_local_pages(
+        pages_dir, citations, lambda browser, url: browser.fetch_layout(url)
+    )
     for citation, layout in results:
         if layout is None:
             print(f"  no layout for {citation} (no content panel)", file=sys.stderr)
@@ -226,6 +277,7 @@ async def run(
     assets_dir.mkdir(parents=True, exist_ok=True)
     (assets_dir / "site-nav.css").write_text(build_nav_css(nav_rules), encoding="utf-8")
     _write_manifest(pages_dir, manifest, merge=only is not None)
+    await capture_equations(pages_dir, out / "web_images", list(manifest))
     await measure_layouts(pages_dir, list(manifest))
     return incomplete
 

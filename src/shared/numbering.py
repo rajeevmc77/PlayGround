@@ -136,11 +136,13 @@ def number_images(
     images: list,
     scope_by_citation: dict[str, str],
     skip: Callable[[object], bool] | None = None,
+    label: str = "Fig",
 ) -> None:
+    """Keys each image `<owner's scope key>.<label><n>`, n counting per scope."""
     counters: dict[str, int] = {}
     for image in images:
         base = scope_by_citation.get(image.owner_citation)
         if base is None or (skip is not None and skip(image)):
             continue
         counters[base] = counters.get(base, 0) + 1
-        image.unified_number = f"{base}.Fig{counters[base]}"
+        image.unified_number = f"{base}.{label}{counters[base]}"

@@ -20,7 +20,13 @@ from playwright.async_api import (
 )
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from web_toc.domain.models import ScrapedPage
+from web_toc.domain.models import EquationCapture, ScrapedPage
+from web_toc.parsing.equation_script import (
+    GLYPHS_SELECTOR,
+    MARK_EQUATIONS_JS,
+    MARKED_SELECTOR,
+    SWAP_EQUATIONS_JS,
+)
 from web_toc.parsing.layout_script import GRID_ROWS_JS, LAYOUT_JS
 from web_toc.parsing.scroll_plan import short_tables
 
@@ -99,16 +105,35 @@ class PageSource(Protocol):
     ) -> ScrapedPage | None: ...
     async def fetch_nav_css(self, url: str, selector_pattern: str) -> list[dict]: ...
     async def fetch_layout(self, url: str) -> dict | None: ...
+    async def capture_equations(self, url: str) -> EquationCapture | None: ...
 
 
 async def _row_counts(tab: Page, expected: dict[str, int]) -> dict[str, list[int]]:
     return short_tables(await tab.evaluate(_ROW_COUNTS_JS, list(expected)), expected)
 
 
+async def _screenshot_equations(tab: Page, keys: list[str]) -> dict[str, bytes]:
+    """One PNG per distinct key, of the first block marked with it."""
+    blocks = tab.locator(MARKED_SELECTOR)
+    images: dict[str, bytes] = {}
+    for index, key in enumerate(keys):
+        if key not in images:
+            glyphs = blocks.nth(index).locator(GLYPHS_SELECTOR).first
+            images[key] = await glyphs.screenshot()
+    return images
+
+
 class PlaywrightPageSource:
-    def __init__(self, ready_timeout_ms: int = 30000, growth_timeout_ms: int = 10000):
+    def __init__(
+        self,
+        ready_timeout_ms: int = 30000,
+        growth_timeout_ms: int = 10000,
+        device_scale_factor: float = 1,
+    ):
         self._ready_timeout_ms = ready_timeout_ms
         self._growth_timeout_ms = growth_timeout_ms
+        # Only screenshots see it: CSS px (and so every bbox) are unchanged.
+        self._device_scale_factor = device_scale_factor
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
@@ -117,7 +142,10 @@ class PlaywrightPageSource:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch()
         # Desktop width, so the site renders its desktop layout.
-        self._context = await self._browser.new_context(viewport={"width": 1500, "height": 950})
+        self._context = await self._browser.new_context(
+            viewport={"width": 1500, "height": 950},
+            device_scale_factor=self._device_scale_factor,
+        )
         return self
 
     async def __aexit__(
@@ -182,6 +210,22 @@ class PlaywrightPageSource:
         try:
             await tab.goto(url, wait_until="load")
             return await tab.evaluate(LAYOUT_JS)
+        finally:
+            await tab.close()
+
+    async def capture_equations(self, url: str) -> EquationCapture | None:
+        """Screenshots every MathJax equation on an already-saved, locally
+        served page and swaps each for an <img> of itself (see
+        equation_script.py); None if the page has none left to capture."""
+        tab = await self._context.new_page()
+        try:
+            await tab.goto(url, wait_until="load")
+            await tab.evaluate("document.fonts.ready.then(() => null)")
+            marked = await tab.evaluate(MARK_EQUATIONS_JS)
+            if not marked:
+                return None
+            images = await _screenshot_equations(tab, [entry["key"] for entry in marked])
+            return EquationCapture(html=await tab.evaluate(SWAP_EQUATIONS_JS), images=images)
         finally:
             await tab.close()
 

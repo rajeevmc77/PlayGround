@@ -13,7 +13,7 @@ from web_toc.parsing.page_source import PlaywrightPageSource
 
 # The panel sits 50px down the page and is its own 200px scroll container,
 # as the saved pages' reading panel is.
-_PAGE = """<!DOCTYPE html><html><head><style>
+_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{margin:0} .ui-ContentPanel{display:block;margin-top:50px;height:200px;overflow:auto}
 h1{margin:0;height:30px} td,th{height:20px}
 .compound-ref{display:inline-block} .compound-ref:before{content:"[ "}
@@ -35,6 +35,14 @@ Applies.</div>
 <table class="table-block__table--split-header table-block__table--pinned-col"><tr><th>H1</th></tr>
 </table><table class="table-block__table--split-body"><tr><td>a</td><td>b<table><tr><td>nested</td>
 </tr></table></td></tr><tr><td>c</td><td>d</td></tr></table></div>
+<div id="s2">b) the formula <img class="equation-image" src="/web-assets/equations/es1.png"
+alt="W=w×4.9" data-equation="es1" data-owner="s2"
+style="display:inline-block;width:40px;height:10px"></div>
+<div id="t3"><table><tr><th>Value of <img class="equation-image" alt="C_w" data-equation="eg2"
+data-owner="t3" src="/web-assets/equations/eg2.png" style="width:8px;height:8px"></th></tr>
+</table><table class="table-block__table--pinned-col"><tr><th>Value of <img alt="C_w"
+class="equation-image" data-equation="eg2" data-owner="t3" src="/web-assets/equations/eg2.png">
+</th></tr></table></div>
 <img src="/web-assets/graphics/a.jpg" alt="A figure" style="width:10px;height:10px">
 <div style="height:600px"></div>
 </div></main></div></main></body></html>"""
@@ -153,6 +161,24 @@ def test_images_and_headings_are_listed(measured):
         "Part 9 - Housing",
         "9.38.1.1. Attribution",
     ]
+
+
+def test_equation_images_are_listed_apart_from_figures_once_each(measured):
+    # A pinned-column copy of a header cell is the same equation again.
+    equations = measured["page"]["equations"]
+    assert [(eq["key"], eq["owner"], eq["text"]) for eq in equations] == [
+        ("es1", "s2", "W=w×4.9"),
+        ("eg2", "t3", "C_w"),
+    ]
+    first = equations[0]
+    assert first["xpath"].startswith(f"{ROOT_XPATH}/") and first["xpath"].endswith("/img[1]")
+    assert first["bbox"]["x1"] - first["bbox"]["x0"] == pytest.approx(40, abs=0.5)
+    assert first["bbox"]["y1"] - first["bbox"]["y0"] == pytest.approx(10, abs=0.5)
+
+
+def test_an_equation_image_adds_no_text_to_what_holds_it(measured):
+    assert measured["page"]["elements"]["s2"]["text"] == "b) the formula"
+    assert measured["page"]["tables"]["t3"][0]["cells"][0]["text"] == "Value of"
 
 
 def test_bbox_is_relative_to_the_panel_not_the_page(measured):

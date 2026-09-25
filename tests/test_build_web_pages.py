@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from build_web_pages import PAGE_FETCH_CONCURRENCY, main, run
-from web_toc.domain.models import ScrapedPage
+from web_toc.domain.models import EquationCapture, ScrapedPage
 
 BASE = "https://site.example"
 PART_URL = f"{BASE}/code/nbc.divA/1?version=2024&date=2024-03-08"
@@ -56,10 +56,13 @@ class _FakeBrowser:
     """`pages[url]` is one ScrapedPage (or None), or a list served one per
     successive fetch of that url (to exercise the retry)."""
 
-    def __init__(self, pages, delay=0.0, layout=None):
+    def __init__(self, pages, delay=0.0, layout=None, captures=None):
         self.pages = pages
         self.delay = delay
         self.layout = layout if layout is not None else {"elements": {}}
+        # page file name ("<citation>.html") -> EquationCapture
+        self.captures = captures or {}
+        self.local_calls = []  # ("capture" | "layout", page file name), in order
         self.in_flight = 0
         self.max_in_flight = 0
         self.nav_css_calls = []
@@ -86,7 +89,13 @@ class _FakeBrowser:
 
     async def fetch_layout(self, url):
         self.layout_urls.append(url)
+        self.local_calls.append(("layout", url.rsplit("/", 1)[-1]))
         return self.layout
+
+    async def capture_equations(self, url):
+        name = url.rsplit("/", 1)[-1]
+        self.local_calls.append(("capture", name))
+        return self.captures.get(name)
 
     async def fetch_nav_css(self, url, pattern):
         self.nav_css_calls.append((url, pattern))
@@ -339,6 +348,43 @@ def test_run_reports_a_saved_page_with_no_content_panel(tmp_path, capsys):
 
     assert not (out / "nbc.divA.part1.sect1.layout.json").exists()
     assert "no layout for nbc.divA.part1.sect1" in capsys.readouterr().err
+
+
+_SECTION_CAPTURE = EquationCapture(
+    html='<html><img class="equation-image" src="/web-assets/equations/es1.png"></html>',
+    images={"es1": b"png-es1", "nbc.divA.part1.sect1.eq1": b"png-eq1"},
+)
+
+
+def test_run_saves_each_captured_equation_for_the_page_and_for_comparison(tmp_path):
+    captures = {"nbc.divA.part1.sect1.html": _SECTION_CAPTURE}
+    out = _build(tmp_path, _FakeBrowser(_default_pages(), captures=captures), _content_http())
+
+    for key, png in _SECTION_CAPTURE.images.items():
+        assert (out / "assets" / "equations" / f"{key}.png").read_bytes() == png
+        assert (tmp_path / "web_images" / "equations" / f"{key}.png").read_bytes() == png
+
+
+def test_run_rewrites_a_page_with_equations_before_measuring_it(tmp_path):
+    captures = {"nbc.divA.part1.sect1.html": _SECTION_CAPTURE}
+    browser = _FakeBrowser(_default_pages(), captures=captures)
+
+    out = _build(tmp_path, browser, _content_http())
+
+    assert (out / "nbc.divA.part1.sect1.html").read_text() == _SECTION_CAPTURE.html
+    assert "equation-image" not in (out / "nbc.divA.part1.html").read_text()
+    kinds = [kind for kind, _ in browser.local_calls]
+    assert kinds == ["capture", "capture", "layout", "layout"]
+
+
+def test_run_skips_an_equation_whose_key_is_not_a_safe_file_name(tmp_path, capsys):
+    capture = EquationCapture(html="<html></html>", images={"../evil": b"x", "es1": b"ok"})
+    browser = _FakeBrowser(_default_pages(), captures={"nbc.divA.part1.sect1.html": capture})
+
+    out = _build(tmp_path, browser, _content_http())
+
+    assert sorted(p.name for p in (out / "assets" / "equations").iterdir()) == ["es1.png"]
+    assert "skipped equation '../evil'" in capsys.readouterr().err
 
 
 def test_run_downloads_every_figure_in_the_cached_content(tmp_path):

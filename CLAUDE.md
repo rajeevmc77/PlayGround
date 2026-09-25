@@ -34,8 +34,12 @@ independent tools live here:
    exits non-zero if a table stays short), saves its `main.ui-ContentPanel` to
    `output/web_pages/<citation>.html`, mirrors every stylesheet/font/image under
    `output/web_pages/assets/` (plus `site-nav.css`), downloads figures to `output/web_images/`,
-   then serves the saved pages locally and measures them into
-   `output/web_pages/<citation>.layout.json`. `src/build_web_toc.py` then runs **offline**:
+   then serves the saved pages locally, screenshots every MathJax-rendered equation to a PNG
+   (`output/web_images/equations/` and `output/web_pages/assets/equations/`), rewrites each
+   saved page to show those PNGs in place of MathJax, and measures the pages into
+   `output/web_pages/<citation>.layout.json`. Each equation becomes an `images` entry with
+   `kind: "equation"` (figures are `kind: "figure"`), keyed `…EqN`, for comparing with the
+   PDF's formula images. `src/build_web_toc.py` then runs **offline**:
    structure/numbering from the cached JSON (read as of the snapshot date — revised items
    carry dated `revisions`), and each node's rendered text plus
    `location: {page_file, xpath, bbox}` from the layout files. Every `xpath` starts at the
@@ -146,7 +150,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (634 tests — 616 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
+- A real test suite (661 tests — 643 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
   and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full

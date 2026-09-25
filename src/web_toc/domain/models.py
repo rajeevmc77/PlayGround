@@ -26,6 +26,18 @@ class WebImage:
     local_path: str = ""
     unified_number: str = ""
     location: dict | None = None
+    # "figure" (a graphic from the content JSON) or "equation" (a rendered
+    # formula captured from the saved page as a PNG).
+    kind: str = "figure"
+
+
+@dataclass
+class EquationCapture:
+    """A saved page with each MathJax-rendered equation swapped for an <img>
+    of itself, plus those images as PNG bytes keyed by equation key."""
+
+    html: str
+    images: dict[str, bytes]
 
 
 @dataclass
