@@ -20,7 +20,11 @@ def test_text_differing_only_in_whitespace_matches():
 
 def test_any_other_text_difference_fails_even_a_single_character():
     assert not content_matches(_node("Class A roofing"), _node("Class B roofing"))
-    assert not content_matches(_node("“Fire Tests”"), _node('"Fire Tests"'))
+    assert not content_matches(_node("pages 1–3"), _node("pages 1-3"))
+
+
+def test_curly_and_straight_quotes_match():
+    assert content_matches(_node("“Fire Tests”"), _node('"Fire Tests"'))
 
 
 def test_the_same_italic_words_match_and_a_missing_italic_fails():

@@ -16,6 +16,10 @@ from dataclasses import dataclass
 
 STYLES = frozenset({"b", "i", "bi"})
 
+# Curly and straight quotes read as the same character: the PDF typesets
+# “ ” ‘ ’ where the web often has plain " and '.
+_STRAIGHT_QUOTES = str.maketrans({"“": '"', "”": '"', "„": '"', "‘": "'", "’": "'", "‚": "'"})
+
 Range = tuple[int, int, str]
 
 
@@ -82,14 +86,14 @@ class StyledText:
         return StyledText(self.text[start:], _clip(self.emphasis, start, len(self.text)))
 
     def signature(self) -> list[tuple[str, str]]:
-        """(character, style) for every non-whitespace character; the style
-        only counts on letters and digits."""
+        """(character, style) for every non-whitespace character, curly
+        quotes straightened; the style only counts on letters and digits."""
         styles = [""] * len(self.text)
         for start, end, style in _clip(self.emphasis, 0, len(self.text)):
             styles[start:end] = [style] * (end - start)
         return [
             (char, style if char.isalnum() else "")
-            for char, style in zip(self.text, styles, strict=True)
+            for char, style in zip(self.text.translate(_STRAIGHT_QUOTES), styles, strict=True)
             if not char.isspace()
         ]
 
