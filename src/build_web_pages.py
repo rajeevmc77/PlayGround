@@ -23,6 +23,7 @@ Usage:
     python3 src/build_web_pages.py
     python3 src/build_web_pages.py --version 2024 --date 2024-03-08
     python3 src/build_web_pages.py --only nbc.divBV2.part9.sect38
+    python3 src/build_web_pages.py --measure-only   # re-measure the saved pages, offline
 """
 
 import argparse
@@ -282,6 +283,17 @@ async def run(
     return incomplete
 
 
+async def remeasure(output_dir: str) -> None:
+    """Re-runs just the layout pass over every already-saved page - offline,
+    no scraping and no equation capture."""
+    pages_dir = Path(output_dir) / "web_pages"
+    manifest = pages_dir / "pages.json"
+    if not manifest.exists():
+        sys.exit(f"No such file: {manifest} (run src/build_web_pages.py first)")
+    citations = list(json.loads(manifest.read_text(encoding="utf-8")))
+    await measure_layouts(pages_dir, citations)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -289,7 +301,14 @@ def main() -> None:
     parser.add_argument("--date", default=DEFAULT_DATE)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--only", help="scrape just this page citation (kept pages stay)")
+    parser.add_argument(
+        "--measure-only", action="store_true", help="re-measure the saved pages' layouts, offline"
+    )
     args = parser.parse_args()
+    if args.measure_only:
+        asyncio.run(remeasure(args.output_dir))
+        print(f"Re-measured {args.output_dir}/web_pages/", file=sys.stderr)
+        return
     incomplete = asyncio.run(
         run(args.base_url, args.version, args.date, args.output_dir, args.only)
     )

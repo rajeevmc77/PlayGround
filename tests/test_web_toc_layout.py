@@ -197,3 +197,41 @@ def test_bbox_does_not_depend_on_how_far_the_panel_is_scrolled(measured):
 
 def test_a_page_without_the_content_panel_has_no_layout(measured):
     assert measured["no_panel"] is None
+
+
+# A web font still downloading when `load` fires (the saved pages' BC Sans
+# often is, with many tabs measured at once) - the block the font resizes is
+# stood in for by one the page resizes when `document.fonts.ready` resolves.
+_LATE_FONT_PAGE = """<!DOCTYPE html><html><body><main><div>
+<main class="ui-ContentPanel"><div id="late" style="height:10px"></div></main>
+</div></main><script>
+window.addEventListener('load', () => {
+  const face = new FontFace('Late', 'url(/late.woff2)');
+  document.fonts.add(face);
+  face.load().catch(() => null);
+  document.fonts.ready.then(() => { document.getElementById('late').style.height = '100px'; });
+});
+</script></body></html>"""
+
+
+async def _measure_with_a_late_font(url):
+    async def late_font(route):
+        await asyncio.sleep(0.5)
+        await route.fulfill(status=404)
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch()
+        tab = await browser.new_page()
+        await tab.route("**/late.woff2", late_font)
+        await tab.goto(url, wait_until="load")
+        layout = await tab.evaluate(LAYOUT_JS)
+        await browser.close()
+    return layout
+
+
+def test_the_layout_is_measured_once_the_pages_web_fonts_have_loaded(tmp_path):
+    (tmp_path / "late.html").write_text(_LATE_FONT_PAGE)
+    with serve_pages(tmp_path) as base_url:
+        layout = asyncio.run(_measure_with_a_late_font(f"{base_url}/late.html"))
+    bbox = layout["elements"]["late"]["bbox"]
+    assert bbox["y1"] - bbox["y0"] == 100
