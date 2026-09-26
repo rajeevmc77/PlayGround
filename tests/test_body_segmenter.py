@@ -225,3 +225,47 @@ def test_subclause_content_and_ownership_after_a_new_clause_resets():
     assert clause_a.children[0].content == "subclause under a"
     assert clause_b.content == "clause b, no subclauses"
     assert clause_b.children == []
+
+
+def test_roman_i_after_non_h_clause_is_subclause_even_with_flat_indent():
+    """Division A Article 1.3.3.2 (PDF page 15): every marker sits at the same
+    x0 (~108.6pt), so the indent threshold is noise - 'i)' at 108.580 lands a
+    hair left of it. 'i)' after 'b)' is not the next clause letter ('c') but
+    is the next roman of (b)'s own i, ii, iii... sequence, so it opens a
+    Subclause of (b); (c) and its own i..iv follow as normal."""
+    body = [
+        line(14, 119, 108.580, "1) Parts 3, 4, 5, and 6 apply to buildings"),
+        line(14, 137, 108.580, "a) classified as post-disaster buildings,"),
+        line(14, 155, 108.580, "b) used for major occupancies classified as"),
+        line(14, 174, 108.580, "i) Group A, assembly occupancies,"),
+        line(14, 192, 108.590, "ii) Group B, care occupancies, or"),
+        line(14, 211, 108.600, "iii) Group F, Division 1, or"),
+        line(14, 229, 108.610, "c) exceeding 600 m2 in building area"),
+        line(14, 260, 108.595, "i) Group C, residential occupancies,"),
+        line(14, 278, 108.595, "ii) Group D, business occupancies,"),
+        line(14, 297, 108.595, "iii) Group E, mercantile occupancies, or"),
+        line(14, 315, 108.595, "iv) Group F, Divisions 2 and 3."),
+    ]
+    sentences = segment_article_body(body, "A.1.3.3.2.", article_end_page=15)
+    clauses = sentences[0].children
+    assert [c.identifier for c in clauses] == ["(a)", "(b)", "(c)"]
+    assert [s.identifier for s in clauses[1].children] == ["(i)", "(ii)", "(iii)"]
+    assert [s.identifier for s in clauses[2].children] == ["(i)", "(ii)", "(iii)", "(iv)"]
+    assert all(s.type == "Subclause" for c in clauses for s in c.children)
+
+
+def test_roman_v_continuing_subclause_sequence_is_subclause_despite_threshold():
+    """'v)' right after subclause 'iv)' continues the roman sequence even when
+    the indent threshold would call it a clause."""
+    body = [
+        line(5, 100, 50, "1) intro:"),
+        line(5, 112, 70, "a) clause a"),
+        line(5, 124, 60, "i) one"),
+        line(5, 136, 60, "ii) two"),
+        line(5, 148, 60, "iii) three"),
+        line(5, 160, 60, "iv) four"),
+        line(5, 172, 60, "v) five"),
+    ]
+    sentences = segment_article_body(body, "B-5.5.5.5.", article_end_page=7)
+    clause_a = sentences[0].children[0]
+    assert [s.identifier for s in clause_a.children] == ["(i)", "(ii)", "(iii)", "(iv)", "(v)"]
