@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from build_mo_toc import build_document, drop_images_over_tables, main, run
-from mo_toc.domain.models import BBox, Node
+from build_mo_toc import build_document, drop_images_over_tables, main, partition_equations, run
+from mo_toc.domain.models import BBox, ImageAsset, Node
 from mo_toc.parsing.image_extractor import RawImage
 from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES
 from mo_toc.parsing.table_extractor import TableAnchor, TableRegion
@@ -32,6 +32,7 @@ def test_run_writes_bcbc_pdf_json_not_mo_toc_json(tmp_path):
 
 @patch("build_mo_toc.write_json")
 @patch("build_mo_toc.number_images")
+@patch("build_mo_toc.partition_equations")
 @patch("build_mo_toc.match_images")
 @patch("build_mo_toc.write_images")
 @patch("build_mo_toc.drop_images_over_tables")
@@ -45,6 +46,7 @@ def test_run_wires_pipeline_in_order(
     mock_drop_images,
     mock_write_images,
     mock_match_images,
+    mock_partition_equations,
     mock_number_images,
     mock_write_json,
     tmp_path,
@@ -60,6 +62,7 @@ def test_run_wires_pipeline_in_order(
     mock_drop_images.return_value = ["FILTERED_RAW_IMAGE"]
     mock_write_images.return_value = ["IMAGE_ASSET"]
     mock_match_images.return_value = ["MATCHED_IMAGE_ASSET"]
+    mock_partition_equations.return_value = (["EQUATION_IMAGE"], ["FIGURE_IMAGE"])
 
     manager = MagicMock()
     manager.attach_mock(mock_extract_all_pages, "extract_all_pages")
@@ -68,6 +71,7 @@ def test_run_wires_pipeline_in_order(
     manager.attach_mock(mock_drop_images, "drop_images_over_tables")
     manager.attach_mock(mock_write_images, "write_images")
     manager.attach_mock(mock_match_images, "match_images")
+    manager.attach_mock(mock_partition_equations, "partition_equations")
     manager.attach_mock(mock_number_images, "number_images")
     manager.attach_mock(mock_write_json, "write_json")
 
@@ -79,13 +83,17 @@ def test_run_wires_pipeline_in_order(
     mock_drop_images.assert_called_once_with("RAW_IMAGES", "STITCHED_REGIONS")
     mock_write_images.assert_called_once_with(["FILTERED_RAW_IMAGE"], str(tmp_path / "images"))
     mock_match_images.assert_called_once_with(["IMAGE_ASSET"], ["CAPTION"], "VOLUME")
-    mock_number_images.assert_called_once()
-    images_arg, scope_arg = mock_number_images.call_args.args
-    assert images_arg == ["MATCHED_IMAGE_ASSET"]
-    assert scope_arg == {"SCOPE": "MAP"}
-    skip = mock_number_images.call_args.kwargs["skip"]
+    mock_partition_equations.assert_called_once_with(["MATCHED_IMAGE_ASSET"], "STITCHED_REGIONS")
+    assert mock_number_images.call_count == 2
+    figures_call, equations_call = mock_number_images.call_args_list
+    assert figures_call.args[0] == ["FIGURE_IMAGE"]
+    assert figures_call.args[1] == {"SCOPE": "MAP"}
+    skip = figures_call.kwargs["skip"]
     assert skip(SimpleNamespace(decorative=True)) is True
     assert skip(SimpleNamespace(decorative=False)) is False
+    assert equations_call.args[0] == ["EQUATION_IMAGE"]
+    assert equations_call.args[1] == {"SCOPE": "MAP"}
+    assert equations_call.kwargs == {"label": "Eq"}
     mock_write_json.assert_called_once_with(
         "VOLUME", ["CAPTION"], ["MATCHED_IMAGE_ASSET"], str(tmp_path / "bcbc_pdf.json")
     )
@@ -97,6 +105,8 @@ def test_run_wires_pipeline_in_order(
         "drop_images_over_tables",
         "write_images",
         "match_images",
+        "partition_equations",
+        "number_images",
         "number_images",
         "write_json",
     ]
@@ -209,6 +219,71 @@ def test_drop_images_over_tables_keeps_non_overlapping_image_on_a_table_page():
     kept = drop_images_over_tables([non_overlapping_image], table_regions_by_page)
 
     assert kept == [non_overlapping_image]
+
+
+def _image_asset(page, bbox, caption_kind=None, decorative=False):
+    return ImageAsset(
+        page=page,
+        bbox=bbox,
+        width=10,
+        height=10,
+        phash=None,
+        image_path="images/x.png",
+        caption_kind=caption_kind,
+        decorative=decorative,
+    )
+
+
+def test_partition_equations_puts_wide_uncaptioned_image_in_equations():
+    formula = _image_asset(page=490, bbox=BBox(100.0, 100.0, 240.0, 126.0))
+
+    equations, figures = partition_equations([formula], table_regions_by_page=[])
+
+    assert equations == [formula]
+    assert figures == []
+
+
+def test_partition_equations_keeps_captioned_wide_image_as_a_figure():
+    # A real Figure caption means it's a genuine figure, never relabeled as
+    # an equation regardless of its shape.
+    captioned = _image_asset(page=490, bbox=BBox(100.0, 100.0, 240.0, 126.0), caption_kind="Figure")
+
+    equations, figures = partition_equations([captioned], table_regions_by_page=[])
+
+    assert equations == []
+    assert figures == [captioned]
+
+
+def test_partition_equations_keeps_decorative_wide_image_as_a_figure():
+    decorative = _image_asset(page=490, bbox=BBox(100.0, 100.0, 240.0, 126.0), decorative=True)
+
+    equations, figures = partition_equations([decorative], table_regions_by_page=[])
+
+    assert equations == []
+    assert figures == [decorative]
+
+
+def test_partition_equations_keeps_square_uncaptioned_image_as_a_figure():
+    # A repeated icon/diagram, not a formula - equations always read wide.
+    square = _image_asset(page=490, bbox=BBox(100.0, 100.0, 173.0, 173.0))
+
+    equations, figures = partition_equations([square], table_regions_by_page=[])
+
+    assert equations == []
+    assert figures == [square]
+
+
+def test_partition_equations_keeps_table_embedded_wide_image_as_a_figure():
+    # A wide illustration inside a spec table's own cell (e.g. an assembly
+    # cross-section) - table membership overrides the wide-shape heuristic.
+    embedded = _image_asset(page=527, bbox=BBox(100.0, 100.0, 240.0, 126.0))
+    table_regions_by_page = [[] for _ in range(527)]
+    table_regions_by_page[526] = [_table_region_on_page(526, BBox(90.0, 90.0, 310.0, 310.0))]
+
+    equations, figures = partition_equations([embedded], table_regions_by_page)
+
+    assert equations == []
+    assert figures == [embedded]
 
 
 def test_main_exits_when_pdf_missing(tmp_path, monkeypatch):
