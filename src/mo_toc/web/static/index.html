@@ -3,61 +3,20 @@
 <head>
   <meta charset="utf-8">
   <title>MO Package TOC Viewer</title>
-  <!-- The live site's own nav-tree/breadcrumbs CSS, extracted by src/build_web_pages.py -->
-  <link rel="stylesheet" href="/web-assets/site-nav.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div id="sidebar">
-    <div id="tabs">
-      <button id="tab-toc" class="active">Table of Contents - pdf</button>
-      <button id="tab-toc-web">Table of Contents - web</button>
-      <button id="tab-toc-both">Table of Contents - Both</button>
-      <button id="tab-compare">Compare</button>
-    </div>
-    <div id="tree">
-      <div class="toc-filters">
-        <label><input type="checkbox" id="filter-figures" checked> Figures</label>
-        <label><input type="checkbox" id="filter-equations" checked> Equations / Formula</label>
-        <label><input type="checkbox" id="filter-tables" checked> Tables</label>
-      </div>
-      <div id="tree-content"></div>
-    </div>
-    <div id="tree-web" style="display:none">
-      <div class="toc-filters">
-        <label><input type="checkbox" id="filter-web-figures" checked> Figures</label>
-        <label><input type="checkbox" id="filter-web-tables" checked> Tables</label>
-        <label><input type="checkbox" id="filter-web-body" checked> Body Text</label>
-      </div>
-      <div class="home-sidebar-nav">
-        <nav class="nav-tree" id="tree-web-content" aria-label="Building code navigation"></nav>
-      </div>
-    </div>
+  <div id="tabs">
+    <button id="tab-toc-both" class="active">Table of Contents - Both</button>
+    <button id="tab-compare">Compare</button>
   </div>
-  <div id="main">
-    <div id="controls">
-      <button id="prev-page">&larr; Prev</button>
-      <span id="page-indicator">Page 1</span>
-      <button id="next-page">Next &rarr;</button>
-    </div>
-    <canvas id="page-canvas"></canvas>
-    <div id="highlight" style="display:none"></div>
-    <div id="web-reading" style="display:none">
-      <div id="web-reading-bar">
-        <nav class="breadcrumbs" id="web-breadcrumbs" aria-label="Breadcrumb navigation">
-          <ol class="breadcrumbs-list"></ol>
-        </nav>
-        <a id="web-content-link" target="_blank" rel="noopener" hidden>View on official site &#8599;</a>
-      </div>
-      <div id="web-reading-placeholder" class="compare-placeholder">Select a section to start reading.</div>
-      <iframe id="web-page-frame" title="BC Building Code reading page" hidden></iframe>
-    </div>
-  </div>
-  <div id="toc-both" style="display:none">
+  <div id="toc-both">
     <div id="both-tree">
       <div class="toc-filters">
         <label><input type="checkbox" id="filter-both-figures" checked> Figures</label>
+        <label><input type="checkbox" id="filter-both-tables" checked> Tables</label>
         <label><input type="checkbox" id="filter-both-equations" checked> Equations / Formula</label>
+        <label><input type="checkbox" id="filter-both-text" checked> Text</label>
         <label><input type="checkbox" id="filter-both-images" checked> Images</label>
       </div>
       <div id="both-tree-content"></div>
@@ -95,6 +54,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=20"></script>
+  <script type="module" src="/static/viewer.js?v=21"></script>
 </body>
 </html>

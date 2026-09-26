@@ -48,3 +48,40 @@ export function minVisibleBox(bbox) {
     height: Math.max(bbox.y1 - bbox.y0, 2),
   };
 }
+
+// The Text filter's rows. Headings (Volume ... Article, the Appendix chain)
+// are the tree's frame and stay whatever the filters say; a Table's own
+// Rows/Cells are its content and follow the Table.
+const TEXT_TYPES = new Set(["Sentence", "Clause", "Subclause", "Note"]);
+
+export function isShownInBoth(node, filters) {
+  if (TEXT_TYPES.has(node.type)) return filters.text;
+  if (node.type === "Table") return filters.table;
+  return true;
+}
+
+// A hidden text row is replaced by whatever it holds that is still shown
+// (e.g. a Table lifted out of its Sentence); a hidden Table goes with its
+// Rows and Cells.
+export function visibleBothChildren(node, filters) {
+  return node.children.flatMap((child) => {
+    if (isShownInBoth(child, filters)) return [child];
+    if (child.type === "Table") return [];
+    return visibleBothChildren(child, filters);
+  });
+}
+
+// citation -> the citation of the row that shows its images: itself when
+// shown, else the nearest shown ancestor above it (and above any hidden
+// Table it sits in), so a still-ticked Figure never disappears with its row.
+export function bothHostCitations(tree, filters) {
+  const hosts = new Map();
+  const walk = (node, host, insideHiddenTable) => {
+    const hiddenTable = insideHiddenTable || (node.type === "Table" && !filters.table);
+    const own = !hiddenTable && isShownInBoth(node, filters) ? node.citation : host;
+    hosts.set(node.citation, own);
+    node.children.forEach((child) => walk(child, own, hiddenTable));
+  };
+  walk(tree, tree.citation, false);
+  return hosts;
+}

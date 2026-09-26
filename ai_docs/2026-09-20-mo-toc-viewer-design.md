@@ -189,6 +189,22 @@ heavy storage, worse UX (no selectable text layer), no benefit over on-demand re
 pdf.js's `viewport.convertToViewportRectangle()` consumes directly. No coordinate-system
 translation needed.
 
+**Update (2026-09-26):** the separate "Table of Contents - pdf" and "Table of Contents - web"
+tabs are gone. The viewer now has two tabs:
+- **"Table of Contents - Both"**, the default. The PDF tree drives the PDF page and the
+  matching saved web page side by side, joined by `unified_number`.
+- **"Compare"**, for PDF vs web images.
+
+The Both tab's filters work in two ways:
+- Figures, Equations / Formula and Images choose which image rows attach to the tree.
+- Tables and Text show or hide rows of the tree itself. Text covers Sentence, Clause,
+  Subclause and Note. A hidden Table takes its Rows and Cells with it.
+
+Headings (Volume … Article, and the Appendix chain) always stay. A hidden text row's still-shown
+contents move up to its parent, e.g. a Table out of its Sentence. So do the images of any
+hidden row: they attach to the nearest row still shown. See `isShownInBoth`,
+`visibleBothChildren` and `bothHostCitations` in `web/static/both_view.mjs`.
+
 ## 7. Web API (`web/api.py`)
 
 - `GET /api/toc` — full JSON tree (Volume root with nested children).

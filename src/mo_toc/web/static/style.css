@@ -1,37 +1,16 @@
 :root { --gap: 8px; font-family: system-ui, sans-serif; }
-body { margin: 0; display: flex; height: 100vh; }
-#sidebar { width: 380px; overflow-y: auto; border-right: 1px solid #ccc; padding: var(--gap); }
-#tabs { position: relative; z-index: 3; background: #fff; }
+/* The tab bar on top, the active tab's panel filling the rest. */
+body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
+#tabs { flex-shrink: 0; padding: var(--gap); border-bottom: 1px solid #ccc; background: #fff; }
 #tabs button { margin-right: 4px; }
 #tabs button.active { font-weight: bold; }
-#tree, #tree-web { margin-top: var(--gap); }
 .toc-filters { display: flex; gap: var(--gap); flex-wrap: wrap; margin-bottom: var(--gap); }
 .node-row { cursor: pointer; padding: 2px 0; white-space: nowrap; }
 .node-row:hover { background: #eef; }
 .node-children { margin-left: 14px; display: none; }
 .node-children.expanded { display: block; }
-#main { flex: 1; overflow: auto; position: relative; text-align: center; }
-#page-canvas { margin-top: 12px; box-shadow: 0 0 4px #999; }
-#highlight { position: absolute; border: 2px solid red; background: rgba(255,0,0,0.15);
-             pointer-events: none; transition: opacity 1.5s ease-out; }
-#controls { position: sticky; top: 0; background: white; padding: var(--gap); z-index: 1; }
 .image-row img { max-width: 60px; max-height: 60px; vertical-align: middle; margin-right: 6px; }
-/* "Table of Contents - web": the tree and breadcrumbs are styled by the
-   live site's own CSS (/web-assets/site-nav.css) and the reading page is the
-   site's own scraped page in an iframe - only the surrounding layout lives
-   here. The site's CSS relies on its body font/colour, set on these roots. */
-#tree-web, #web-reading-bar { font: var(--typography-regular-body); color: var(--typography-color-primary); }
-/* The site's own global reset; its nav rows are width:100% plus an inline
-   padding-left, which only fits inside the sidebar under border-box. */
-#tree-web *, #web-reading-bar * { box-sizing: border-box; }
-#web-reading { position: absolute; inset: 0; flex-direction: column; text-align: left; }
-#web-reading-bar { display: flex; align-items: center; justify-content: space-between;
-                   gap: var(--gap); border-bottom: 1px solid var(--surface-color-border-default, #d8d8d8); }
-#web-reading-bar .breadcrumbs { flex: 1; min-width: 0; }
-#web-content-link { flex-shrink: 0; padding: 0 calc(var(--gap) * 2); color: var(--typography-color-link, #255a90); }
-#web-reading-placeholder { padding: calc(var(--gap) * 3); }
-#web-page-frame { flex: 1; width: 100%; border: 0; }
-#compare { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; z-index: 2; display: flex; }
+#compare, #toc-both { flex: 1; min-height: 0; display: flex; }
 #compare-tree { width: 320px; flex-shrink: 0; overflow-y: auto; padding: var(--gap); box-sizing: border-box; border-right: 1px solid #ccc; }
 #compare-images { flex: 1; display: flex; overflow: hidden; }
 .compare-image-col { flex: 1; overflow-y: auto; padding: var(--gap); box-sizing: border-box; text-align: center; }
@@ -39,7 +18,6 @@ body { margin: 0; display: flex; height: 100vh; }
 .compare-image-col h3 { position: sticky; top: 0; background: #fff; margin: 0 0 var(--gap); padding-bottom: var(--gap); }
 .compare-image-col img { max-width: 100%; }
 .compare-placeholder { color: #888; }
-#toc-both { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; z-index: 2; display: flex; }
 #both-tree { width: 320px; flex-shrink: 0; overflow-y: auto; padding: var(--gap); box-sizing: border-box; border-right: 1px solid #ccc; }
 #both-content { flex: 1; display: flex; overflow: hidden; }
 .both-content-col { flex: 1; overflow: auto; box-sizing: border-box; text-align: center; }

@@ -26,10 +26,6 @@ def _add_web_page_routes(app: FastAPI, web_pages_dir: str | None) -> None:
             raise HTTPException(status_code=404, detail="Not found")
         return path
 
-    @app.get("/api/web-pages")
-    def get_web_pages():
-        return JSONResponse(json.loads((built_dir() / "pages.json").read_text()))
-
     @app.get("/web-page/{citation}")
     def get_web_page(citation: str):
         return FileResponse(str(existing(page_file(built_dir(), citation))))

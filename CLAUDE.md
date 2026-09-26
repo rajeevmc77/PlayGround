@@ -21,11 +21,15 @@ independent tools live here:
    Appendix chain, BackMatter) plus a flat Table/Figure caption index
    and a full embedded-image index — every node carries a page number and a precise
    bounding box. Served as JSON/Markdown (`src/build_mo_toc.py`) and through an
-   interactive web viewer (`src/serve_mo_toc.py`) that scrolls to and highlights the exact
-   clicked location. See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
+   interactive web viewer (`src/serve_mo_toc.py`) with two tabs: "Table of Contents - Both"
+   (the PDF tree driving the PDF page and the matching saved web page side by side, each
+   highlighting the clicked location; Figures / Tables / Equations / Text / Images filters
+   show or hide those rows — headings always stay, and an image whose row is hidden moves up
+   to the nearest row still shown) and "Compare" (PDF vs web images).
+   See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
    A second, independent index (`src/web_toc/`, `src/build_web_toc.py`) is sourced from the
-   BC Building Code website instead of the PDF, and is served as a fourth tab in the same
-   viewer. It is built in two steps (see `ai_docs/2026-09-25-web-toc-local-scrape-design.md`):
+   BC Building Code website instead of the PDF, and feeds the viewer's web side.
+   It is built in two steps (see `ai_docs/2026-09-25-web-toc-local-scrape-design.md`):
    `src/build_web_pages.py` is the **only** step that touches the network — it caches the
    site's navigation tree + every content JSON under `output/web_source/` (with
    `snapshot.json` recording the version/effective date), renders each of the site's own
@@ -150,7 +154,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (661 tests — 643 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
+- A real test suite (660 tests — 642 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
   and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full
