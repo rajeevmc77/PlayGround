@@ -12,9 +12,10 @@ import {
 import {
   classifyImage,
   collectUnifiedLocations,
+  fitScale,
   minVisibleBox,
   pageFileRoute,
-} from "./both_view.mjs?v=2";
+} from "./both_view.mjs?v=3";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -581,9 +582,15 @@ async function loadCompareTab() {
   render();
 }
 
-async function renderPdfPage(canvasId, pageNumber) {
+// `scaleFn` picks the render scale from the page's native (scale:1) width -
+// pdf.js can rasterize at any scale directly, so "fit the column width"
+// needs no separate CSS resizing step; showPdfHighlight already keys its
+// bbox math off the actual viewport.scale used here, so it stays correct
+// whatever scale is chosen.
+async function renderPdfPage(canvasId, pageNumber, scaleFn) {
   const page = await pdfDoc.getPage(pageNumber);
-  const viewport = page.getViewport({ scale: 1.5 });
+  const nativeWidth = page.getViewport({ scale: 1 }).width;
+  const viewport = page.getViewport({ scale: scaleFn(nativeWidth) });
   const canvas = document.getElementById(canvasId);
   canvas.width = viewport.width;
   canvas.height = viewport.height;
@@ -615,7 +622,7 @@ function showPdfHighlight(canvasId, highlightId, scrollContainerId, viewport, bb
 }
 
 async function renderPage(pageNumber) {
-  const viewport = await renderPdfPage("page-canvas", pageNumber);
+  const viewport = await renderPdfPage("page-canvas", pageNumber, () => 1.5);
   document.getElementById("page-indicator").textContent = `Page ${pageNumber}`;
   currentPage = pageNumber;
   return viewport;
@@ -661,7 +668,10 @@ function attachBothImages(filters) {
 }
 
 async function goToBothPdfLocation(pageNumber, bbox) {
-  const viewport = await renderPdfPage("both-pdf-canvas", pageNumber);
+  const colWidth = document.getElementById("both-pdf-col").clientWidth;
+  const viewport = await renderPdfPage("both-pdf-canvas", pageNumber, (nativeWidth) =>
+    fitScale(colWidth, nativeWidth)
+  );
   // "both-pdf-pane" only sizes to its content; "both-pdf-col" is the actual
   // overflow:auto ancestor that scrolling needs to target.
   showPdfHighlight("both-pdf-canvas", "both-pdf-highlight", "both-pdf-col", viewport, bbox);
@@ -711,17 +721,40 @@ function expandReadingView(doc) {
   doc.head.appendChild(style);
 }
 
+// The frame's own true, unscaled layout size (see the CSS comment on
+// #both-web-frame) - never changed, so the saved page always reflows
+// exactly as it did when build_web_pages.py captured its bbox coordinates.
+const WEB_FRAME_WIDTH = 1500;
+const WEB_FRAME_HEIGHT = 950;
+
+// Visually shrinks/grows the iframe to the column's width with a CSS
+// transform, which resizes nothing about its internal layout - .fit-wrap is
+// sized to match so the column reserves exactly that much space instead of
+// the frame's true footprint.
+function fitWebFrameToColumn() {
+  const scale = fitScale(document.getElementById("both-web-col").clientWidth, WEB_FRAME_WIDTH);
+  document.getElementById("both-web-frame").style.transform = `scale(${scale})`;
+  Object.assign(document.getElementById("both-web-fit").style, {
+    width: `${WEB_FRAME_WIDTH * scale}px`,
+    height: `${WEB_FRAME_HEIGHT * scale}px`,
+  });
+}
+
 function showBothWebLocation(location) {
   const frame = document.getElementById("both-web-frame");
+  const fitWrap = document.getElementById("both-web-fit");
   const placeholder = document.getElementById("both-web-placeholder");
   if (!location) {
     frame.hidden = true;
+    fitWrap.hidden = true;
     placeholder.hidden = false;
     placeholder.textContent = "No matching web content for this item.";
     return;
   }
   frame.hidden = false;
+  fitWrap.hidden = false;
   placeholder.hidden = true;
+  fitWebFrameToColumn();
   frame.onload = () => {
     expandReadingView(frame.contentDocument);
     highlightInFrame(frame.contentDocument, location.bbox);
@@ -729,9 +762,22 @@ function showBothWebLocation(location) {
   frame.src = `${pageFileRoute(location.page_file)}?t=${Date.now()}`;
 }
 
+let bothSelection = null;
+
 function selectBothNode(pageNumber, bbox, unifiedNumber) {
+  bothSelection = { pageNumber, bbox, unifiedNumber };
   goToBothPdfLocation(pageNumber, bbox);
   showBothWebLocation(bothLocations.get(unifiedNumber) || null);
+}
+
+// A column's width can change after a selection is already showing (window
+// resize, sidebar toggle) - re-fit both panes to it rather than leaving
+// them sized for a column that no longer exists.
+function refitBothPanels() {
+  if (!bothSelection) return;
+  const { pageNumber, bbox, unifiedNumber } = bothSelection;
+  goToBothPdfLocation(pageNumber, bbox);
+  if (bothLocations.get(unifiedNumber)) fitWebFrameToColumn();
 }
 
 function renderBothImageRow(img, index, depth) {
@@ -811,6 +857,12 @@ document.getElementById("next-page").addEventListener("click", () => {
 });
 ["filter-both-figures", "filter-both-equations", "filter-both-images"].forEach((id) => {
   document.getElementById(id).addEventListener("change", renderBothTree);
+});
+
+let resizeDebounce = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeDebounce);
+  resizeDebounce = setTimeout(refitBothPanels, 150);
 });
 
 (async function init() {

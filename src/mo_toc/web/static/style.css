@@ -46,14 +46,22 @@ body { margin: 0; display: flex; height: 100vh; }
 .both-content-col:first-child { border-right: 1px solid #ccc; }
 .both-content-col h3 { position: sticky; top: 0; left: 0; background: #fff; margin: 0; padding: var(--gap); z-index: 1; }
 .both-pane { position: relative; }
-#both-pdf-canvas { margin-top: 12px; box-shadow: 0 0 4px #999; }
+/* The canvas is rendered (by pdf.js) at whatever scale exactly fills the
+   column's own width - see renderPdfPage's fit callback - so it never needs
+   a horizontal scrollbar to be read. */
+#both-pdf-canvas { display: block; margin: 12px auto 0; box-shadow: 0 0 4px #999; }
 /* Fixed to the exact viewport build_web_pages.py rendered at (page_source.py),
    so the saved page's own CSS reflows identically and its recorded bbox
-   stays valid; the frame scrolls its own document to the highlight rather
-   than growing to full content height. */
-#both-web-frame { display: block; width: 1500px; height: 950px; border: 0; margin: 12px auto; }
-/* The base rule's own `display: block` (needed for margin:auto centering)
+   stays valid - width/height here are its true, unscaled layout size. It is
+   never resized to fit the column; instead .fit-wrap scales it visually
+   (see showBothWebLocation), which changes nothing about its internal
+   layout or the coordinates its bbox highlight is measured in. */
+#both-web-frame { display: block; width: 1500px; height: 950px; border: 0; transform-origin: top left; }
+/* The base rule's own `display: block` (needed under the transform)
    outranks the `[hidden]` attribute's UA-stylesheet display:none - restore
    it explicitly so frame.hidden = true actually hides stale content. */
 #both-web-frame[hidden] { display: none; }
+/* Sized in JS to the frame's post-scale footprint, so the column reserves
+   exactly that much space instead of the frame's true 1500x950. */
+.fit-wrap { margin: 12px auto; overflow: hidden; }
 .content-highlight { position: absolute; border: 2px solid red; background: rgba(255,0,0,0.15); pointer-events: none; }
