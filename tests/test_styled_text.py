@@ -92,6 +92,14 @@ def test_matches_ignores_every_whitespace_difference():
     assert matches(StyledText("fire com partment"), StyledText("firecompartment"))
 
 
+def test_matches_treats_curly_and_straight_quotes_as_the_same():
+    assert matches(
+        StyledText("“Fire Tests of Roof Coverings”"), StyledText('"Fire Tests of Roof Coverings"')
+    )
+    assert matches(StyledText("the owner’s ‘site’"), StyledText("the owner's 'site'"))
+    assert not matches(StyledText('"quoted"'), StyledText("'quoted'"))
+
+
 def test_matches_is_case_and_character_exact_otherwise():
     assert not matches(StyledText("Building"), StyledText("building"))
     assert not matches(StyledText("a building,"), StyledText("a building;"))
