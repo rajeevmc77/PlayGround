@@ -228,20 +228,9 @@ def _write_web_pages_fixture(tmp_path):
     return str(pages_dir)
 
 
-def test_get_web_pages_lists_the_scraped_page_manifest(tmp_path):
-    client = _make_client(tmp_path, web_pages_dir=_write_web_pages_fixture(tmp_path))
-    resp = client.get("/api/web-pages")
-    assert resp.status_code == 200
-    assert resp.json() == {"nbc.divA.part1.sect1": "Section 1"}
-
-
-def test_get_web_pages_returns_503_when_not_built(tmp_path):
+def test_web_page_returns_503_when_not_built(tmp_path):
     client = _make_client(tmp_path, web_pages_dir=str(tmp_path / "missing"))
-    assert client.get("/api/web-pages").status_code == 503
-
-
-def test_get_web_pages_returns_503_when_no_dir_configured(tmp_path):
-    assert _make_client(tmp_path).get("/api/web-pages").status_code == 503
+    assert client.get("/web-page/nbc.divA.part1.sect1").status_code == 503
 
 
 def test_get_web_page_serves_the_scraped_html(tmp_path):

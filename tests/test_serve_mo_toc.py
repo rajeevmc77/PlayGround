@@ -88,6 +88,7 @@ def test_get_app_serves_scraped_web_pages_from_web_pages_dir(tmp_path, monkeypat
     pages_dir = tmp_path / "web_pages"
     pages_dir.mkdir()
     (pages_dir / "pages.json").write_text('{"nbc.divA.part1": "Part 1"}')
+    (pages_dir / "nbc.divA.part1.html").write_text("<html>Part 1</html>")
 
     monkeypatch.setattr(serve_mo_toc, "TOC_JSON", toc_json_path)
     monkeypatch.setattr(serve_mo_toc, "PDF_PATH", str(pdf_path))
@@ -97,4 +98,4 @@ def test_get_app_serves_scraped_web_pages_from_web_pages_dir(tmp_path, monkeypat
     monkeypatch.setattr(serve_mo_toc, "_app", None)
 
     client = TestClient(serve_mo_toc._get_app())
-    assert client.get("/api/web-pages").json() == {"nbc.divA.part1": "Part 1"}
+    assert client.get("/web-page/nbc.divA.part1").text == "<html>Part 1</html>"
