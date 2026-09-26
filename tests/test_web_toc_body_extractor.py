@@ -181,3 +181,33 @@ def test_attach_body_appends_each_sentence_under_its_owner_node():
     attach_body(root, [("nbc.divA.part1.sect1.art1", sentence_node)])
 
     assert owner.children == [sentence_node]
+
+
+def test_clause_letters_follow_json_order_not_the_sites_stale_letter_field():
+    """B.3.8.3.16.(1) on the site: a BC amendment inserted clauses without
+    re-lettering, so the JSON's `letter`s read h, a, i, b, c, d, f, g. The
+    JSON *order* is the code's order - it matches the PDF, and the site's own
+    cross-references ("see Note A-3.8.3.16.(1)(f)" on the 6th clause) - so
+    each clause is lettered by its position: a, b, c, ... h."""
+    sentence_id = "nbc.divB.part3.sect8.subsect3.art16.sent1"
+    stale = ["h", "a", "i", "b", "c", "d", "f", "g"]
+    sentence = {
+        "id": sentence_id,
+        "type": "sentence",
+        "number": 1,
+        "text": "Lavatories shall",
+        "clauses": [
+            {"id": f"{sentence_id}.clause{i}", "type": "clause", "letter": letter, "text": "x"}
+            for i, letter in enumerate(stale, start=1)
+        ],
+    }
+    [(_, node)] = extract_body({"content": [sentence]}, set(), "fallback")
+    assert [c.identifier for c in node.children] == [f"({c})" for c in "abcdefgh"]
+    assert node.children[0].citation == f"{sentence_id}.clause1"
+
+
+def test_clause_letter_position_ignores_a_skipped_id_less_clause():
+    sentence = _real_shaped_sentence()
+    sentence["clauses"].insert(0, {"type": "clause", "letter": "z", "text": "Malformed"})
+    [(_, node)] = extract_body({"content": [sentence]}, set(), "fallback")
+    assert [c.identifier for c in node.children] == ["(a)", "(b)"]
