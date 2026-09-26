@@ -10,6 +10,7 @@ import {
   fitScale,
   minVisibleBox,
   pageFileRoute,
+  renderedContentBox,
   visibleBothChildren,
 } from "../../src/mo_toc/web/static/both_view.mjs";
 
@@ -176,4 +177,55 @@ test("fitScale: the factor that makes content of nativeWidth exactly fill contai
 test("fitScale: falls back to 1 (native size) when the container hasn't laid out yet", () => {
   assert.equal(fitScale(0, 1500), 1);
   assert.equal(fitScale(-5, 1500), 1);
+});
+
+const PANEL = { left: 100, top: 50 };
+const NO_SCROLL = { left: 0, top: 0 };
+const rect = (left, top, right, bottom) => ({ left, top, right, bottom });
+// The element's own border box: a block spanning the panel's whole width.
+const OWN = rect(132, 90, 1544, 200);
+
+test("renderedContentBox: the union of the content's rects, from the panel's own top-left", () => {
+  // Two lines of a sentence, the second one shorter.
+  const rects = [rect(132, 90, 740, 117), rect(164, 117, 400, 144)];
+  assert.deepEqual(renderedContentBox(PANEL, NO_SCROLL, OWN, rects), {
+    x0: 32,
+    y0: 40,
+    x1: 640,
+    y1: 94,
+  });
+});
+
+test("renderedContentBox: adds the panel's scroll back, so the box is in its scrolled-out content space", () => {
+  const box = renderedContentBox(PANEL, { left: 5, top: 3000 }, OWN, [rect(132, 90, 740, 117)]);
+  assert.deepEqual(box, { x0: 37, y0: 3040, x1: 645, y1: 3067 });
+});
+
+test("renderedContentBox: skips empty rects (collapsed whitespace, hidden icons)", () => {
+  const rects = [rect(0, 0, 0, 0), rect(132, 90, 740, 117), rect(900, 150, 900, 150)];
+  assert.deepEqual(renderedContentBox(PANEL, NO_SCROLL, OWN, rects), {
+    x0: 32,
+    y0: 40,
+    x1: 640,
+    y1: 67,
+  });
+});
+
+test("renderedContentBox: stays inside the element's own box - rows scrolled out of a table's scroll container don't stretch it", () => {
+  const rects = [rect(132, 90, 740, 117), rect(132, 180, 1500, 5000)];
+  assert.deepEqual(renderedContentBox(PANEL, NO_SCROLL, OWN, rects), {
+    x0: 32,
+    y0: 40,
+    x1: 1400,
+    y1: 150,
+  });
+});
+
+test("renderedContentBox: null when nothing is rendered, so the caller keeps the stored bbox", () => {
+  assert.equal(renderedContentBox(PANEL, NO_SCROLL, OWN, []), null);
+  assert.equal(renderedContentBox(PANEL, NO_SCROLL, OWN, [rect(10, 10, 10, 30)]), null);
+});
+
+test("renderedContentBox: null when everything drawn lies outside the element's own box", () => {
+  assert.equal(renderedContentBox(PANEL, NO_SCROLL, OWN, [rect(132, 300, 740, 330)]), null);
 });

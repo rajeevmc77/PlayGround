@@ -23,7 +23,8 @@ independent tools live here:
    bounding box. Served as JSON/Markdown (`src/build_mo_toc.py`) and through an
    interactive web viewer (`src/serve_mo_toc.py`) with two tabs: "Table of Contents - Both"
    (the PDF tree driving the PDF page and the matching saved web page side by side, each
-   highlighting the clicked location; Figures / Tables / Equations / Text / Images filters
+   highlighting the clicked location - the web box is measured live from the node's
+   `xpath` in the saved page, hugging its rendered text; Figures / Tables / Equations / Text / Images filters
    show or hide those rows — headings always stay, and an image whose row is hidden moves up
    to the nearest row still shown) and "Compare" (PDF vs web images).
    See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
@@ -41,7 +42,9 @@ independent tools live here:
    then serves the saved pages locally, screenshots every MathJax-rendered equation to a PNG
    (`output/web_images/equations/` and `output/web_pages/assets/equations/`), rewrites each
    saved page to show those PNGs in place of MathJax, and measures the pages into
-   `output/web_pages/<citation>.layout.json`. Each equation becomes an `images` entry with
+   `output/web_pages/<citation>.layout.json` (once the page's web fonts have loaded -
+   measured in the fallback font, text wraps differently and every bbox below drifts;
+   `--measure-only` re-runs just this step, offline, over the pages already saved). Each equation becomes an `images` entry with
    `kind: "equation"` (figures are `kind: "figure"`), keyed `…EqN`, for comparing with the
    PDF's formula images. `src/build_web_toc.py` then runs **offline**:
    structure/numbering from the cached JSON (read as of the snapshot date — revised items
@@ -154,7 +157,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (660 tests — 642 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
+- A real test suite (664 tests — 646 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
   and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from build_web_pages import PAGE_FETCH_CONCURRENCY, main, run
+from build_web_pages import PAGE_FETCH_CONCURRENCY, main, remeasure, run
 from web_toc.domain.models import EquationCapture, ScrapedPage
 
 BASE = "https://site.example"
@@ -436,3 +436,44 @@ def test_main_reports_incomplete_tables_and_exits_non_zero(tmp_path, capsys):
         _main_with(["--output-dir", str(tmp_path)], {"p1": {"t1": [1, 3]}})
     assert exit_info.value.code == 1
     assert "INCOMPLETE p1: {'t1': [1, 3]}" in capsys.readouterr().err
+
+
+def test_remeasure_rewrites_every_saved_pages_layout_without_the_network(tmp_path):
+    pages_dir = tmp_path / "web_pages"
+    pages_dir.mkdir()
+    (pages_dir / "pages.json").write_text(json.dumps({"nbc.divA.part1": "Part 1"}))
+    (pages_dir / "nbc.divA.part1.html").write_text("<main></main>")
+    (pages_dir / "nbc.divA.part1.layout.json").write_text('{"stale": true}')
+    layout = {"elements": {"x": {"xpath": "/html/body/main/div/main/div[1]"}}}
+    browser = _FakeBrowser({}, layout=layout)
+
+    with (
+        patch("build_web_pages.PlaywrightPageSource", return_value=browser),
+        patch("build_web_pages.HttpxWebSource", side_effect=AssertionError("no network")),
+    ):
+        asyncio.run(remeasure(str(tmp_path)))
+
+    assert json.loads((pages_dir / "nbc.divA.part1.layout.json").read_text()) == layout
+    assert browser.local_calls == [("layout", "nbc.divA.part1.html")]
+
+
+def test_remeasure_without_saved_pages_says_to_build_them_first(tmp_path):
+    with pytest.raises(SystemExit, match="run src/build_web_pages.py first"):
+        asyncio.run(remeasure(str(tmp_path)))
+
+
+def test_main_with_measure_only_remeasures_instead_of_scraping(tmp_path):
+    async def fake_remeasure(output_dir):
+        fake_remeasure.output_dir = output_dir
+
+    async def no_run(*_):
+        raise AssertionError("scraped")
+
+    argv = ["build_web_pages.py", "--output-dir", str(tmp_path), "--measure-only"]
+    with (
+        patch("build_web_pages.remeasure", fake_remeasure),
+        patch("build_web_pages.run", no_run),
+        patch("sys.argv", argv),
+    ):
+        main()
+    assert fake_remeasure.output_dir == str(tmp_path)

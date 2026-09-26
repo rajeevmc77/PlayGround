@@ -49,6 +49,37 @@ export function minVisibleBox(bbox) {
   };
 }
 
+function clipTo(r, bounds) {
+  return {
+    left: Math.max(r.left, bounds.left),
+    top: Math.max(r.top, bounds.top),
+    right: Math.min(r.right, bounds.right),
+    bottom: Math.min(r.bottom, bounds.bottom),
+  };
+}
+
+// The box around what an element actually renders - its text lines and
+// images, given as viewport rects - in the same panel-relative, scrolled-out
+// space as a stored bbox. A block element's own box spans the panel's whole
+// width whatever its text; this hugs the text. Each rect is clipped to the
+// element's own box (`ownRect`), so text scrolled out of sight inside it -
+// a long table's hidden rows - can't stretch the box; empty rects (collapsed
+// whitespace, zero-size icons) are skipped; null if nothing is left.
+export function renderedContentBox(panelRect, panelScroll, ownRect, rects) {
+  const shown = rects
+    .map((r) => clipTo(r, ownRect))
+    .filter((r) => r.right > r.left && r.bottom > r.top);
+  if (shown.length === 0) return null;
+  const dx = panelScroll.left - panelRect.left;
+  const dy = panelScroll.top - panelRect.top;
+  return {
+    x0: Math.min(...shown.map((r) => r.left)) + dx,
+    y0: Math.min(...shown.map((r) => r.top)) + dy,
+    x1: Math.max(...shown.map((r) => r.right)) + dx,
+    y1: Math.max(...shown.map((r) => r.bottom)) + dy,
+  };
+}
+
 // The Text filter's rows. Headings (Volume ... Article, the Appendix chain)
 // are the tree's frame and stay whatever the filters say; a Table's own
 // Rows/Cells are its content and follow the Table.
