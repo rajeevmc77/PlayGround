@@ -25,3 +25,13 @@ def is_decorative(width: float, height: float) -> bool:
     is_square_ish = long_side / short_side <= MAX_NOISE_ASPECT_RATIO
     is_small = (width * height) < MAX_NOISE_AREA
     return is_square_ish and is_small
+
+
+def is_equation_shaped(width: float, height: float) -> bool:
+    """A rendered inline formula reads left-to-right on one text line, so its
+    crop is always wider than tall - unlike a diagram, which is as likely to
+    be portrait or square. Reuses the same aspect-ratio boundary as
+    is_decorative's "square-ish" test, just on the opposite side of it."""
+    if width <= 0 or height <= 0 or width <= height:
+        return False
+    return width / height >= MAX_NOISE_ASPECT_RATIO

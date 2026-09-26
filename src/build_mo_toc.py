@@ -13,6 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from mo_toc.domain.image_classification import is_equation_shaped
+from mo_toc.domain.models import ImageAsset
 from mo_toc.output.image_writer import write_images
 from mo_toc.output.json_writer import write_json
 from mo_toc.parsing.image_extractor import RawImage
@@ -107,6 +109,41 @@ def _is_decorative(image) -> bool:
     return image.decorative
 
 
+def _overlaps_a_table(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bool:
+    table_bboxes = table_bboxes_by_page.get(image.page - 1, [])
+    if not table_bboxes:
+        return False
+    return not exclude_overlapping_rects([image.bbox.as_tuple()], table_bboxes)
+
+
+def _is_equation(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bool:
+    if image.decorative or image.caption_kind is not None:
+        return False
+    width, height = image.bbox.x1 - image.bbox.x0, image.bbox.y1 - image.bbox.y0
+    if not is_equation_shaped(width, height):
+        return False
+    return not _overlaps_a_table(image, table_bboxes_by_page)
+
+
+def partition_equations(
+    images: list[ImageAsset], table_regions_by_page: list[list[TableRegion]]
+) -> tuple[list[ImageAsset], list[ImageAsset]]:
+    """Splits out the images that read as an inline formula - wide/short,
+    uncaptioned (a real Figure caption always wins), and not embedded in a
+    table's own cell (that's a repeated assembly diagram, not a formula) -
+    from the rest, so the two groups can be keyed `EqN`/`FigN` separately
+    the same way web_toc's MathJax-screenshot equations already are (see
+    shared/numbering.py's number_images `label` param). Every image ends up
+    in exactly one of the two returned lists.
+    """
+    table_bboxes_by_page = _table_bboxes_by_page(table_regions_by_page)
+    equations, figures = [], []
+    for image in images:
+        target = equations if _is_equation(image, table_bboxes_by_page) else figures
+        target.append(image)
+    return equations, figures
+
+
 def run(pdf_path: str, output_dir: str) -> None:
     all_lines, raw_images, table_regions_by_page, all_drawing_rects = extract_all_pages(pdf_path)
     volume, captions, table_regions_by_page = build_document(
@@ -116,7 +153,9 @@ def run(pdf_path: str, output_dir: str) -> None:
     raw_images = drop_images_over_tables(raw_images, table_regions_by_page)
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)
-    number_images(images, scope_by_citation, skip=_is_decorative)
+    equations, figures = partition_equations(images, table_regions_by_page)
+    number_images(figures, scope_by_citation, skip=_is_decorative)
+    number_images(equations, scope_by_citation, label="Eq")
     write_json(volume, captions, images, str(Path(output_dir) / "bcbc_pdf.json"))
 
 
