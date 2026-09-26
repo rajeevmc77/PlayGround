@@ -43,8 +43,12 @@ def _subclause_node(subclause: dict) -> WebNode:
     )
 
 
-def _clause_node(clause: dict) -> WebNode:
-    identifier = f"({clause.get('letter', '')})"
+def _clause_node(clause: dict, position: int) -> WebNode:
+    # Lettered by position, not the JSON's own `letter`: BC amendments insert
+    # clauses without re-lettering the rest (B.3.8.3.16.(1) reads h, a, i, b,
+    # ...), while the JSON order stays the code's order - it matches the PDF
+    # and the site's own cross-references.
+    identifier = f"({chr(ord('a') + position)})"
     return WebNode(
         type="Clause",
         identifier=identifier,
@@ -65,7 +69,10 @@ def _sentence_node(sentence: dict) -> WebNode:
         title="",
         path="",
         content=sentence.get("text", ""),
-        children=[_clause_node(c) for c in sentence.get("clauses", []) if c.get("id")],
+        children=[
+            _clause_node(c, position)
+            for position, c in enumerate(c for c in sentence.get("clauses", []) if c.get("id"))
+        ],
     )
 
 
