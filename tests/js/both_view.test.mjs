@@ -6,11 +6,14 @@ import {
   bothHostCitations,
   classifyImage,
   collectUnifiedLocations,
+  dominantFontSize,
   isShownInBoth,
   fitScale,
   minVisibleBox,
   pageFileRoute,
+  pdfFontSamples,
   renderedContentBox,
+  textMatchScale,
   visibleBothChildren,
 } from "../../src/mo_toc/web/static/both_view.mjs";
 
@@ -177,6 +180,58 @@ test("fitScale: the factor that makes content of nativeWidth exactly fill contai
 test("fitScale: falls back to 1 (native size) when the container hasn't laid out yet", () => {
   assert.equal(fitScale(0, 1500), 1);
   assert.equal(fitScale(-5, 1500), 1);
+});
+
+test("dominantFontSize: the size carrying the most characters, not the most runs", () => {
+  const samples = [
+    { size: 12, chars: 5 },
+    { size: 12, chars: 5 },
+    { size: 12, chars: 5 },
+    { size: 8, chars: 400 },
+  ];
+  assert.equal(dominantFontSize(samples), 8);
+});
+
+test("dominantFontSize: sums characters across runs of the same size", () => {
+  const samples = [
+    { size: 10, chars: 30 },
+    { size: 16, chars: 50 },
+    { size: 10, chars: 30 },
+  ];
+  assert.equal(dominantFontSize(samples), 10);
+});
+
+test("dominantFontSize: null when there is no text to measure", () => {
+  assert.equal(dominantFontSize([]), null);
+  assert.equal(dominantFontSize([{ size: 10, chars: 0 }]), null);
+  assert.equal(dominantFontSize([{ size: 0, chars: 20 }]), null);
+});
+
+test("pdfFontSamples: pdf.js text items -> {size, chars}, size from the text matrix", () => {
+  const items = [
+    { str: "Parts 1 and 2", transform: [8, 0, 0, 8, 72, 700] },
+    { str: "Rotated", transform: [0, 10, -10, 0, 72, 700] },
+  ];
+  assert.deepEqual(pdfFontSamples(items), [
+    { size: 8, chars: 13 },
+    { size: 10, chars: 7 },
+  ]);
+});
+
+test("pdfFontSamples: ignores marked-content items that carry no string", () => {
+  assert.deepEqual(pdfFontSamples([{ type: "beginMarkedContent" }]), []);
+});
+
+test("textMatchScale: the zoom that renders web body text at the pdf's on-screen size", () => {
+  assert.equal(textMatchScale(12, 16), 0.75);
+  assert.equal(textMatchScale(20, 16), 1.25);
+});
+
+test("textMatchScale: falls back to 1 (unzoomed) when either size is unknown", () => {
+  assert.equal(textMatchScale(null, 16), 1);
+  assert.equal(textMatchScale(12, null), 1);
+  assert.equal(textMatchScale(0, 16), 1);
+  assert.equal(textMatchScale(12, 0), 1);
 });
 
 const PANEL = { left: 100, top: 50 };

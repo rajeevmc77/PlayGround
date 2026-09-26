@@ -125,3 +125,36 @@ export function bothHostCitations(tree, filters) {
 export function fitScale(containerWidth, nativeWidth) {
   return containerWidth > 0 ? containerWidth / nativeWidth : 1;
 }
+
+// The body text size of a page: the font size carrying the most characters
+// (not the most runs - a page's few headings are many short runs). Samples
+// are {size, chars}; null when nothing measurable is there.
+export function dominantFontSize(samples) {
+  const charsBySize = new Map();
+  for (const { size, chars } of samples) {
+    if (size > 0 && chars > 0) charsBySize.set(size, (charsBySize.get(size) || 0) + chars);
+  }
+  let best = null;
+  for (const [size, chars] of charsBySize) {
+    if (best === null || chars > charsBySize.get(best)) best = size;
+  }
+  return best;
+}
+
+// pdf.js getTextContent() items as {size, chars} samples - the font size
+// is the text matrix's vertical scale, which holds for rotated text too.
+// Marked-content items carry no `str` and are skipped.
+export function pdfFontSamples(items) {
+  return items
+    .filter((item) => typeof item.str === "string")
+    .map((item) => ({
+      size: Math.hypot(item.transform[2], item.transform[3]),
+      chars: item.str.length,
+    }));
+}
+
+// The zoom that shows web body text at the same on-screen size as the pdf
+// page's body text; 1 (no zoom) when either size couldn't be measured.
+export function textMatchScale(pdfBodyPx, webBodyPx) {
+  return pdfBodyPx > 0 && webBodyPx > 0 ? pdfBodyPx / webBodyPx : 1;
+}
