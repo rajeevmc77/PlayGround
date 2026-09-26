@@ -5,8 +5,11 @@ tree_builder.py accumulates per Article), since PageLine itself carries no
 page number. A single roman-shaped letter (i, v, x, l, c, d, m) is ambiguous
 between clause and subclause; resolved by, in priority order: (1) whether
 it's the next expected clause letter in this sentence's own a, b, c...
-sequence, (2) an x0-indent threshold splitting this sentence's confirmed
-clause markers from its confirmed subclause markers, (3) same-page indent vs.
+sequence, (2) whether it's the next expected roman in the current clause's
+own i, ii, iii... sequence (this PDF often sets clause and subclause markers
+at the same x0, so indent alone can't tell them apart), (3) an x0-indent
+threshold splitting this sentence's confirmed clause markers from its
+confirmed subclause markers, (4) same-page indent vs.
 the immediately preceding clause, falling back to "clause" if nothing else
 applies.
 """
@@ -14,7 +17,7 @@ applies.
 import statistics
 
 from mo_toc.domain.models import BBox, Node
-from mo_toc.parsing.marker_rules import RE_MARKER, classify_marker
+from mo_toc.parsing.marker_rules import RE_MARKER, classify_marker, to_roman
 from mo_toc.parsing.pdf_source import PageLine
 from shared.styled_text import StyledText
 
@@ -57,11 +60,19 @@ def _resolve_by_proximity(pline: PageLine, prev_clause_x0: float | None) -> str:
     return "clause"
 
 
-def _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0):
+def _next_subclause_roman(cur_clause: Node | None) -> str | None:
+    if cur_clause is None:
+        return None
+    return to_roman(len(cur_clause.children) + 1)
+
+
+def _resolve_kind(kind, token, pline, next_letter, next_roman, threshold, prev_clause_x0):
     if kind != "ambiguous":
         return kind
     if token.lower() == next_letter:
         return "clause"
+    if token.lower() == next_roman:
+        return "subclause"
     if threshold is not None:
         return _resolve_by_threshold(pline, threshold)
     return _resolve_by_proximity(pline, prev_clause_x0)
@@ -151,7 +162,8 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
             _append_continuation(current_owner, current_owner_page, page_index, pline)
             continue
         token, kind = match.group(1), classify_marker(match.group(1))
-        kind = _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0)
+        next_roman = _next_subclause_roman(cur_clause)
+        kind = _resolve_kind(kind, token, pline, next_letter, next_roman, threshold, prev_clause_x0)
         if kind == "clause":
             cur_clause, next_letter, prev_clause_x0 = _add_clause(
                 sentence, match, page_index, pline, end_page, next_letter

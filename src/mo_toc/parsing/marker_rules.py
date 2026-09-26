@@ -11,31 +11,34 @@ ROMAN_CHARS = set("ivxlcdm")
 RE_MARKER = re.compile(r"^([A-Za-z0-9]{1,4})\)\s+(.*)$")
 
 
+_ROMAN_VALUES = [
+    (1000, "m"),
+    (900, "cm"),
+    (500, "d"),
+    (400, "cd"),
+    (100, "c"),
+    (90, "xc"),
+    (50, "l"),
+    (40, "xl"),
+    (10, "x"),
+    (9, "ix"),
+    (5, "v"),
+    (4, "iv"),
+    (1, "i"),
+]
+
+
+def to_roman(number: int) -> str:
+    remaining, symbols = number, ""
+    for value, symbol in _ROMAN_VALUES:
+        while remaining >= value:
+            symbols += symbol
+            remaining -= value
+    return symbols
+
+
 def _valid_romans(limit: int = 60) -> set[str]:
-    values = [
-        (1000, "m"),
-        (900, "cm"),
-        (500, "d"),
-        (400, "cd"),
-        (100, "c"),
-        (90, "xc"),
-        (50, "l"),
-        (40, "xl"),
-        (10, "x"),
-        (9, "ix"),
-        (5, "v"),
-        (4, "iv"),
-        (1, "i"),
-    ]
-    romans = set()
-    for n in range(1, limit + 1):
-        remaining, symbols = n, ""
-        for value, symbol in values:
-            while remaining >= value:
-                symbols += symbol
-                remaining -= value
-        romans.add(symbols)
-    return romans
+    return {to_roman(n) for n in range(1, limit + 1)}
 
 
 VALID_ROMANS = _valid_romans()
