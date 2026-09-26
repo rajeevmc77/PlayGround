@@ -9,6 +9,37 @@ def line(page_index, y0, x0, text):
     return (page_index, PageLine(bbox=(x0, y0, x0 + 200, y0 + 10), text=text, font="BookAntiqua"))
 
 
+def styled_line(page_index, y0, x0, text, emphasis):
+    pline = PageLine(
+        bbox=(x0, y0, x0 + 200, y0 + 10), text=text, font="BookAntiqua", emphasis=emphasis
+    )
+    return (page_index, pline)
+
+
+def test_marker_is_cut_from_the_emphasis_and_continuations_are_joined():
+    body = [
+        styled_line(5, 100, 50, "1) This building", ((0, 2, "b"), (8, 16, "i"))),
+        styled_line(5, 112, 50, "is a heritage building.", ((5, 22, "i"),)),
+    ]
+    sentence = segment_article_body(body, "A-1.1.1.1.", article_end_page=7)[0]
+    assert sentence.content == "This building is a heritage building."
+    assert sentence.emphasis == [(5, 13, "i"), (19, 36, "i")]
+
+
+def test_clause_and_subclause_keep_their_own_emphasis():
+    body = [
+        line(5, 100, 50, "1) Applies to:"),
+        styled_line(5, 112, 60, "a) a new building,", ((9, 17, "i"),)),
+        styled_line(5, 124, 70, "i) an alteration,", ((6, 16, "i"),)),
+    ]
+    sentence = segment_article_body(body, "A-1.1.1.1.", article_end_page=7)[0]
+    clause = sentence.children[0]
+    assert sentence.emphasis == []
+    assert (clause.content, clause.emphasis) == ("a new building,", [(6, 14, "i")])
+    subclause = clause.children[0]
+    assert (subclause.content, subclause.emphasis) == ("an alteration,", [(3, 13, "i")])
+
+
 def test_single_sentence_no_clauses():
     body = [line(5, 100, 50, "1) Fire protection shall conform to NFPA 303.")]
     sentences = segment_article_body(body, "B-2.16.2.1.", article_end_page=7)

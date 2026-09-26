@@ -12,6 +12,9 @@ class WebNode:
     unified_number: str = ""
     content: str = ""
     heading: str = ""
+    # Bold/italic [start, end, style] ranges into `content`, as rendered
+    # (see shared/styled_text.py). Set by layout_join with the text.
+    emphasis: list[list] = field(default_factory=list)
     # {"page_file", "xpath", "bbox"} into a locally scraped page - the web
     # counterpart of the PDF's page + bbox. None until layout_join finds it.
     location: dict | None = None

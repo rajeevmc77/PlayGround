@@ -2,7 +2,7 @@
 only if its own text matches, every image it owns matches, and every child
 (recursively) passes. A unified_number missing on the web side always fails.
 text_matches/images_match are injected so these tests stay pure and fast -
-see test_comparison_text_similarity.py / test_comparison_image_similarity.py
+see test_comparison_content_match.py / test_comparison_image_similarity.py
 for the real implementations these fakes stand in for."""
 
 from comparison.engine import compare_trees
@@ -73,7 +73,7 @@ def test_a_passing_sibling_is_unaffected_by_a_failing_sibling_but_the_parent_sti
     )
 
     def text_matches(a, b):
-        return a != "bad"
+        return a["content"] != "bad"
 
     statuses = compare_trees(pdf_tree, [], web_tree, [], text_matches, NEVER_MATCH)
 
@@ -123,14 +123,14 @@ def test_an_image_with_no_web_counterpart_fails_without_calling_images_match():
 
 def test_container_node_with_empty_content_on_both_sides_is_a_trivial_own_match():
     # A pure structural container (e.g. a Volume/Part heading) may carry no
-    # rendered text of its own - real_text_matches("", "") is a trivial pass
-    # (see test_comparison_text_similarity.py); this exercises the engine's
+    # rendered text of its own - content_matches on two empty texts is a trivial
+    # pass (see test_comparison_content_match.py); this exercises the engine's
     # own wiring of that rule via an injected matcher with the same shape.
     pdf_tree = _node("V", "volume", "", children=[_node("V.P1", "part1", "text")])
     web_tree = _node("V", "volume", "", children=[_node("V.P1", "part1", "text")])
 
     def text_matches(a, b):
-        return (not a and not b) or a == b
+        return a["content"] == b["content"]
 
     statuses = compare_trees(pdf_tree, [], web_tree, [], text_matches, NEVER_MATCH)
 
@@ -168,7 +168,7 @@ def test_a_container_nodes_own_text_is_not_compared_against_the_webs_concatenate
     )
 
     def exact_match(a, b):
-        return a == b
+        return a["content"] == b["content"]
 
     statuses = compare_trees(pdf_tree, [], web_tree, [], exact_match, NEVER_MATCH)
 

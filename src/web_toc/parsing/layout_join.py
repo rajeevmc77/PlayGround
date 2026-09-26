@@ -46,6 +46,7 @@ def _place(node: WebNode, page: str, entry: dict | None) -> None:
     node.location = _location(page, entry)
     if node.type in RENDERED_TEXT_TYPES:
         node.content = entry["text"]
+        node.emphasis = entry.get("emphasis", [])
 
 
 def _heading_entry(node: WebNode, layout: dict) -> dict | None:

@@ -6,9 +6,11 @@ from web_toc.domain.models import WebImage, WebNode
 
 
 def _drop_unset(node_dict: dict) -> dict:
-    """Omits keys with nothing in them: an empty heading, a missing location."""
-    if not node_dict.get("heading"):
-        node_dict.pop("heading", None)
+    """Omits keys with nothing in them: an empty heading or emphasis, a
+    missing location."""
+    for key in ("heading", "emphasis"):
+        if not node_dict.get(key):
+            node_dict.pop(key, None)
     if node_dict.get("location") is None:
         node_dict.pop("location", None)
     return node_dict

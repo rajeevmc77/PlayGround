@@ -33,6 +33,9 @@ class Node:
     unified_number: str = ""
     content: str = ""
     heading: str = ""
+    # Bold/italic [start, end, style] ranges into `content` (see
+    # shared/styled_text.py) - what the web comparison checks besides text.
+    emphasis: list[tuple[int, int, str]] = field(default_factory=list)
 
 
 @dataclass

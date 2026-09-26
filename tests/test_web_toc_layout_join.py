@@ -126,6 +126,21 @@ def test_an_id_matched_node_gets_its_page_file_xpath_bbox_and_rendered_text():
     assert _find(root, f"{SENTENCE}.clause1").content == "(a) clause"
 
 
+def test_a_rendered_text_node_gets_the_emphasis_measured_with_its_text():
+    layout = _layout()
+    layout["elements"][f"{SENTENCE}.clause1"]["emphasis"] = [[4, 10, "i"]]
+    root = _join(_tree(), {SECTION: layout})
+    assert _find(root, f"{SENTENCE}.clause1").emphasis == [[4, 10, "i"]]
+    assert _find(root, SENTENCE).emphasis == []  # measured without any
+
+
+def test_a_heading_gets_a_location_but_no_emphasis():
+    layout = _layout()
+    layout["headings"][3]["emphasis"] = [[0, 8, "b"]]
+    root = _join(_tree(), {SECTION: layout})
+    assert _find(root, f"{SECTION}.subsect1.art1").emphasis == []
+
+
 def test_rows_and_cells_are_matched_by_position_and_cells_get_rendered_text():
     root = _join(_tree(_table_node([2, 1])), {SECTION: _layout()})
     row2 = _find(root, f"{TABLE}-row2")

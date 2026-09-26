@@ -4,7 +4,7 @@ import pymupdf as fitz
 import pytest
 from PIL import Image
 
-from mo_toc.parsing.pdf_source import PyMuPdfSource
+from mo_toc.parsing.pdf_source import PyMuPdfSource, _line_from_span_dict
 
 
 @pytest.fixture
@@ -105,3 +105,66 @@ def test_render_region_returns_raster_bytes_at_requested_bbox(pdf_with_vector_dr
     assert extracted.ext == "png"
     assert extracted.width > 0
     assert extracted.height > 0
+
+
+def _span(text, font, flags=0):
+    return {"text": text, "font": font, "flags": flags}
+
+
+def _line_dict(*spans):
+    return {"bbox": (0, 0, 100, 10), "spans": list(spans)}
+
+
+def test_a_line_records_its_italic_spans_as_emphasis():
+    line = _line_from_span_dict(
+        _line_dict(
+            _span("a) a new ", "BookAntiqua"),
+            _span("building", "BookAntiqua-Italic", flags=2),
+            _span(", ", "BookAntiqua"),
+        )
+    )
+
+    assert line.text == "a) a new building,"
+    assert line.emphasis == ((9, 17, "i"),)
+    assert line.styled.text == line.text
+
+
+@pytest.mark.parametrize(
+    ("font", "flags", "style"),
+    [
+        ("Arial-BoldMT", 16, "b"),
+        ("Arial-Black", 0, "b"),
+        ("Arial-BoldItalicMT", 18, "bi"),
+        ("Helvetica-Oblique", 0, "i"),
+        ("SomeFont", 2, "i"),
+        ("BookAntiqua", 0, ""),
+    ],
+)
+def test_bold_and_italic_come_from_the_font_name_or_its_flags(font, flags, style):
+    line = _line_from_span_dict(_line_dict(_span("word", font, flags)))
+
+    assert line.emphasis == (((0, 4, style),) if style else ())
+
+
+def test_whitespace_only_spans_add_no_text_or_emphasis():
+    line = _line_from_span_dict(
+        _line_dict(_span("word", "BookAntiqua"), _span("   ", "BookAntiqua-Italic", 2))
+    )
+
+    assert line.text == "word"
+    assert line.emphasis == ()
+
+
+def test_page_lines_read_emphasis_from_a_real_pdf(tmp_path):
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "plain", fontname="helv")
+    page.insert_text((110, 72), "slanted", fontname="heit")
+    path = tmp_path / "styled.pdf"
+    doc.save(str(path))
+    doc.close()
+
+    lines = PyMuPdfSource(str(path)).page_lines(0)
+
+    emphasised = [line.text[s:e] for line in lines for s, e, _ in line.emphasis]
+    assert emphasised == ["slanted"]

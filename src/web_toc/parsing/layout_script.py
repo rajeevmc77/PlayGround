@@ -68,28 +68,52 @@ LAYOUT_JS = f"""async () => {{
   // The text as displayed: like innerText, but with CSS generated content
   // (the site draws e.g. a compound reference's "[ ... ]" with ::before/
   // ::after), a space around every non-inline box, and display:none skipped.
-  // Memoised - a table's text is built from its already-walked cells.
+  // Kept as [text, style] runs, style "b"/"i"/"bi"/"" from the computed
+  // font-weight/font-style it renders in. Memoised - a table's text is built
+  // from its already-walked cells.
   const cache = new Map();
+  const styleOf = (cs) => (parseInt(cs.fontWeight, 10) >= 600 ? 'b' : '')
+    + (cs.fontStyle === 'normal' ? '' : 'i');
   const generated = (el, which) => {{
-    const match = getComputedStyle(el, which).content.match(/^"(.*)"$/s);
-    return match ? match[1].replace(/\\\\(.)/g, '$1') : '';
+    const cs = getComputedStyle(el, which);
+    const match = cs.content.match(/^"(.*)"$/s);
+    return match ? [[match[1].replace(/\\\\(.)/g, '$1'), styleOf(cs)]] : [];
   }};
   const rendered = (el) => {{
     if (cache.has(el)) return cache.get(el);
-    const display = getComputedStyle(el).display;
-    let text = '';
-    if (display !== 'none' && !(el instanceof SVGElement)) {{
-      const parts = [...el.childNodes].map((child) =>
-        child.nodeType === Node.TEXT_NODE ? child.nodeValue
-          : child.nodeType === Node.ELEMENT_NODE ? rendered(child) : '');
-      text = generated(el, '::before') + parts.join('') + generated(el, '::after');
-      if (display !== 'inline') text = ` ${{text}} `;
+    const cs = getComputedStyle(el);
+    let runs = [];
+    if (cs.display !== 'none' && !(el instanceof SVGElement)) {{
+      const own = styleOf(cs);
+      const parts = [...el.childNodes].flatMap((child) =>
+        child.nodeType === Node.TEXT_NODE ? [[child.nodeValue, own]]
+          : child.nodeType === Node.ELEMENT_NODE ? rendered(child) : []);
+      runs = [...generated(el, '::before'), ...parts, ...generated(el, '::after')];
+      if (cs.display !== 'inline') runs = [[' ', ''], ...runs, [' ', '']];
     }}
-    cache.set(el, text);
-    return text;
+    cache.set(el, runs);
+    return runs;
   }};
-  const textOf = (el) => rendered(el).replace(/\\s+/g, ' ').trim();
-  const entry = (el) => ({{ xpath: xpathOf(el), text: textOf(el), bbox: bboxOf(el) }});
+  // Whitespace runs collapsed to one space and trimmed, across run
+  // boundaries; emphasis as [start, end, style] ranges into that text.
+  const styledOf = (el) => {{
+    let text = '';
+    const emphasis = [];
+    for (const [raw, style] of rendered(el)) {{
+      let piece = raw.replace(/\\s+/g, ' ');
+      if (piece.startsWith(' ') && (text === '' || text.endsWith(' '))) piece = piece.slice(1);
+      const last = emphasis[emphasis.length - 1];
+      if (style && piece.trim()) {{
+        if (last && last[1] === text.length && last[2] === style) last[1] += piece.length;
+        else emphasis.push([text.length, text.length + piece.length, style]);
+      }}
+      text += piece;
+    }}
+    text = text.trimEnd();
+    const clipped = emphasis.map(([s, e, style]) => [s, Math.min(e, text.length), style]);
+    return {{ text, emphasis: clipped.filter(([s, e]) => s < e) }};
+  }};
+  const entry = (el) => ({{ xpath: xpathOf(el), ...styledOf(el), bbox: bboxOf(el) }});
   const inHtml = (el) => !el.closest('svg');
 
   const elements = {{}};

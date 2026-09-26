@@ -204,6 +204,17 @@ def test_cell_content_joins_multiple_physical_lines_in_one_cell():
     assert data_row.children[1].content == "First row content. continues wrapping."
 
 
+def test_cell_emphasis_follows_its_lines_into_the_joined_content():
+    lines, rects = _minimal_grid_fixture()
+    lines[5] = PageLine(
+        bbox=(120, 70, 250, 80), text="First row content.", font=BODY_FONT, emphasis=((6, 9, "i"),)
+    )
+    regions = detect_tables_on_page(lines, rects, page_number=7)
+    header_row, data_row = regions[0].table_node.children
+    assert data_row.children[1].emphasis == [(6, 9, "i")]
+    assert header_row.children[0].emphasis == []
+
+
 def _table_region(identifier, page, rows, has_bottom_border, outer_bbox, forming_part_of=None):
     anchor = TableAnchor(page_index=page - 1, caption_line_idx=0, identifier=identifier)
     table_node = Node(

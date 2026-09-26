@@ -21,7 +21,9 @@ def _png_bytes(color) -> bytes:
     return buf.getvalue()
 
 
-def _write_fixtures(tmp_path, pdf_content="same text", web_content="same text"):
+def _write_fixtures(
+    tmp_path, pdf_content="same text", web_content="same text", pdf_emphasis=(), web_emphasis=()
+):
     pdf_payload = {
         "volume": {
             "unified_number": "V",
@@ -32,6 +34,7 @@ def _write_fixtures(tmp_path, pdf_content="same text", web_content="same text"):
                     "unified_number": "V.P1",
                     "citation": "part1",
                     "content": pdf_content,
+                    "emphasis": list(pdf_emphasis),
                     "children": [],
                 }
             ],
@@ -54,6 +57,7 @@ def _write_fixtures(tmp_path, pdf_content="same text", web_content="same text"):
                     "unified_number": "V.P1",
                     "citation": "part1",
                     "content": web_content,
+                    "emphasis": list(web_emphasis),
                     "children": [],
                 }
             ],
@@ -96,6 +100,37 @@ def test_mismatched_text_fails_the_node_but_not_its_matching_image(tmp_path):
     result = json.loads((tmp_path / "comparison.json").read_text())
     assert result["statuses"]["V.P1"] is False
     assert result["statuses"]["V.P1.Fig1"] is True
+
+
+def test_text_differing_only_in_whitespace_passes(tmp_path):
+    _write_fixtures(
+        tmp_path, pdf_content="fire- resistance  rating", web_content="fire-resistance rating"
+    )
+
+    run(str(tmp_path))
+
+    assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1"] is True
+
+
+def test_a_one_character_text_difference_fails(tmp_path):
+    _write_fixtures(tmp_path, pdf_content="Class A roofing", web_content="Class B roofing")
+
+    run(str(tmp_path))
+
+    assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1"] is False
+
+
+def test_the_same_text_with_different_italics_fails(tmp_path):
+    _write_fixtures(
+        tmp_path,
+        pdf_content="a new building",
+        web_content="a new building",
+        pdf_emphasis=[[6, 14, "i"]],
+    )
+
+    run(str(tmp_path))
+
+    assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1"] is False
 
 
 def test_missing_image_file_on_disk_fails_that_image_without_erroring(tmp_path):
