@@ -79,6 +79,33 @@ def test_get_app_returns_503_for_web_toc_when_web_toc_json_missing(tmp_path, mon
     assert resp.status_code == 503
 
 
+def test_get_comparison_returns_503_when_comparison_json_missing(tmp_path):
+    client = _make_client(tmp_path)
+    resp = client.get("/api/comparison")
+    assert resp.status_code == 503
+
+
+def test_get_comparison_returns_the_comparison_json_payload(tmp_path):
+    json_path = _write_fixture_json(tmp_path)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    comparison_path = tmp_path / "comparison.json"
+    comparison_path.write_text(json.dumps({"threshold_percent": 80.0, "statuses": {"V.P1": True}}))
+
+    app = create_app(
+        toc_json_path=json_path,
+        pdf_path=str(pdf_path),
+        images_dir=str(images_dir),
+        comparison_json_path=str(comparison_path),
+    )
+    resp = TestClient(app).get("/api/comparison")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"threshold_percent": 80.0, "statuses": {"V.P1": True}}
+
+
 def test_get_app_serves_scraped_web_pages_from_web_pages_dir(tmp_path, monkeypatch):
     toc_json_path = _write_fixture_json(tmp_path)
     images_dir = tmp_path / "images"

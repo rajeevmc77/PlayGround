@@ -9,6 +9,7 @@ import {
   renderedContentBox,
   visibleBothChildren,
 } from "./both_view.mjs?v=5";
+import { filterIds, statusBadge } from "./compare_view.mjs?v=1";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -17,11 +18,17 @@ let pdfDoc = null;
 let tocVolume = null;
 let allImages = null;
 let webImages = [];
-let bothLocations = new Map();
+let unifiedLocations = new Map();
+let comparisonStatuses = new Map();
 
 function formatNodeLabel(node) {
   const text = node.title || node.content;
   return [node.unified_number, node.type, node.identifier, text].filter(Boolean).join(" ");
+}
+
+function imageLabel(img) {
+  if (img.caption_identifier) return `${img.caption_kind} ${img.caption_identifier}`;
+  return `p.${img.page} (${img.width}x${img.height})`;
 }
 
 async function loadToc() {
@@ -34,17 +41,23 @@ async function loadAllImages() {
   allImages = await res.json();
 }
 
-function isHiddenByDeclutter(img, declutterOn) {
-  // `decorative` is computed server-side (mo_toc.domain.image_classification
-  // .is_decorative) from the image's bbox - a near-square AND small-area
-  // shape, the kind a logo/icon leaves. A wide-but-short single-line formula
-  // is neither, so it stays visible even with declutter on.
-  return declutterOn && img.decorative;
+// The web index only feeds the Both/Compare tabs' unified_number lookup;
+// without it both still show the pdf side, with no matching web content.
+async function loadWebToc() {
+  const res = await fetch("/api/web-toc");
+  if (!res.ok) return;
+  const data = await res.json();
+  webImages = data.images;
+  unifiedLocations = collectUnifiedLocations(data.tree, webImages);
 }
 
-function imageLabel(img) {
-  if (img.caption_identifier) return `${img.caption_kind} ${img.caption_identifier}`;
-  return `p.${img.page} (${img.width}x${img.height})`;
+// Precomputed offline by build_comparison.py; without it the Compare tab
+// still renders, just with no tick/cross badges.
+async function loadComparison() {
+  const res = await fetch("/api/comparison");
+  if (!res.ok) return;
+  const data = await res.json();
+  comparisonStatuses = new Map(Object.entries(data.statuses || {}));
 }
 
 function buildCitationMap(node, map) {
@@ -53,142 +66,26 @@ function buildCitationMap(node, map) {
   return map;
 }
 
-function clearAttachedImages(node) {
-  delete node._images;
-  node.children.forEach(clearAttachedImages);
+function clearAttached(node, key) {
+  delete node[key];
+  node.children.forEach((child) => clearAttached(child, key));
 }
 
-function attachImagesToOwners(declutterOn) {
-  clearAttachedImages(tocVolume);
+// Figures/Equations/Images gate which image rows attach; Tables/Text show
+// or hide tree rows themselves (see both_view.mjs). Both tabs share this
+// same filtering logic - `key` just keeps their attached-image state apart
+// so switching tabs never shows the other tab's filter selection.
+function attachFilteredImages(filters, key) {
+  clearAttached(tocVolume, key);
   const citationMap = buildCitationMap(tocVolume, {});
+  const hosts = bothHostCitations(tocVolume, filters);
   allImages.forEach((img, index) => {
-    if (isHiddenByDeclutter(img, declutterOn)) return;
-    const owner = citationMap[img.owner_citation];
-    if (!owner) return;
-    if (!owner._images) owner._images = [];
-    owner._images.push({ img, index });
+    if (!filters[classifyImage(img)]) return;
+    const host = citationMap[hosts.get(img.owner_citation)];
+    if (!host) return;
+    if (!host[key]) host[key] = [];
+    host[key].push({ img, index });
   });
-}
-
-function subtreeHasImages(node) {
-  if (node._images && node._images.length > 0) return true;
-  return node.children.some(subtreeHasImages);
-}
-
-function webImageUrl(img) {
-  if (img.local_path) return `/api/web-image/${encodeURIComponent(img.id)}/thumbnail`;
-  return `https://dev.buildingcode.gov.bc.ca/${img.src}.jpg`;
-}
-
-// The web index only feeds the Both tab's unified_number lookup and the
-// Compare tab's web-image column; without it both still show the pdf side.
-async function loadWebToc() {
-  const res = await fetch("/api/web-toc");
-  if (!res.ok) return;
-  const data = await res.json();
-  webImages = data.images;
-  bothLocations = collectUnifiedLocations(data.tree, webImages);
-}
-
-function normalizeForMatch(value) {
-  return (value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function findMatchingWebImage(pdfImg, webImages) {
-  const identifierNeedle = normalizeForMatch(pdfImg.caption_identifier);
-  if (identifierNeedle) {
-    const bySrc = webImages.find((img) => normalizeForMatch(img.src).includes(identifierNeedle));
-    if (bySrc) return bySrc;
-  }
-  // Not every web src encodes the PDF's caption identifier - some are legacy
-  // drawing codes (e.g. "graphics/eg/013/eg01395a") unrelated to the figure
-  // number. The caption's own title text, though, mirrors the web image's
-  // alt_text almost verbatim, so it's a reliable fallback key.
-  const titleNeedle = normalizeForMatch(pdfImg.caption_title);
-  if (!titleNeedle) return null;
-  return webImages.find((img) => normalizeForMatch(img.alt_text) === titleNeedle) || null;
-}
-
-function renderComparePdfImage(img, index) {
-  const container = document.getElementById("compare-pdf-content");
-  container.innerHTML = "";
-  const el = document.createElement("img");
-  el.src = `/api/image/${index}`;
-  container.appendChild(el);
-  const label = document.createElement("div");
-  label.textContent = imageLabel(img);
-  container.appendChild(label);
-}
-
-function renderCompareWebImage(webImg) {
-  const container = document.getElementById("compare-web-content");
-  container.innerHTML = "";
-  if (!webImg) {
-    container.textContent = "No matching web image found.";
-    return;
-  }
-  const el = document.createElement("img");
-  el.src = webImageUrl(webImg);
-  container.appendChild(el);
-  const label = document.createElement("div");
-  label.textContent = webImg.alt_text || "(no description)";
-  container.appendChild(label);
-}
-
-function showCompareImages(img, index) {
-  renderComparePdfImage(img, index);
-  renderCompareWebImage(findMatchingWebImage(img, webImages));
-}
-
-function renderCompareImageRow(img, index, depth) {
-  const row = document.createElement("div");
-  row.className = "image-row node-row";
-  row.style.marginLeft = `${depth * 4}px`;
-  row.innerHTML = `<img src="/api/image/${index}"> ${imageLabel(img)}`;
-  row.addEventListener("click", () => showCompareImages(img, index));
-  return row;
-}
-
-function renderCompareImageTreeNode(node, depth) {
-  const relevantChildren = node.children.filter(subtreeHasImages);
-  const ownImages = node._images || [];
-  const row = document.createElement("div");
-  row.className = "node-row";
-  row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `▸ ${formatNodeLabel(node)}`.trim();
-
-  const childrenBox = document.createElement("div");
-  childrenBox.className = "node-children";
-
-  row.addEventListener("click", () => {
-    childrenBox.classList.toggle("expanded");
-    if (childrenBox.children.length > 0) return;
-    relevantChildren.forEach((child) => {
-      childrenBox.appendChild(renderCompareImageTreeNode(child, depth + 1));
-    });
-    ownImages.forEach(({ img, index }) => {
-      childrenBox.appendChild(renderCompareImageRow(img, index, depth + 1));
-    });
-  });
-
-  const wrapper = document.createElement("div");
-  wrapper.appendChild(row);
-  wrapper.appendChild(childrenBox);
-  return wrapper;
-}
-
-async function loadCompareTab() {
-  const content = document.getElementById("compare-tree-content");
-  const declutter = document.getElementById("declutter-compare");
-
-  function render() {
-    content.innerHTML = "";
-    attachImagesToOwners(declutter.checked);
-    if (!subtreeHasImages(tocVolume)) return;
-    content.appendChild(renderCompareImageTreeNode(tocVolume, 0));
-  }
-  declutter.addEventListener("change", render);
-  render();
 }
 
 // `scaleFn` picks the render scale from the page's native (scale:1) width -
@@ -228,54 +125,6 @@ function showPdfHighlight(canvasId, highlightId, scrollContainerId, viewport, bb
   highlight.style.width = `${x1 - x0}px`;
   highlight.style.height = `${y1 - y0}px`;
   document.getElementById(scrollContainerId).scrollTo({ top: canvas.offsetTop + y0 - 80, behavior: "smooth" });
-}
-
-// "Table of Contents - Both": one tree (the full pdf hierarchy) drives two
-// synchronized content panes. Figures/Equations/Images toggle which image
-// rows attach; Tables/Text show or hide those rows of the tree itself
-// (headings always stay - see both_view.mjs). An image whose owner row is
-// hidden attaches to the nearest row still shown.
-const BOTH_FILTERS = {
-  figure: "filter-both-figures",
-  table: "filter-both-tables",
-  equation: "filter-both-equations",
-  text: "filter-both-text",
-  image: "filter-both-images",
-};
-const BOTH_FILTER_IDS = Object.values(BOTH_FILTERS);
-
-function bothFilters() {
-  return Object.fromEntries(
-    Object.entries(BOTH_FILTERS).map(([key, id]) => [key, document.getElementById(id).checked])
-  );
-}
-
-function clearAttachedBothImages(node) {
-  delete node._bothImages;
-  node.children.forEach(clearAttachedBothImages);
-}
-
-function attachBothImages(filters) {
-  clearAttachedBothImages(tocVolume);
-  const citationMap = buildCitationMap(tocVolume, {});
-  const hosts = bothHostCitations(tocVolume, filters);
-  allImages.forEach((img, index) => {
-    if (!filters[classifyImage(img)]) return;
-    const host = citationMap[hosts.get(img.owner_citation)];
-    if (!host) return;
-    if (!host._bothImages) host._bothImages = [];
-    host._bothImages.push({ img, index });
-  });
-}
-
-async function goToBothPdfLocation(pageNumber, bbox) {
-  const colWidth = document.getElementById("both-pdf-col").clientWidth;
-  const viewport = await renderPdfPage("both-pdf-canvas", pageNumber, (nativeWidth) =>
-    fitScale(colWidth, nativeWidth)
-  );
-  // "both-pdf-pane" only sizes to its content; "both-pdf-col" is the actual
-  // overflow:auto ancestor that scrolling needs to target.
-  showPdfHighlight("both-pdf-canvas", "both-pdf-highlight", "both-pdf-col", viewport, bbox);
 }
 
 // The content panel every saved page's bbox is measured from (see
@@ -324,10 +173,10 @@ function highlightInFrame(doc, location) {
   if (!panel) return;
   if (doc.defaultView.getComputedStyle(panel).position === "static") panel.style.position = "relative";
   const box = minVisibleBox(frameContentBox(doc, panel, location));
-  let highlight = doc.getElementById("both-web-injected-highlight");
+  let highlight = doc.getElementById("injected-web-highlight");
   if (!highlight) {
     highlight = doc.createElement("div");
-    highlight.id = "both-web-injected-highlight";
+    highlight.id = "injected-web-highlight";
     highlight.style.cssText =
       "position:absolute; border:2px solid red; background:rgba(255,0,0,0.15); pointer-events:none; z-index:9999;";
     panel.appendChild(highlight);
@@ -360,22 +209,22 @@ const WEB_FRAME_WIDTH = 1500;
 const WEB_FRAME_HEIGHT = 950;
 
 // Visually shrinks/grows the iframe to the column's width with a CSS
-// transform, which resizes nothing about its internal layout - .fit-wrap is
-// sized to match so the column reserves exactly that much space instead of
-// the frame's true footprint.
-function fitWebFrameToColumn() {
-  const scale = fitScale(document.getElementById("both-web-col").clientWidth, WEB_FRAME_WIDTH);
-  document.getElementById("both-web-frame").style.transform = `scale(${scale})`;
-  Object.assign(document.getElementById("both-web-fit").style, {
+// transform, which resizes nothing about its internal layout - the fit
+// wrapper is sized to match so the column reserves exactly that much space
+// instead of the frame's true footprint.
+function fitWebFrameToColumn(ids) {
+  const scale = fitScale(document.getElementById(ids.webColId).clientWidth, WEB_FRAME_WIDTH);
+  document.getElementById(ids.webFrameId).style.transform = `scale(${scale})`;
+  Object.assign(document.getElementById(ids.webFitId).style, {
     width: `${WEB_FRAME_WIDTH * scale}px`,
     height: `${WEB_FRAME_HEIGHT * scale}px`,
   });
 }
 
-function showBothWebLocation(location) {
-  const frame = document.getElementById("both-web-frame");
-  const fitWrap = document.getElementById("both-web-fit");
-  const placeholder = document.getElementById("both-web-placeholder");
+function showWebLocation(ids, location) {
+  const frame = document.getElementById(ids.webFrameId);
+  const fitWrap = document.getElementById(ids.webFitId);
+  const placeholder = document.getElementById(ids.webPlaceholderId);
   if (!location) {
     frame.hidden = true;
     fitWrap.hidden = true;
@@ -386,7 +235,7 @@ function showBothWebLocation(location) {
   frame.hidden = false;
   fitWrap.hidden = false;
   placeholder.hidden = true;
-  fitWebFrameToColumn();
+  fitWebFrameToColumn(ids);
   frame.onload = () => {
     const doc = frame.contentDocument;
     expandReadingView(doc);
@@ -396,51 +245,108 @@ function showBothWebLocation(location) {
   frame.src = `${pageFileRoute(location.page_file)}?t=${Date.now()}`;
 }
 
-let bothSelection = null;
-
-function selectBothNode(pageNumber, bbox, unifiedNumber) {
-  bothSelection = { pageNumber, bbox, unifiedNumber };
-  goToBothPdfLocation(pageNumber, bbox);
-  showBothWebLocation(bothLocations.get(unifiedNumber) || null);
+async function goToPdfLocation(ids, pageNumber, bbox) {
+  const colWidth = document.getElementById(ids.pdfColId).clientWidth;
+  const viewport = await renderPdfPage(ids.pdfCanvasId, pageNumber, (nativeWidth) =>
+    fitScale(colWidth, nativeWidth)
+  );
+  // The pane only sizes to its content; the column is the actual
+  // overflow:auto ancestor that scrolling needs to target.
+  showPdfHighlight(ids.pdfCanvasId, ids.pdfHighlightId, ids.pdfColId, viewport, bbox);
 }
 
-// A column's width can change after a selection is already showing (window
-// resize, sidebar toggle) - re-fit both panes to it rather than leaving
-// them sized for a column that no longer exists.
-function refitBothPanels() {
-  if (!bothSelection) return;
-  const { pageNumber, bbox, unifiedNumber } = bothSelection;
-  goToBothPdfLocation(pageNumber, bbox);
-  if (bothLocations.get(unifiedNumber)) fitWebFrameToColumn();
+// One tree (the full pdf hierarchy) drives two synchronized content panes -
+// the pattern both the "Both" and "Compare" tabs use, parameterized on
+// their own element ids so neither tab duplicates the other's panel logic.
+function createSplitPanel(ids) {
+  let selection = null;
+
+  function select(pageNumber, bbox, unifiedNumber) {
+    selection = { pageNumber, bbox, unifiedNumber };
+    goToPdfLocation(ids, pageNumber, bbox);
+    showWebLocation(ids, unifiedLocations.get(unifiedNumber) || null);
+  }
+
+  // A column's width can change after a selection is already showing
+  // (window resize, sidebar toggle) - re-fit both panes to it rather than
+  // leaving them sized for a column that no longer exists.
+  function refit() {
+    if (!selection) return;
+    const { pageNumber, bbox, unifiedNumber } = selection;
+    goToPdfLocation(ids, pageNumber, bbox);
+    if (unifiedLocations.get(unifiedNumber)) fitWebFrameToColumn(ids);
+  }
+
+  return { select, refit };
 }
 
-function renderBothImageRow(img, index, depth) {
+const bothPanel = createSplitPanel({
+  pdfColId: "both-pdf-col",
+  pdfCanvasId: "both-pdf-canvas",
+  pdfHighlightId: "both-pdf-highlight",
+  webColId: "both-web-col",
+  webFrameId: "both-web-frame",
+  webFitId: "both-web-fit",
+  webPlaceholderId: "both-web-placeholder",
+});
+
+const comparePanel = createSplitPanel({
+  pdfColId: "compare-pdf-col",
+  pdfCanvasId: "compare-pdf-canvas",
+  pdfHighlightId: "compare-pdf-highlight",
+  webColId: "compare-web-col",
+  webFrameId: "compare-web-frame",
+  webFitId: "compare-web-fit",
+  webPlaceholderId: "compare-web-placeholder",
+});
+
+function appendStatusBadge(row, unifiedNumber) {
+  const badge = statusBadge(comparisonStatuses.get(unifiedNumber));
+  const icon = document.createElement("span");
+  icon.className = `status-icon ${badge.className}`;
+  icon.textContent = badge.glyph;
+  row.appendChild(icon);
+}
+
+function renderTocImageRow(img, index, depth, panel, showStatus) {
   const row = document.createElement("div");
   row.className = "image-row node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.innerHTML = `<img src="/api/image/${index}"> ${imageLabel(img)}`;
-  row.addEventListener("click", () => selectBothNode(img.page, img.bbox, img.unified_number));
+  if (showStatus) appendStatusBadge(row, img.unified_number);
+  row.appendChild(document.createTextNode(" "));
+  const thumb = document.createElement("img");
+  thumb.src = `/api/image/${index}`;
+  row.appendChild(thumb);
+  row.appendChild(document.createTextNode(` ${imageLabel(img)}`));
+  row.addEventListener("click", () => panel.select(img.page, img.bbox, img.unified_number));
   return row;
 }
 
-function renderBothNode(node, depth, filters) {
+function renderTocNode(node, depth, filters, imagesKey, panel, showStatus) {
   const children = visibleBothChildren(node, filters);
-  const ownImages = node._bothImages || [];
+  const ownImages = node[imagesKey] || [];
   const hasChildren = children.length > 0 || ownImages.length > 0;
   const row = document.createElement("div");
   row.className = "node-row";
   row.style.marginLeft = `${depth * 4}px`;
-  row.textContent = `${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim();
+  if (showStatus) appendStatusBadge(row, node.unified_number);
+  row.appendChild(
+    document.createTextNode(` ${hasChildren ? "▸ " : ""}${formatNodeLabel(node)}`.trim())
+  );
   const childrenBox = document.createElement("div");
   childrenBox.className = "node-children";
 
   row.addEventListener("click", () => {
-    selectBothNode(node.page, node.bbox, node.unified_number);
+    panel.select(node.page, node.bbox, node.unified_number);
     if (!hasChildren) return;
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;
-    children.forEach((child) => childrenBox.appendChild(renderBothNode(child, depth + 1, filters)));
-    ownImages.forEach(({ img, index }) => childrenBox.appendChild(renderBothImageRow(img, index, depth + 1)));
+    children.forEach((child) =>
+      childrenBox.appendChild(renderTocNode(child, depth + 1, filters, imagesKey, panel, showStatus))
+    );
+    ownImages.forEach(({ img, index }) =>
+      childrenBox.appendChild(renderTocImageRow(img, index, depth + 1, panel, showStatus))
+    );
   });
 
   const wrapper = document.createElement("div");
@@ -449,12 +355,29 @@ function renderBothNode(node, depth, filters) {
   return wrapper;
 }
 
+const BOTH_FILTER_IDS = filterIds("both");
+const COMPARE_FILTER_IDS = filterIds("compare");
+
+function readFilters(idsByKey) {
+  return Object.fromEntries(
+    Object.entries(idsByKey).map(([key, id]) => [key, document.getElementById(id).checked])
+  );
+}
+
 function renderBothTree() {
-  const filters = bothFilters();
-  attachBothImages(filters);
+  const filters = readFilters(BOTH_FILTER_IDS);
+  attachFilteredImages(filters, "_bothImages");
   const content = document.getElementById("both-tree-content");
   content.innerHTML = "";
-  content.appendChild(renderBothNode(tocVolume, 0, filters));
+  content.appendChild(renderTocNode(tocVolume, 0, filters, "_bothImages", bothPanel, false));
+}
+
+function renderCompareTree() {
+  const filters = readFilters(COMPARE_FILTER_IDS);
+  attachFilteredImages(filters, "_compareImages");
+  const content = document.getElementById("compare-tree-content");
+  content.innerHTML = "";
+  content.appendChild(renderTocNode(tocVolume, 0, filters, "_compareImages", comparePanel, true));
 }
 
 const TABS = ["toc-both", "compare"];
@@ -469,14 +392,20 @@ function switchTab(active) {
 TABS.forEach((name) => {
   document.getElementById(`tab-${name}`).addEventListener("click", () => switchTab(name));
 });
-BOTH_FILTER_IDS.forEach((id) => {
+Object.values(BOTH_FILTER_IDS).forEach((id) => {
   document.getElementById(id).addEventListener("change", renderBothTree);
+});
+Object.values(COMPARE_FILTER_IDS).forEach((id) => {
+  document.getElementById(id).addEventListener("change", renderCompareTree);
 });
 
 let resizeDebounce = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeDebounce);
-  resizeDebounce = setTimeout(refitBothPanels, 150);
+  resizeDebounce = setTimeout(() => {
+    bothPanel.refit();
+    comparePanel.refit();
+  }, 150);
 });
 
 (async function init() {
@@ -484,6 +413,7 @@ window.addEventListener("resize", () => {
   await loadToc();
   await loadAllImages();
   await loadWebToc();
+  await loadComparison();
   renderBothTree();
-  await loadCompareTab();
+  renderCompareTree();
 })();

@@ -18,6 +18,7 @@ PDF_PATH = str(PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf")
 IMAGES_DIR = str(PROJECT_ROOT / "output" / "images")
 WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "bcbc_web.json")
 WEB_PAGES_DIR = str(PROJECT_ROOT / "output" / "web_pages")
+COMPARISON_JSON = str(PROJECT_ROOT / "output" / "comparison.json")
 
 _app = None
 
@@ -35,12 +36,14 @@ def _get_app():
         if not Path(TOC_JSON).exists():
             sys.exit(f"No such file: {TOC_JSON} (run src/build_mo_toc.py first)")
         web_toc_json = WEB_TOC_JSON if Path(WEB_TOC_JSON).exists() else None
+        comparison_json = COMPARISON_JSON if Path(COMPARISON_JSON).exists() else None
         _app = create_app(
             toc_json_path=TOC_JSON,
             pdf_path=PDF_PATH,
             images_dir=IMAGES_DIR,
             web_toc_json_path=web_toc_json,
             web_pages_dir=WEB_PAGES_DIR,
+            comparison_json_path=comparison_json,
         )
     return _app
 
