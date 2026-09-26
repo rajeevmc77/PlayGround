@@ -41,12 +41,16 @@ def create_app(
     images_dir: str,
     web_toc_json_path: str | None = None,
     web_pages_dir: str | None = None,
+    comparison_json_path: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="MO Package TOC Viewer")
     payload = json.loads(Path(toc_json_path).read_text())
     web_payload = None
     if web_toc_json_path and Path(web_toc_json_path).exists():
         web_payload = json.loads(Path(web_toc_json_path).read_text())
+    comparison_payload = None
+    if comparison_json_path and Path(comparison_json_path).exists():
+        comparison_payload = json.loads(Path(comparison_json_path).read_text())
 
     @app.get("/api/toc")
     def get_toc():
@@ -61,6 +65,12 @@ def create_app(
         if web_payload is None:
             raise HTTPException(status_code=503, detail="Run src/build_web_toc.py first")
         return JSONResponse(web_payload)
+
+    @app.get("/api/comparison")
+    def get_comparison():
+        if comparison_payload is None:
+            raise HTTPException(status_code=503, detail="Run src/build_comparison.py first")
+        return JSONResponse(comparison_payload)
 
     @app.get("/pdf")
     def get_pdf():

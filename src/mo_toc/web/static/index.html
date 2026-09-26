@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>MO Package TOC Viewer</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
   <div id="tabs">
@@ -42,20 +42,34 @@
   </div>
   <div id="compare" style="display:none">
     <div id="compare-tree">
-      <label><input type="checkbox" id="declutter-compare" checked> Hide decorative images (small icons/logos)</label>
+      <div class="toc-filters">
+        <label><input type="checkbox" id="filter-compare-figures" checked> Figures</label>
+        <label><input type="checkbox" id="filter-compare-tables" checked> Tables</label>
+        <label><input type="checkbox" id="filter-compare-equations" checked> Equations / Formula</label>
+        <label><input type="checkbox" id="filter-compare-text" checked> Text</label>
+        <label><input type="checkbox" id="filter-compare-images" checked> Images</label>
+      </div>
       <div id="compare-tree-content"></div>
     </div>
-    <div id="compare-images">
-      <div class="compare-image-col">
-        <h3>PDF Image</h3>
-        <div id="compare-pdf-content" class="compare-placeholder">Click an image on the left to compare.</div>
+    <div id="compare-content">
+      <div id="compare-pdf-col" class="both-content-col">
+        <h3>PDF</h3>
+        <div id="compare-pdf-pane" class="both-pane">
+          <canvas id="compare-pdf-canvas"></canvas>
+          <div id="compare-pdf-highlight" class="content-highlight" style="display:none"></div>
+        </div>
       </div>
-      <div class="compare-image-col">
-        <h3>Web Image</h3>
-        <div id="compare-web-content"></div>
+      <div id="compare-web-col" class="both-content-col">
+        <h3>Web</h3>
+        <div id="compare-web-pane" class="both-pane">
+          <div id="compare-web-placeholder" class="compare-placeholder">Click an item on the left to compare.</div>
+          <div id="compare-web-fit" class="fit-wrap">
+            <iframe id="compare-web-frame" title="Matching web content" hidden></iframe>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=22"></script>
+  <script type="module" src="/static/viewer.js?v=23"></script>
 </body>
 </html>
