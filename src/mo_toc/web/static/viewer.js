@@ -202,40 +202,17 @@ function expandReadingView(doc) {
   doc.head.appendChild(style);
 }
 
-// The frame's own true, unscaled layout size (see the CSS comment on
-// #both-web-frame) - never changed, so the saved page always reflows
-// exactly as it did when build_web_pages.py captured its bbox coordinates.
-const WEB_FRAME_WIDTH = 1500;
-const WEB_FRAME_HEIGHT = 950;
-
-// Visually shrinks/grows the iframe to the column's width with a CSS
-// transform, which resizes nothing about its internal layout - the fit
-// wrapper is sized to match so the column reserves exactly that much space
-// instead of the frame's true footprint.
-function fitWebFrameToColumn(ids) {
-  const scale = fitScale(document.getElementById(ids.webColId).clientWidth, WEB_FRAME_WIDTH);
-  document.getElementById(ids.webFrameId).style.transform = `scale(${scale})`;
-  Object.assign(document.getElementById(ids.webFitId).style, {
-    width: `${WEB_FRAME_WIDTH * scale}px`,
-    height: `${WEB_FRAME_HEIGHT * scale}px`,
-  });
-}
-
 function showWebLocation(ids, location) {
   const frame = document.getElementById(ids.webFrameId);
-  const fitWrap = document.getElementById(ids.webFitId);
   const placeholder = document.getElementById(ids.webPlaceholderId);
   if (!location) {
     frame.hidden = true;
-    fitWrap.hidden = true;
     placeholder.hidden = false;
     placeholder.textContent = "No matching web content for this item.";
     return;
   }
   frame.hidden = false;
-  fitWrap.hidden = false;
   placeholder.hidden = true;
-  fitWebFrameToColumn(ids);
   frame.onload = () => {
     const doc = frame.contentDocument;
     expandReadingView(doc);
@@ -268,13 +245,15 @@ function createSplitPanel(ids) {
   }
 
   // A column's width can change after a selection is already showing
-  // (window resize, sidebar toggle) - re-fit both panes to it rather than
-  // leaving them sized for a column that no longer exists.
+  // (window resize, sidebar toggle) - re-fit the pdf to it, and re-measure
+  // the web highlight, since the saved page has reflowed to the new width.
   function refit() {
     if (!selection) return;
     const { pageNumber, bbox, unifiedNumber } = selection;
     goToPdfLocation(ids, pageNumber, bbox);
-    if (unifiedLocations.get(unifiedNumber)) fitWebFrameToColumn(ids);
+    const location = unifiedLocations.get(unifiedNumber);
+    const doc = document.getElementById(ids.webFrameId).contentDocument;
+    if (location && doc?.body) highlightInFrame(doc, location);
   }
 
   return { select, refit };
@@ -286,7 +265,6 @@ const bothPanel = createSplitPanel({
   pdfHighlightId: "both-pdf-highlight",
   webColId: "both-web-col",
   webFrameId: "both-web-frame",
-  webFitId: "both-web-fit",
   webPlaceholderId: "both-web-placeholder",
 });
 
@@ -296,7 +274,6 @@ const comparePanel = createSplitPanel({
   pdfHighlightId: "compare-pdf-highlight",
   webColId: "compare-web-col",
   webFrameId: "compare-web-frame",
-  webFitId: "compare-web-fit",
   webPlaceholderId: "compare-web-placeholder",
 });
 
