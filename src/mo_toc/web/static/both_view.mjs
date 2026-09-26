@@ -85,3 +85,12 @@ export function bothHostCitations(tree, filters) {
   walk(tree, tree.citation, false);
   return hosts;
 }
+
+// The factor that makes content natively `nativeWidth` wide exactly fill
+// `containerWidth`, so neither the pdf canvas nor the web iframe ever needs
+// a horizontal scrollbar to be read. Falls back to native size (no scaling)
+// if the container hasn't been laid out yet (clientWidth reads 0, or less
+// in a detached element) rather than collapsing content to nothing.
+export function fitScale(containerWidth, nativeWidth) {
+  return containerWidth > 0 ? containerWidth / nativeWidth : 1;
+}

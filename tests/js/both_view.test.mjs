@@ -7,6 +7,7 @@ import {
   classifyImage,
   collectUnifiedLocations,
   isShownInBoth,
+  fitScale,
   minVisibleBox,
   pageFileRoute,
   visibleBothChildren,
@@ -165,4 +166,14 @@ test("bothHostCitations: everything off hosts every image on the heading above i
   ["art", "sent", "clause", "sub", "table", "row", "cell", "note"].forEach((c) =>
     assert.equal(hosts.get(c), "art", c)
   );
+});
+
+test("fitScale: the factor that makes content of nativeWidth exactly fill containerWidth", () => {
+  assert.equal(fitScale(750, 1500), 0.5);
+  assert.equal(fitScale(3000, 1500), 2);
+});
+
+test("fitScale: falls back to 1 (native size) when the container hasn't laid out yet", () => {
+  assert.equal(fitScale(0, 1500), 1);
+  assert.equal(fitScale(-5, 1500), 1);
 });
