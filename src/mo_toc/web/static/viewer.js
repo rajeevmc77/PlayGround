@@ -3,12 +3,15 @@ import {
   bothHostCitations,
   classifyImage,
   collectUnifiedLocations,
+  dominantFontSize,
   fitScale,
   minVisibleBox,
   pageFileRoute,
+  pdfFontSamples,
   renderedContentBox,
+  textMatchScale,
   visibleBothChildren,
-} from "./both_view.mjs?v=5";
+} from "./both_view.mjs?v=6";
 import { filterIds, statusBadge } from "./compare_view.mjs?v=1";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -88,19 +91,32 @@ function attachFilteredImages(filters, key) {
   });
 }
 
+// pdf.js refuses a second render() on a canvas still rendering, and pages
+// can finish loading out of click order - so only the newest request per
+// canvas renders (cancelling any render still in flight); every older one
+// rejects instead.
+const renderTasks = new Map();
+const latestRenderRequest = new Map();
+
 // `scaleFn` picks the render scale from the page's native (scale:1) width -
 // pdf.js can rasterize at any scale directly, so "fit the column width"
 // needs no separate CSS resizing step; showPdfHighlight already keys its
 // bbox math off the actual viewport.scale used here, so it stays correct
 // whatever scale is chosen.
 async function renderPdfPage(canvasId, pageNumber, scaleFn) {
+  const request = Symbol(canvasId);
+  latestRenderRequest.set(canvasId, request);
   const page = await pdfDoc.getPage(pageNumber);
+  if (latestRenderRequest.get(canvasId) !== request) throw new Error("superseded");
   const nativeWidth = page.getViewport({ scale: 1 }).width;
   const viewport = page.getViewport({ scale: scaleFn(nativeWidth) });
+  renderTasks.get(canvasId)?.cancel();
   const canvas = document.getElementById(canvasId);
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  const task = page.render({ canvasContext: canvas.getContext("2d"), viewport });
+  renderTasks.set(canvasId, task);
+  await task.promise;
   return viewport;
 }
 
@@ -202,7 +218,31 @@ function expandReadingView(doc) {
   doc.head.appendChild(style);
 }
 
-function showWebLocation(ids, location) {
+// The saved page's body text size, in its own CSS px - the size most of
+// its characters are set in, as the site's stylesheet renders them.
+function webBodyTextPx(doc) {
+  const panel = nodeAt(doc, WEB_PANEL_XPATH) || doc.body;
+  const walker = doc.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+  const samples = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const size = parseFloat(doc.defaultView.getComputedStyle(node.parentElement).fontSize);
+    samples.push({ size, chars: node.textContent.trim().length });
+  }
+  return dominantFontSize(samples);
+}
+
+// The pdf page's body text size as drawn on the canvas, in CSS px (the
+// canvas is shown at its own pixel size) - read from each page's own text,
+// since front matter and body pages aren't all set in the same size.
+async function pdfBodyTextPx(pageNumber, scale) {
+  const page = await pdfDoc.getPage(pageNumber);
+  const { items } = await page.getTextContent();
+  return (dominantFontSize(pdfFontSamples(items)) || 0) * scale;
+}
+
+// beforeHighlight(doc) runs once the page has loaded, before the highlight
+// is measured - the panel's chance to zoom the page, which reflows it.
+function showWebLocation(ids, location, beforeHighlight) {
   const frame = document.getElementById(ids.webFrameId);
   const placeholder = document.getElementById(ids.webPlaceholderId);
   if (!location) {
@@ -213,11 +253,13 @@ function showWebLocation(ids, location) {
   }
   frame.hidden = false;
   placeholder.hidden = true;
-  frame.onload = () => {
+  frame.onload = async () => {
     const doc = frame.contentDocument;
     expandReadingView(doc);
+    await beforeHighlight(doc);
     // Measured in the page's own web font, as the text finally wraps.
-    doc.fonts.ready.then(() => highlightInFrame(doc, location));
+    await doc.fonts.ready;
+    highlightInFrame(doc, location);
   };
   frame.src = `${pageFileRoute(location.page_file)}?t=${Date.now()}`;
 }
@@ -230,6 +272,7 @@ async function goToPdfLocation(ids, pageNumber, bbox) {
   // The pane only sizes to its content; the column is the actual
   // overflow:auto ancestor that scrolling needs to target.
   showPdfHighlight(ids.pdfCanvasId, ids.pdfHighlightId, ids.pdfColId, viewport, bbox);
+  return pdfBodyTextPx(pageNumber, viewport.scale);
 }
 
 // One tree (the full pdf hierarchy) drives two synchronized content panes -
@@ -237,23 +280,41 @@ async function goToPdfLocation(ids, pageNumber, bbox) {
 // their own element ids so neither tab duplicates the other's panel logic.
 function createSplitPanel(ids) {
   let selection = null;
+  let webBodyPx = null;
+
+  // Zooms the web page so its body text shows at the pdf's on-screen body
+  // size; the frame is laid out at the pane's size divided by the zoom (see
+  // .web-frame), so it still exactly fills the pane.
+  function matchTextSize(pdfBodyPx) {
+    const zoom = textMatchScale(pdfBodyPx, webBodyPx);
+    document.getElementById(ids.webPaneId).style.setProperty("--web-zoom", zoom);
+  }
 
   function select(pageNumber, bbox, unifiedNumber) {
     selection = { pageNumber, bbox, unifiedNumber };
-    goToPdfLocation(ids, pageNumber, bbox);
-    showWebLocation(ids, unifiedLocations.get(unifiedNumber) || null);
+    // A render superseded by a later click rejects (null) - that click's
+    // own page load re-zooms, so this one just stays unzoomed.
+    const pdfBodyPx = goToPdfLocation(ids, pageNumber, bbox).catch(() => null);
+    showWebLocation(ids, unifiedLocations.get(unifiedNumber) || null, async (doc) => {
+      webBodyPx = webBodyTextPx(doc);
+      matchTextSize(await pdfBodyPx);
+    });
   }
 
   // A column's width can change after a selection is already showing
-  // (window resize, sidebar toggle) - re-fit the pdf to it, and re-measure
-  // the web highlight, since the saved page has reflowed to the new width.
-  function refit() {
+  // (window resize, sidebar toggle) - re-fit the pdf to it, re-match the web
+  // text to the pdf's new size, and re-measure the web highlight, since the
+  // saved page has reflowed to the new width.
+  async function refit() {
     if (!selection) return;
     const { pageNumber, bbox, unifiedNumber } = selection;
-    goToPdfLocation(ids, pageNumber, bbox);
+    // Superseded by a later render (null) - that one re-fits instead.
+    const pdfBodyPx = await goToPdfLocation(ids, pageNumber, bbox).catch(() => null);
     const location = unifiedLocations.get(unifiedNumber);
     const doc = document.getElementById(ids.webFrameId).contentDocument;
-    if (location && doc?.body) highlightInFrame(doc, location);
+    if (pdfBodyPx === null || !location || !doc?.body) return;
+    matchTextSize(pdfBodyPx);
+    highlightInFrame(doc, location);
   }
 
   return { select, refit };
@@ -264,6 +325,7 @@ const bothPanel = createSplitPanel({
   pdfCanvasId: "both-pdf-canvas",
   pdfHighlightId: "both-pdf-highlight",
   webColId: "both-web-col",
+  webPaneId: "both-web-pane",
   webFrameId: "both-web-frame",
   webPlaceholderId: "both-web-placeholder",
 });
@@ -273,6 +335,7 @@ const comparePanel = createSplitPanel({
   pdfCanvasId: "compare-pdf-canvas",
   pdfHighlightId: "compare-pdf-highlight",
   webColId: "compare-web-col",
+  webPaneId: "compare-web-pane",
   webFrameId: "compare-web-frame",
   webPlaceholderId: "compare-web-placeholder",
 });
