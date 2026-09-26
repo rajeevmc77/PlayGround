@@ -11,6 +11,11 @@ renders beside the PDF page:
   and the panel is added back, so the numbers don't depend on scroll position.
 - `text`: `innerText` with whitespace runs collapsed.
 
+Measured only once the page's web fonts have loaded (`document.fonts.ready`):
+the site's BC Sans is often still downloading when `load` fires, and text
+measured in the narrower fallback font wraps onto fewer lines, shifting every
+bbox below it.
+
 Returns null when ROOT_XPATH doesn't resolve to exactly one content panel.
 """
 
@@ -29,7 +34,8 @@ GRID_ROWS_JS = """const gridRows = (block) => [...block.querySelectorAll('table'
   })
   .flatMap((table) => [...table.rows]);"""
 
-LAYOUT_JS = f"""() => {{
+LAYOUT_JS = f"""async () => {{
+  await document.fonts.ready;
   const ROOT = '{ROOT_XPATH}';
   const found = document.evaluate(ROOT, document, null,
     XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);

@@ -6,8 +6,9 @@ import {
   fitScale,
   minVisibleBox,
   pageFileRoute,
+  renderedContentBox,
   visibleBothChildren,
-} from "./both_view.mjs?v=3";
+} from "./both_view.mjs?v=5";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -281,17 +282,48 @@ async function goToBothPdfLocation(pageNumber, bbox) {
 // layout_join.py / the web-toc-local-scrape design doc).
 const WEB_PANEL_XPATH = "/html/body/main/div/main";
 
-// Appends the highlight as the panel's own child and positions it with the
-// bbox directly, rather than computing a page-relative position via
-// getBoundingClientRect()+scroll - immune to whatever positioning context
-// the site's own CSS puts around the panel, and to any scroll/layout timing
-// at the moment of measurement.
-function highlightInFrame(doc, bbox) {
-  const panel = doc.evaluate(WEB_PANEL_XPATH, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)
-    .singleNodeValue;
+function nodeAt(doc, xpath) {
+  return doc.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+}
+
+// The viewport rects of everything `el` actually draws: each of its text
+// runs and images. Not the rects of its element children - a block child's
+// box spans the whole panel width, however short its text.
+function renderedRects(doc, el) {
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const range = doc.createRange();
+  const rects = [...el.querySelectorAll("img")].map((img) => img.getBoundingClientRect());
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    range.selectNodeContents(text);
+    rects.push(...range.getClientRects());
+  }
+  return rects;
+}
+
+// Measured from the element as it renders now, in the frame, so the box
+// hugs its text and follows the page's real layout; the stored bbox is only
+// the fallback, for an xpath that no longer resolves or draws nothing.
+function frameContentBox(doc, panel, location) {
+  const el = location.xpath && nodeAt(doc, location.xpath);
+  if (!el) return location.bbox;
+  const rendered = renderedContentBox(
+    panel.getBoundingClientRect(),
+    { left: panel.scrollLeft, top: panel.scrollTop },
+    el.getBoundingClientRect(),
+    renderedRects(doc, el)
+  );
+  return rendered || location.bbox;
+}
+
+// Appends the highlight as the panel's own child and positions it in the
+// panel's own coordinates, rather than computing a page-relative position -
+// immune to whatever positioning context the site's own CSS puts around the
+// panel.
+function highlightInFrame(doc, location) {
+  const panel = nodeAt(doc, WEB_PANEL_XPATH);
   if (!panel) return;
   if (doc.defaultView.getComputedStyle(panel).position === "static") panel.style.position = "relative";
-  const box = minVisibleBox(bbox);
+  const box = minVisibleBox(frameContentBox(doc, panel, location));
   let highlight = doc.getElementById("both-web-injected-highlight");
   if (!highlight) {
     highlight = doc.createElement("div");
@@ -356,8 +388,10 @@ function showBothWebLocation(location) {
   placeholder.hidden = true;
   fitWebFrameToColumn();
   frame.onload = () => {
-    expandReadingView(frame.contentDocument);
-    highlightInFrame(frame.contentDocument, location.bbox);
+    const doc = frame.contentDocument;
+    expandReadingView(doc);
+    // Measured in the page's own web font, as the text finally wraps.
+    doc.fonts.ready.then(() => highlightInFrame(doc, location));
   };
   frame.src = `${pageFileRoute(location.page_file)}?t=${Date.now()}`;
 }
