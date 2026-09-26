@@ -16,6 +16,7 @@ import statistics
 from mo_toc.domain.models import BBox, Node
 from mo_toc.parsing.marker_rules import RE_MARKER, classify_marker
 from mo_toc.parsing.pdf_source import PageLine
+from shared.styled_text import StyledText
 
 BodyLine = tuple[int, PageLine]
 
@@ -78,10 +79,15 @@ def _advance_clause_state(pline: PageLine, token: str, next_letter: str) -> tupl
     return next_letter, pline.x0
 
 
+def _marker_tail(pline: PageLine, match) -> StyledText:
+    """The line's text after its "1)"/"a)"/"i)" marker, with its emphasis."""
+    return pline.styled.slice(match.start(2))
+
+
 def _marker_node(
     node_type: str,
     token: str,
-    content: str,
+    content: StyledText,
     parent_citation: str,
     page_index: int,
     pline,
@@ -94,7 +100,8 @@ def _marker_node(
         identifier=identifier,
         citation=f"{parent_citation}{identifier}",
         title="",
-        content=content,
+        content=content.text,
+        emphasis=list(content.emphasis),
         page=page,
         # end_page is inherited from the sentence/article boundary computed
         # before this marker's own page was known - clamp so it can't land
@@ -105,20 +112,16 @@ def _marker_node(
 
 
 def _append_continuation(owner: Node, owner_start_page: int, page_index: int, pline) -> None:
-    owner.content = f"{owner.content} {pline.text}".strip()
+    joined = StyledText(owner.content, tuple(owner.emphasis)).join(pline.styled)
+    owner.content, owner.emphasis = joined.text, list(joined.emphasis)
     if page_index == owner_start_page:
         owner.bbox = owner.bbox.union(BBox(*pline.bbox))
 
 
 def _add_clause(
-    sentence: Node,
-    token: str,
-    content: str,
-    page_index: int,
-    pline,
-    end_page: int,
-    next_letter: str,
+    sentence: Node, match, page_index: int, pline, end_page: int, next_letter: str
 ) -> tuple[Node, str, float]:
+    token, content = match.group(1), _marker_tail(pline, match)
     cur_clause = _marker_node(
         "Clause", token, content, sentence.citation, page_index, pline, end_page
     )
@@ -127,9 +130,8 @@ def _add_clause(
     return cur_clause, next_letter, prev_clause_x0
 
 
-def _add_subclause(
-    cur_clause: Node, token: str, content: str, page_index: int, pline, end_page: int
-) -> Node:
+def _add_subclause(cur_clause: Node, match, page_index: int, pline, end_page: int) -> Node:
+    token, content = match.group(1), _marker_tail(pline, match)
     subclause = _marker_node(
         "Subclause", token, content, cur_clause.citation, page_index, pline, end_page
     )
@@ -152,26 +154,27 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
         kind = _resolve_kind(kind, token, pline, next_letter, threshold, prev_clause_x0)
         if kind == "clause":
             cur_clause, next_letter, prev_clause_x0 = _add_clause(
-                sentence, token, match.group(2), page_index, pline, end_page, next_letter
+                sentence, match, page_index, pline, end_page, next_letter
             )
             current_owner, current_owner_page = cur_clause, page_index
             continue
         if kind != "subclause" or cur_clause is None:
             continue
-        subclause = _add_subclause(cur_clause, token, match.group(2), page_index, pline, end_page)
+        subclause = _add_subclause(cur_clause, match, page_index, pline, end_page)
         current_owner, current_owner_page = subclause, page_index
 
 
 def _build_sentence(group: list[BodyLine], article_citation: str, end_page: int) -> Node:
     first_page_index, first_line = group[0]
     match = RE_MARKER.match(first_line.text)
-    token = match.group(1)
+    token, tail = match.group(1), _marker_tail(first_line, match)
     sentence = Node(
         type="Sentence",
         identifier=f"({token})",
         citation=f"{article_citation}({token})",
         title="",
-        content=match.group(2),
+        content=tail.text,
+        emphasis=list(tail.emphasis),
         page=first_page_index + 1,
         end_page=end_page,
         bbox=BBox(*first_line.bbox),

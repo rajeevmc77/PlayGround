@@ -27,6 +27,9 @@ independent tools live here:
    `xpath` in the saved page, hugging its rendered text; Figures / Tables / Equations / Text / Images filters
    show or hide those rows — headings always stay, and an image whose row is hidden moves up
    to the nearest row still shown) and "Compare" (PDF vs web images).
+   The tree's ✓/✗ comes from `src/build_comparison.py`: a leaf's text must match the web's
+   exactly apart from whitespace, and the only formatting checked is bold/italic (each
+   node's `emphasis` ranges) - see `ai_docs/2026-09-26-compare-emphasis-design.md`.
    See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
    A second, independent index (`src/web_toc/`, `src/build_web_toc.py`) is sourced from the
    BC Building Code website instead of the PDF, and feeds the viewer's web side.

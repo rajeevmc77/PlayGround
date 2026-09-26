@@ -4,7 +4,7 @@ same join the viewer's Both tab uses - see shared/numbering.py). A node
 passes only if its own text matches, every image it owns matches, and every
 child passes; a unified_number with no counterpart on the other side always
 fails. text_matches/images_match are injected so this orchestration stays
-free of PDF/image-library specifics - see text_similarity.py and
+free of PDF/image-library specifics - see content_match.py and
 image_similarity.py for the real implementations.
 
 A container node's own `content` is never text-compared directly: the web
@@ -17,7 +17,8 @@ rollup from its children (and any images it owns) covers the rest."""
 
 from collections.abc import Callable
 
-TextMatcher = Callable[[str, str], bool]
+# (pdf node, web node) -> whether they show the same content.
+TextMatcher = Callable[[dict, dict], bool]
 ImageMatcher = Callable[[dict, dict], bool]
 
 
@@ -68,7 +69,7 @@ def compare_trees(
             return not unified_number
         if pdf_node.get("children"):
             return True
-        return text_matches(pdf_node.get("content", ""), web_node.get("content", ""))
+        return text_matches(pdf_node, web_node)
 
     def node_status(pdf_node: dict) -> bool:
         unified_number = pdf_node.get("unified_number", "")

@@ -17,6 +17,7 @@ from mo_toc.domain.models import BBox, Caption, Node
 from mo_toc.parsing.heading_rules import classify_caption_line, is_caption_font
 from mo_toc.parsing.image_matcher import assign_owner
 from mo_toc.parsing.pdf_source import PageLine
+from shared.styled_text import StyledText
 
 RE_FORMING_PART_OF = re.compile(
     r"^Forming [Pp]art of (Sentence|Clause|Subclause|Article|Section|Subsection)\s+(.+?)\.?$"
@@ -168,13 +169,16 @@ def _cell_node(
     row_citation: str, col_i: int, in_cell: list[PageLine], fallback: BBox, page: int
 ) -> Node:
     ordered = sorted(in_cell, key=lambda ln: ln.bbox[1])
-    content = " ".join(ln.text for ln in ordered).strip()
+    content = StyledText("")
+    for pline in ordered:
+        content = content.join(pline.styled)
     return Node(
         type="Cell",
         identifier=f"Col{col_i + 1}",
         citation=f"{row_citation}-Col{col_i + 1}",
         title="",
-        content=content,
+        content=content.text,
+        emphasis=list(content.emphasis),
         page=page,
         end_page=page,
         bbox=_cell_bbox(in_cell, fallback),

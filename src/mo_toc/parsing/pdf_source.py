@@ -1,12 +1,20 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from shared.styled_text import StyledText, style_of
+
 
 @dataclass(frozen=True)
 class PageLine:
     bbox: tuple[float, float, float, float]
     text: str
     font: str
+    # Bold/italic [start, end, style] ranges into `text` (see StyledText).
+    emphasis: tuple[tuple[int, int, str], ...] = ()
+
+    @property
+    def styled(self) -> StyledText:
+        return StyledText(self.text, self.emphasis)
 
     @property
     def x0(self) -> float:
@@ -54,16 +62,36 @@ class PdfSource(ABC):
     ) -> ExtractedImage: ...
 
 
+# PyMuPDF span flags; the font name is checked too, since e.g. Arial-Black
+# renders heavy without setting the bold flag.
+_ITALIC_FLAG, _BOLD_FLAG = 2, 16
+_BOLD_FONT_WORDS = ("Bold", "Black", "Heavy", "Semibold", "Demi")
+_ITALIC_FONT_WORDS = ("Italic", "Oblique")
+
+
+def _span_style(span) -> str:
+    font, flags = span["font"], span.get("flags", 0)
+    bold = bool(flags & _BOLD_FLAG) or any(word in font for word in _BOLD_FONT_WORDS)
+    italic = bool(flags & _ITALIC_FLAG) or any(word in font for word in _ITALIC_FONT_WORDS)
+    return style_of(bold=bold, italic=italic)
+
+
+def _line_font(spans) -> str:
+    fonts = {s["font"] for s in spans}
+    return fonts.pop() if len(fonts) == 1 else "/".join(sorted(fonts))
+
+
 def _line_from_span_dict(line_dict) -> PageLine | None:
     spans = [s for s in line_dict["spans"] if s["text"].strip()]
     if not spans:
         return None
-    text = "".join(s["text"] for s in spans).strip()
-    if not text:
-        return None
-    fonts = {s["font"] for s in spans}
-    font = fonts.pop() if len(fonts) == 1 else "/".join(sorted(fonts))
-    return PageLine(bbox=tuple(line_dict["bbox"]), text=text, font=font)
+    styled = StyledText.from_runs((s["text"], _span_style(s)) for s in spans)
+    return PageLine(
+        bbox=tuple(line_dict["bbox"]),
+        text=styled.text,
+        font=_line_font(spans),
+        emphasis=styled.emphasis,
+    )
 
 
 class PyMuPdfSource(PdfSource):

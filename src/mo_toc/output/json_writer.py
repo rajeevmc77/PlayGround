@@ -11,6 +11,7 @@ _NO_TITLE_TYPES = _CONTENT_TYPES | {"Row"}
 def _prune_node(node_dict: dict) -> dict:
     if node_dict["type"] not in _CONTENT_TYPES:
         node_dict.pop("content", None)
+        node_dict.pop("emphasis", None)
     if node_dict["type"] in _NO_TITLE_TYPES:
         node_dict.pop("title", None)
     if not node_dict.get("heading"):

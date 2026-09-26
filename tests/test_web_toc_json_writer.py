@@ -103,3 +103,20 @@ def test_write_json_drops_unset_locations_and_keeps_set_ones(tmp_path):
     assert "location" not in payload["tree"]["children"][1]
     assert payload["images"][0]["location"] == _LOCATION
     assert "location" not in payload["images"][1]
+
+
+def test_write_json_keeps_emphasis_and_drops_it_when_empty(tmp_path):
+    styled = WebNode(
+        type="Clause", identifier="(a)", citation="c", title="", path="", content="a building"
+    )
+    styled.emphasis = [[2, 10, "i"]]
+    root = WebNode(
+        type="root", identifier="", citation="root", title="", path="", children=[styled]
+    )
+
+    out_path = tmp_path / "web_toc.json"
+    write_json(root, [], str(out_path))
+
+    payload = json.loads(out_path.read_text())
+    assert payload["tree"]["children"][0]["emphasis"] == [[2, 10, "i"]]
+    assert "emphasis" not in payload["tree"]

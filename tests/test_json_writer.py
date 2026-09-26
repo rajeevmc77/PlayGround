@@ -100,6 +100,36 @@ def test_write_json_drops_title_for_content_bearing_types(tmp_path):
     assert payload["volume"]["title"] == "A title"
 
 
+def test_write_json_keeps_emphasis_on_content_bearing_types_only(tmp_path):
+    clause = Node(
+        type="Clause",
+        identifier="(a)",
+        citation="c",
+        title="",
+        content="a building",
+        emphasis=[(2, 10, "i")],
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    part = Node(
+        type="Part",
+        identifier="1",
+        citation="A-1",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+        children=[clause],
+    )
+    out_path = tmp_path / "out.json"
+    write_json(part, [], [], str(out_path))
+    payload = json.loads(out_path.read_text())
+
+    assert payload["volume"]["children"][0]["emphasis"] == [[2, 10, "i"]]
+    assert "emphasis" not in payload["volume"]
+
+
 def test_write_json_drops_both_title_and_content_for_row(tmp_path):
     row = Node(
         type="Row",

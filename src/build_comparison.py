@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Builds output/comparison.json: a pass/fail status per unified_number,
 comparing bcbc_pdf.json's text/images against bcbc_web.json's - see
-src/comparison/engine.py for the rollup rules that decide each status.
+src/comparison/engine.py for the rollup rules that decide each status. Text
+must match exactly apart from whitespace, bold/italic included
+(comparison/content_match.py); the threshold applies to images only.
 
 Usage:
     python3 src/build_mo_toc.py      # once
@@ -17,16 +19,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from comparison.asset_loader import load_pdf_image_bytes, load_web_image_bytes
+from comparison.content_match import content_matches
 from comparison.engine import compare_trees
 from comparison.image_similarity import DEFAULT_THRESHOLD_PERCENT, compare_images, images_match
-from comparison.text_similarity import matches as text_matches
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
-
-
-def _text_matcher(threshold_percent: float):
-    return lambda pdf_text, web_text: text_matches(pdf_text, web_text, threshold_percent)
 
 
 def _image_matcher(output_dir: Path, threshold_percent: float):
@@ -52,7 +50,7 @@ def run(output_dir: str, threshold_percent: float = DEFAULT_THRESHOLD_PERCENT) -
         pdf_payload["images"],
         web_payload["tree"] if web_payload else None,
         web_payload["images"] if web_payload else [],
-        _text_matcher(threshold_percent),
+        content_matches,
         _image_matcher(out, threshold_percent),
     )
     payload = {"threshold_percent": threshold_percent, "statuses": statuses}

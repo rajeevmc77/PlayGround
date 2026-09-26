@@ -17,7 +17,7 @@ _PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{margin:0} .ui-ContentPanel{display:block;margin-top:50px;height:200px;overflow:auto}
 h1{margin:0;height:30px} td,th{height:20px}
 .compound-ref{display:inline-block} .compound-ref:before{content:"[ "}
-.compound-ref:after{content:" ]"} .hidden{display:none}
+.compound-ref:after{content:" ]"} .hidden{display:none} .term{font-style:italic}
 </style></head><body><svg><symbol id="bcbc-info-icon"></symbol></svg>
 <main id="main-content"><div class="MainLayout">
 <main class="ui-ContentPanel"><div class="reading-view__content">
@@ -43,6 +43,8 @@ data-owner="t3" src="/web-assets/equations/eg2.png" style="width:8px;height:8px"
 </table><table class="table-block__table--pinned-col"><tr><th>Value of <img alt="C_w"
 class="equation-image" data-equation="eg2" data-owner="t3" src="/web-assets/equations/eg2.png">
 </th></tr></table></div>
+<div id="em1">a new <span class="term">building</span>, <strong>Bold <em>both</em>
+</strong><span class="hidden">gone</span></div>
 <img src="/web-assets/graphics/a.jpg" alt="A figure" style="width:10px;height:10px">
 <div style="height:600px"></div>
 </div></main></div></main></body></html>"""
@@ -130,6 +132,18 @@ def test_text_includes_css_generated_content_and_skips_hidden_elements(measured)
     # The site draws each compound reference's brackets with ::before/::after.
     text = measured["page"]["elements"]["refs"]["text"]
     assert text == "[ F20 - OS2.1 ] [ F22 - OS2.5 ] Applies."
+
+
+def test_emphasis_records_the_rendered_bold_and_italic_ranges(measured):
+    em1 = measured["page"]["elements"]["em1"]
+    assert em1["text"] == "a new building, Bold both"
+    assert em1["emphasis"] == [[6, 14, "i"], [16, 21, "b"], [21, 25, "bi"]]
+
+
+def test_plain_text_has_no_emphasis_and_header_cells_render_bold(measured):
+    assert measured["page"]["elements"]["s1"]["emphasis"] == []
+    header = measured["page"]["tables"]["t1"][0]["cells"][0]
+    assert (header["text"], header["emphasis"]) == ("Provision", [[0, 9, "b"]])
 
 
 def test_tables_keep_every_row_and_cell_in_document_order(measured):
