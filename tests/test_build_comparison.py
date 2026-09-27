@@ -161,7 +161,7 @@ def _score_every_image_pair(monkeypatch, similarity_percent):
     monkeypatch.setattr(
         build_comparison,
         "compare_images",
-        lambda stem, a, b: ComparisonResult(stem, 0, similarity_percent),
+        lambda stem, _pdf_bytes, _web_bytes: ComparisonResult(stem, 0, similarity_percent),
     )
 
 
