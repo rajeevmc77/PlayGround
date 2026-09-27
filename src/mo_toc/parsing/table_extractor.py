@@ -179,27 +179,95 @@ def _band_index(value: float, boundaries: list[float]) -> int | None:
     return None
 
 
+def _rule_through(x: float, y: float, verticals: list) -> bool:
+    return any(
+        abs((r[0] + r[2]) / 2 - x) <= BOUNDARY_MERGE_TOLERANCE and r[1] <= y <= r[3]
+        for r in verticals
+    )
+
+
+def _ruled_boundaries(pline: PageLine, col_xs: list[float], verticals: list) -> list[float]:
+    """The inner column rules that cross the line itself - not a heading's
+    span over columns whose rules start below it."""
+    x0, y0, x1, y1 = pline.bbox
+    inside = (
+        x for x in col_xs[1:-1] if x0 + BOUNDARY_MERGE_TOLERANCE < x < x1 - BOUNDARY_MERGE_TOLERANCE
+    )
+    return [x for x in inside if _rule_through(x, (y0 + y1) / 2, verticals)]
+
+
+def _tokens(pline: PageLine) -> list[tuple[int, int, float, float]]:
+    """Each word's (start, end, x0, x1); inside a span, x is spread evenly
+    over its characters."""
+    tokens = []
+    for start, end, x0, x1 in pline.runs:
+        per_char = (x1 - x0) / max(end - start, 1)
+        for word in re.finditer(r"\S+", pline.text[start:end]):
+            left, right = start + word.start(), start + word.end()
+            tokens.append((left, right, x0 + per_char * word.start(), x0 + per_char * word.end()))
+    return tokens
+
+
+def _piece(pline: PageLine, group: list[tuple[int, int, float, float]], left: float) -> PageLine:
+    """`left`: the rule the piece was split past - an estimated x can fall
+    just short of it, and a piece is filed by where it starts."""
+    start, end = group[0][0], group[-1][1]
+    styled = pline.styled.between(start, end)
+    bbox = (max(group[0][2], left), pline.bbox[1], group[-1][3], pline.bbox[3])
+    return PageLine(bbox=bbox, text=styled.text, font=pline.font, emphasis=styled.emphasis)
+
+
+def _split_at_rules(pline: PageLine, col_xs: list[float], verticals: list) -> list[PageLine]:
+    """Table 3.2.3.1.-B sets values of neighbouring narrow columns as one
+    line ("46 91"): split where a column rule runs through it."""
+    boundaries = _ruled_boundaries(pline, col_xs, verticals)
+    tokens = _tokens(pline)
+    if not boundaries or not tokens:
+        return [pline]
+    band = lambda token: sum(x <= (token[2] + token[3]) / 2 for x in boundaries)  # noqa: E731
+    edges = [pline.bbox[0], *boundaries]
+    return [_piece(pline, list(g), edges[k]) for k, g in itertools.groupby(tokens, key=band)]
+
+
+def _cell_of(pline: PageLine, row_ys: list[float], col_xs: list[float]):
+    # Column by where the line starts, not its centre: a line spanning
+    # columns (a full-width heading row with no divider, e.g. Table
+    # 9.38.1.1.'s "9.3.1.3. ...") belongs to the column it starts in -
+    # where the site files a spanning cell. A line inside one cell starts
+    # and centres in the same column either way.
+    cy = (pline.bbox[1] + pline.bbox[3]) / 2
+    row_i, col_i = _band_index(cy, row_ys), _band_index(pline.bbox[0], col_xs)
+    return None if row_i is None or col_i is None else (row_i, col_i)
+
+
+def _inside(pline: PageLine, outer: tuple[float, float, float, float]) -> bool:
+    cx = (pline.bbox[0] + pline.bbox[2]) / 2
+    cy = (pline.bbox[1] + pline.bbox[3]) / 2
+    return outer[0] <= cx <= outer[2] and outer[1] <= cy <= outer[3]
+
+
+def _file_pieces(cells: dict, pieces: list[PageLine], row_ys, col_xs) -> bool:
+    filed = False
+    for piece in pieces:
+        key = _cell_of(piece, row_ys, col_xs)
+        if key is not None:
+            cells.setdefault(key, []).append(piece)
+            filed = True
+    return filed
+
+
 def _assign_lines_to_cells(
-    lines: list[PageLine], row_ys: list[float], col_xs: list[float]
+    lines: list[PageLine], row_ys: list[float], col_xs: list[float], rects=()
 ) -> tuple[dict[tuple[int, int], list[PageLine]], set[int]]:
     cells: dict[tuple[int, int], list[PageLine]] = {}
     consumed = set()
     outer = (col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
+    verticals = _rules_of_kind(list(rects), "vertical")
     for i, pline in enumerate(lines):
-        cx = (pline.bbox[0] + pline.bbox[2]) / 2
-        cy = (pline.bbox[1] + pline.bbox[3]) / 2
-        if not (outer[0] <= cx <= outer[2] and outer[1] <= cy <= outer[3]):
+        if not _inside(pline, outer):
             continue
-        # Column by where the line starts, not its centre: a line spanning
-        # columns (a full-width heading row with no divider, e.g. Table
-        # 9.38.1.1.'s "9.3.1.3. ...") belongs to the column it starts in -
-        # where the site files a spanning cell. A line inside one cell starts
-        # and centres in the same column either way.
-        row_i, col_i = _band_index(cy, row_ys), _band_index(pline.bbox[0], col_xs)
-        if row_i is None or col_i is None:
-            continue
-        cells.setdefault((row_i, col_i), []).append(pline)
-        consumed.add(i)
+        if _file_pieces(cells, _split_at_rules(pline, col_xs, verticals), row_ys, col_xs):
+            consumed.add(i)
     return cells, consumed
 
 
@@ -395,7 +463,7 @@ def _region_from_grid(
     this page) - all empty for a grid whose caption is on the page before."""
     title, forming_part_of, caption_lines = caption
     row_ys, col_xs = grid.row_ys, grid.col_xs
-    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
+    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs, grid.drawing_rects)
     cell_lines = _fold_row_spans(cell_lines, row_ys, col_xs, grid.drawing_rects)
     table_citation = f"Table:{anchor.identifier}"
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
@@ -781,7 +849,7 @@ def build_continuation_region(
     if rejected:
         return None
 
-    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
+    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs, drawing_rects)
     cell_lines = _fold_row_spans(cell_lines, row_ys, col_xs, drawing_rects)
     rows = _build_rows(row_ys, col_xs, cell_lines, pending.table_node.citation, page_number)
     table_node = Node(

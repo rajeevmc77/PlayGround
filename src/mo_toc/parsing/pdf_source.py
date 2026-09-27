@@ -14,6 +14,10 @@ class PageLine:
     # Centred on its page - how a caption set in the plain body font is told
     # apart from a body-text reference (see classify_caption_line).
     centred: bool = False
+    # (start, end, x0, x1) of each span's text in `text` - where on the line
+    # it sits, so a line crossing narrow table columns can be split
+    # (Table 3.2.3.1.-B's "1.2 1.5 2.0 ..." header). Empty when unknown.
+    runs: tuple[tuple[int, int, float, float], ...] = ()
 
     @property
     def styled(self) -> StyledText:
@@ -109,6 +113,18 @@ def _is_centred(bbox, page_width: float | None) -> bool:
     return abs((bbox[0] + bbox[2]) / 2 - page_width / 2) <= CENTRE_TOLERANCE
 
 
+def _span_runs(spans, text_length: int) -> tuple[tuple[int, int, float, float], ...]:
+    """Each span's stretch of the line's text, which from_runs strips of
+    the leading whitespace of the first span, and its x extent."""
+    if not all("bbox" in span for span in spans):
+        return ()
+    runs, position = [], -(len(spans[0]["text"]) - len(spans[0]["text"].lstrip()))
+    for span in spans:
+        start, position = position, position + len(span["text"])
+        runs.append((max(start, 0), min(position, text_length), span["bbox"][0], span["bbox"][2]))
+    return tuple(runs)
+
+
 def _line_from_span_dict(line_dict, page_width: float | None = None) -> PageLine | None:
     spans = [s for s in line_dict["spans"] if s["text"].strip()]
     if not spans:
@@ -120,6 +136,7 @@ def _line_from_span_dict(line_dict, page_width: float | None = None) -> PageLine
         font=_line_font(spans),
         emphasis=styled.emphasis,
         centred=_is_centred(line_dict["bbox"], page_width),
+        runs=_span_runs(spans, len(styled.text)),
     )
 
 

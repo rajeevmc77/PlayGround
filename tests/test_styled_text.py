@@ -141,3 +141,9 @@ def test_matches_ignores_the_styling_of_punctuation():
 
 def test_matches_two_empty_texts():
     assert matches(StyledText(""), StyledText("  "))
+
+
+def test_between_keeps_a_middle_stretch_and_clips_its_ranges():
+    styled = StyledText("ab cd ef", ((1, 4, "b"), (6, 8, "i")))
+    assert styled.between(3, 5) == StyledText("cd", ((0, 1, "b"),))
+    assert styled.between(6, 8) == StyledText("ef", ((0, 2, "i"),))
