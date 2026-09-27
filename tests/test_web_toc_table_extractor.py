@@ -183,3 +183,68 @@ def test_table_row_counts_skips_tables_without_an_id_or_structure():
 
 def test_table_row_counts_of_empty_content_is_empty():
     assert table_row_counts({}) == {}
+
+
+def _cell(text, rowspan=None, colspan=None):
+    cell = {"content": [{"type": "text", "value": text}]}
+    if rowspan:
+        cell["rowspan"] = rowspan
+    if colspan:
+        cell["colspan"] = colspan
+    return cell
+
+
+def _grid(body_rows, header_rows=()):
+    table = {
+        "id": "t.table1",
+        "type": "table",
+        "structure": {
+            "header_rows": [{"cells": cells} for cells in header_rows],
+            "body_rows": [{"cells": cells} for cells in body_rows],
+        },
+    }
+    [(_, node)] = extract_tables({"content": [table]}, set(), "fallback")
+    return [[cell.content for cell in row.children] for row in node.children]
+
+
+def test_a_row_spanning_cell_leaves_an_empty_placeholder_in_the_rows_it_covers():
+    """The site's JSON lists only the cells that start in a row, so the row
+    under a rowspan=2 cell comes one cell short and every later cell shifts
+    left a column. The PDF grid keeps an empty cell there (B.9.38.1.1's
+    5,949-row table failed almost entirely on this), so the web grid does
+    too."""
+    rows = _grid([[_cell("9.3.1.1.(1)", rowspan=2), _cell("[F20]")], [_cell("[F21]")]])
+    assert rows == [["9.3.1.1.(1)", "[F20]"], ["", "[F21]"]]
+
+
+def test_a_column_spanning_cell_is_followed_by_empty_placeholders():
+    rows = _grid([[_cell("9.3.1.1. General", colspan=2)], [_cell("a"), _cell("b")]])
+    assert rows == [["9.3.1.1. General", ""], ["a", "b"]]
+
+
+def test_a_rowspan_in_the_last_column_pads_the_end_of_the_covered_row():
+    rows = _grid([[_cell("a"), _cell("tall", rowspan=2)], [_cell("b")]])
+    assert rows == [["a", "tall"], ["b", ""]]
+
+
+def test_a_cell_spanning_rows_and_columns_covers_the_whole_block():
+    rows = _grid(
+        [[_cell("x"), _cell("y")], [_cell("z"), _cell("w")]],
+        header_rows=[[_cell("Block", rowspan=2, colspan=2), _cell("h1")], [_cell("h2")]],
+    )
+    assert rows == [["Block", "", "h1"], ["", "", "h2"], ["x", "y"], ["z", "w"]]
+
+
+def test_span_placeholders_get_their_own_column_citations():
+    table = {
+        "id": "t.table1",
+        "type": "table",
+        "structure": {
+            "body_rows": [{"cells": [_cell("a", rowspan=2), _cell("b")]}, {"cells": [_cell("c")]}]
+        },
+    }
+    [(_, node)] = extract_tables({"content": [table]}, set(), "fallback")
+    assert [cell.citation for cell in node.children[1].children] == [
+        "t.table1-row2-col1",
+        "t.table1-row2-col2",
+    ]
