@@ -1401,3 +1401,63 @@ def test_a_rule_spanning_some_columns_edge_to_edge_is_still_a_row_rule():
     rects.append((115.0, 75.0, 260.0, 75.4))
     [region] = detect_tables_on_page(lines, rects, page_number=1)
     assert len(region.table_node.children) == 3
+
+
+def _tail_above_next_caption_page():
+    """Page 1364: 9.23.4.2.-K's last rows, then 9.23.4.2.-L's caption and
+    grid further down the same page."""
+    tail_lines, tail_rects = _continuation_grid_fixture()
+    lines, rects = _minimal_grid_fixture()
+    shift = 90.0
+    next_lines = [
+        pline(p.bbox[0], p.bbox[1] + shift, p.bbox[2], p.bbox[3] + shift, p.text, p.font)
+        for p in lines
+    ]
+    next_lines[0] = pline(200, 100, 300, 110, "Table 2.2.(2)", CAPTION_FONT)
+    next_rects = [(x0, y0 + shift, x1, y1 + shift) for x0, y0, x1, y1 in rects]
+    return tail_lines + next_lines, tail_rects + next_rects
+
+
+def test_a_tables_tail_above_the_next_tables_caption_continues_it():
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines, rects = _tail_above_next_caption_page()
+    own = detect_tables_on_page(lines, rects, page_number=8)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], own]
+    )
+    [first, second] = stitch_continuations(filled)
+    assert [c.content for c in first.table_node.children[-1].children] == [
+        "continued row 1 col a",
+        "continued row 1 col b",
+    ]
+    assert second.table_node.identifier == "2.2.(2)"
+    assert len(second.table_node.children) == 2
+
+
+def test_prose_above_the_next_tables_caption_is_not_a_continuation():
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines, rects = _tail_above_next_caption_page()
+    lines, rects = lines[2:], rects[4:]  # no tail grid, just text
+    lines.insert(0, pline(90, 50, 400, 60, "Sentence prose before the caption."))
+    own = detect_tables_on_page(lines, rects, page_number=8)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], own]
+    )
+    assert [r.table_node.identifier for r in filled[1]] == ["2.2.(2)"]
+
+
+def test_a_rule_under_the_tail_with_no_columns_down_to_it_adds_no_row():
+    # Page 12: under 1.1.1.1.(5)'s last rows, Sentence 1.1.1.1.(6)'s text
+    # and then a full-width rule just above 1.1.1.1.(6)'s caption - no
+    # column rules reach it, so the text between is not a table row.
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+    lines, rects = _tail_above_next_caption_page()
+    lines.insert(2, pline(90, 78, 250, 88, "6) Sentence prose under the tail."))
+    rects.append((90.0, 95.0, 260.0, 95.4))
+    own = detect_tables_on_page(lines, rects, page_number=8)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], own]
+    )
+    tail = filled[1][0]
+    assert len(tail.table_node.children) == 1
+    assert 2 not in tail.consumed_line_indices
