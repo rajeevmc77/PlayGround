@@ -14,6 +14,7 @@ the immediately preceding clause, falling back to "clause" if nothing else
 applies.
 """
 
+import re
 import statistics
 
 from mo_toc.domain.models import BBox, Node
@@ -150,6 +151,26 @@ def _add_subclause(cur_clause: Node, match, page_index: int, pline, end_page: in
     return subclause
 
 
+RE_SEE_REFERENCE = re.compile(r"^\([Ss]ee\b")
+
+
+def _is_sentence_tail(pline: PageLine, first_line: PageLine) -> bool:
+    """A "(See Note A-4.1.8.3.(8).)" set as a paragraph of its own - indented
+    like a marker line, not like a wrapped continuation - after a sentence's
+    clauses closes the Sentence itself: the site keeps it there, not in the
+    last clause."""
+    return bool(RE_SEE_REFERENCE.match(pline.text)) and pline.x0 >= first_line.x0 - 2
+
+
+def _continuation_owner(
+    pline: PageLine, first_line: PageLine, sentence: Node, owner: tuple[Node, int]
+) -> tuple[Node, int]:
+    """The node an unmarked line continues, and that node's 0-based page."""
+    if _is_sentence_tail(pline, first_line):
+        return sentence, sentence.page - 1
+    return owner
+
+
 def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: int) -> None:
     clause_x, subclause_x = _clause_subclause_x0s(group)
     threshold = _sentence_threshold(clause_x, subclause_x)
@@ -159,6 +180,9 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
     for page_index, pline in group[1:]:
         match = RE_MARKER.match(pline.text)
         if not match:
+            current_owner, current_owner_page = _continuation_owner(
+                pline, group[0][1], sentence, (current_owner, current_owner_page)
+            )
             _append_continuation(current_owner, current_owner_page, page_index, pline)
             continue
         token, kind = match.group(1), classify_marker(match.group(1))
