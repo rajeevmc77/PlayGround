@@ -299,15 +299,30 @@ def build_table_region(
 
     title, title_end_idx = _consume_table_title(lines, anchor.caption_line_idx, row_ys[0])
     forming_idx, forming_part_of = _forming_part_of_above(lines, anchor.caption_line_idx, row_ys[0])
-    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
-    consumed.add(anchor.caption_line_idx)
-    consumed.update(range(anchor.caption_line_idx + 1, title_end_idx))
+    caption_lines = set(range(anchor.caption_line_idx, title_end_idx))
     if forming_idx is not None:
-        consumed.add(forming_idx)
+        caption_lines.add(forming_idx)
+    grid = _Grid(row_ys, col_xs, drawing_rects)
+    caption = (title, forming_part_of, caption_lines)
+    return _region_from_grid(anchor, lines, grid, page_number, caption)
 
+
+@dataclass
+class _Grid:
+    row_ys: list[float]
+    col_xs: list[float]
+    drawing_rects: list[tuple[float, float, float, float]]
+
+
+def _region_from_grid(
+    anchor: TableAnchor, lines: list[PageLine], grid: _Grid, page_number: int, caption
+) -> TableRegion:
+    """`caption`: (title, forming_part_of, the caption's own line indices on
+    this page) - all empty for a grid whose caption is on the page before."""
+    title, forming_part_of, caption_lines = caption
+    row_ys, col_xs = grid.row_ys, grid.col_xs
+    cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
     table_citation = f"Table:{anchor.identifier}"
-    rows = _build_rows(row_ys, col_xs, cell_lines, table_citation, page_number)
-
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
     table_node = Node(
         type="Table",
@@ -317,16 +332,37 @@ def build_table_region(
         page=page_number,
         end_page=page_number,
         bbox=outer_bbox,
-        children=rows,
+        children=_build_rows(row_ys, col_xs, cell_lines, table_citation, page_number),
     )
     return TableRegion(
         anchor=anchor,
         table_node=table_node,
         forming_part_of=forming_part_of,
-        consumed_line_indices=consumed,
-        has_bottom_border=_has_bottom_border(drawing_rects, row_ys[-1]),
+        consumed_line_indices=consumed | caption_lines,
+        has_bottom_border=_has_bottom_border(grid.drawing_rects, row_ys[-1]),
         outer_bbox=outer_bbox,
     )
+
+
+def build_orphaned_region(
+    anchor: TableAnchor,
+    lines: list[PageLine],
+    drawing_rects: list[tuple[float, float, float, float]],
+    page_number: int,
+    forming_part_of: tuple[str, str] | None = None,
+) -> TableRegion | None:
+    """The grid of a table whose caption ended the previous page (e.g.
+    "Table 9.24.2.5." on page 926, its grid atop page 927): the ruled lines
+    at the top of this page, down to this page's own first caption. Its
+    title stays with its caption, which tree_builder records;
+    `forming_part_of` is read from under that caption."""
+    own_anchors = find_table_anchors(lines, page_number - 1)
+    above_y = lines[own_anchors[0].caption_line_idx].bbox[1] if own_anchors else None
+    row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=0.0, above_y=above_y)
+    if len(row_ys) - 1 < MIN_ANCHOR_TABLE_ROWS or len(col_xs) - 1 < MIN_TABLE_COLS:
+        return None
+    grid = _Grid(row_ys, col_xs, drawing_rects)
+    return _region_from_grid(anchor, lines, grid, page_number, ("", forming_part_of, set()))
 
 
 def detect_tables_on_page(
@@ -350,16 +386,23 @@ def _renumber_row(table_citation: str, row: Node, row_i: int) -> None:
         cell.citation = f"{row.citation}-{cell.identifier}"
 
 
-def _continues_previous(prev: TableRegion, next_region: TableRegion) -> bool:
-    prev_cols = len(prev.table_node.children[0].children) if prev.table_node.children else 0
-    next_cols = (
-        len(next_region.table_node.children[0].children) if next_region.table_node.children else 0
-    )
+def _column_count(region: TableRegion) -> int:
+    rows = region.table_node.children
+    return len(rows[0].children) if rows else 0
+
+
+def _same_shape(prev: TableRegion, next_region: TableRegion) -> bool:
     same_x_range = (
         abs(prev.outer_bbox.x0 - next_region.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
         and abs(prev.outer_bbox.x1 - next_region.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
     )
-    return not prev.has_bottom_border and prev_cols == next_cols and same_x_range
+    return same_x_range and _column_count(prev) == _column_count(next_region)
+
+
+def _continues_previous(prev: TableRegion, next_region: TableRegion) -> bool:
+    # A different caption is a different table, however alike its shape.
+    same_table = prev.table_node.identifier == next_region.table_node.identifier
+    return same_table and not prev.has_bottom_border and _same_shape(prev, next_region)
 
 
 def _filled_columns(row: Node) -> list[int]:
@@ -726,6 +769,39 @@ def _preceding_page_has_orphaned_anchor(
     return len(anchors) > len(regions)
 
 
+def _orphaned_anchor(lines: list[PageLine], regions: list[TableRegion], page_index: int):
+    """The page's last caption, when it got no grid of its own there - its
+    grid, if any, is on the next page."""
+    anchors = find_table_anchors(lines, page_index)
+    if not anchors or any(r.anchor == anchors[-1] for r in regions):
+        return None
+    return anchors[-1]
+
+
+def _orphaned_region(
+    all_lines: list[list[PageLine]],
+    all_drawing_rects: list[list[tuple[float, float, float, float]]],
+    regions_by_page: list[list[TableRegion]],
+    page_index: int,
+) -> TableRegion | None:
+    if page_index == 0:
+        return None
+    prev = page_index - 1
+    anchor = _orphaned_anchor(all_lines[prev], regions_by_page[prev], prev)
+    if anchor is None:
+        return None
+    _, forming_part_of = _forming_part_of_above(
+        all_lines[prev], anchor.caption_line_idx, grid_top_y=float("inf")
+    )
+    return build_orphaned_region(
+        anchor,
+        all_lines[page_index],
+        all_drawing_rects[page_index],
+        page_index + 1,
+        forming_part_of,
+    )
+
+
 def _handle_gap_page(
     all_lines: list[list[PageLine]],
     all_drawing_rects: list[list[tuple[float, float, float, float]]],
@@ -793,6 +869,9 @@ def fill_continuation_gaps(
     filled = [list(regions) for regions in regions_by_page]
     pending: TableRegion | None = None
     for page_index, regions in enumerate(filled):
+        orphaned = _orphaned_region(all_lines, all_drawing_rects, regions_by_page, page_index)
+        if orphaned is not None:
+            regions.insert(0, orphaned)
         if regions:
             pending = _next_pending(regions)
             continue
