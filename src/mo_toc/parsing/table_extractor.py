@@ -99,22 +99,38 @@ def _merge_boundaries(values: list[float]) -> list[float]:
     return merged
 
 
+def _in_band(
+    rect: tuple[float, float, float, float], below_y: float, above_y: float | None
+) -> bool:
+    y0 = rect[1]
+    return y0 >= below_y - BOUNDARY_MERGE_TOLERANCE and (above_y is None or y0 <= above_y)
+
+
+def _on_column_edge(x: float, col_xs: list[float]) -> bool:
+    tolerance = BOUNDARY_MERGE_TOLERANCE
+    outside = x <= col_xs[0] + tolerance or x >= col_xs[-1] - tolerance
+    return outside or any(abs(x - col_x) <= tolerance for col_x in col_xs)
+
+
+def _is_row_rule(rect: tuple[float, float, float, float], col_xs: list[float]) -> bool:
+    """A row rule runs from column edge to column edge (or past the grid's
+    outer edges). The marked-up PDF also underlines revised words - Table
+    9.23.13.7.-C's heading has a short rule under each line - and those
+    start and stop inside a cell."""
+    return bool(col_xs) and _on_column_edge(rect[0], col_xs) and _on_column_edge(rect[2], col_xs)
+
+
+def _rules_of_kind(rects: list, kind: str) -> list:
+    return [rect for rect in rects if _classify_rect(rect) == kind]
+
+
 def _grid_boundaries(
     rects: list[tuple[float, float, float, float]], below_y: float, above_y: float | None = None
 ) -> tuple[list[float], list[float]]:
-    row_ys, col_xs = [], []
-    for rect in rects:
-        x0, y0, x1, y1 = rect
-        if y0 < below_y - BOUNDARY_MERGE_TOLERANCE:
-            continue
-        if above_y is not None and y0 > above_y:
-            continue
-        kind = _classify_rect(rect)
-        if kind == "horizontal":
-            row_ys.append((y0 + y1) / 2)
-        elif kind == "vertical":
-            col_xs.append((x0 + x1) / 2)
-    return _merge_boundaries(row_ys), _merge_boundaries(col_xs)
+    in_band = [rect for rect in rects if _in_band(rect, below_y, above_y)]
+    col_xs = _merge_boundaries([(r[0] + r[2]) / 2 for r in _rules_of_kind(in_band, "vertical")])
+    row_rules = [r for r in _rules_of_kind(in_band, "horizontal") if _is_row_rule(r, col_xs)]
+    return _merge_boundaries([(r[1] + r[3]) / 2 for r in row_rules]), col_xs
 
 
 def _rule_extent(x: float, verticals: list) -> tuple[float, float]:
