@@ -109,6 +109,57 @@ def test_a_table_with_no_identical_rows_falls_back_to_position():
     assert [counterparts[f"T.Row{n}"] for n in (1, 2, 3)] == ["T.Row1", "T.Row2", None]
 
 
+def test_rows_that_all_differ_a_little_pair_with_their_most_similar_counterpart():
+    # Real case: Table 1.3.1.2. - the site writes "Note A-..." in every
+    # row's last column, so no row matched exactly, the whole table was one
+    # differing block paired by position, and each row only one side has
+    # shifted every row below it (PDF "NFRC 200-2010" met web "NRC 1988").
+    pdf = _table(
+        "T",
+        [
+            ["ASTM", "A123", "Zinc Coating", "A-5.9.1.1."],
+            ["ASTM", "A153", "Zinc Hardware", "A-9.20.16.1."],
+            ["NFRC", "100", "U-factors", "9.36.2.2."],
+        ],
+    )
+    web = _table(
+        "T",
+        [
+            ["ASTM", "A123", "Zinc Coating", "Note A-5.9.1.1."],
+            ["ASME", "B18", "Wood Screws", "Note A-9.23.3.1."],
+            ["ASTM", "A153", "Zinc Hardware", "Note A-9.20.16.1."],
+            ["NFRC", "100", "U-factors", "9.36.2.2. 9.36.2.3."],
+        ],
+    )
+
+    counterparts = table_counterparts(pdf, web)
+
+    assert [counterparts[f"T.Row{n}"] for n in (1, 2, 3)] == ["T.Row1", "T.Row3", "T.Row4"]
+    assert counterparts["T.Row2.Col3"] == "T.Row3.Col3"
+
+
+def test_dissimilar_rows_between_two_similar_pairs_still_pair_by_position():
+    pdf = _table("T", [["ASTM", "A123", "Zinc"], ["p1"], ["NFRC", "100", "U"]])
+    web = _table("T", [["ASTM", "A123", "Zinc", "x"], ["w1"], ["w2"], ["NFRC", "100", "U", "x"]])
+
+    counterparts = table_counterparts(pdf, web)
+
+    assert [counterparts[f"T.Row{n}"] for n in (1, 2, 3)] == ["T.Row1", "T.Row2", "T.Row4"]
+
+
+def test_a_differing_block_with_as_many_rows_on_each_side_stays_by_position():
+    # Real case: Table 3.1.8.17. - the PDF splits a spanning cell's text over
+    # two rows where the web keeps it in the first, so the PDF's second row
+    # looked most like the web's first. Equal counts mean no row is missing:
+    # the rows correspond by position.
+    pdf = _table("T", [["H"], ["Between a", "no limit"], ["dead end corridor", "45 min"]])
+    web = _table("T", [["H"], ["dead end corridor", "45 min *"], ["Between a", "no limit *"]])
+
+    counterparts = table_counterparts(pdf, web)
+
+    assert [counterparts[f"T.Row{n}"] for n in (1, 2, 3)] == ["T.Row1", "T.Row2", "T.Row3"]
+
+
 def test_a_pdf_cell_beyond_the_paired_web_rows_width_is_unpaired():
     pdf = _table("T", [["a", "1", "extra"]])
     web = _table("T", [["a", "1"]])
