@@ -31,12 +31,49 @@ def _cell_node(row_citation: str, col_i: int, cell: dict) -> WebNode:
     )
 
 
-def _row_node(table_citation: str, row_i: int, row: dict) -> WebNode:
+_PLACEHOLDER: dict = {"content": []}
+
+
+def _span(cell: dict, key: str) -> int:
+    return max(1, int(cell.get(key) or 1))
+
+
+def _still_covered_from(covered: dict[int, int], col: int) -> bool:
+    return any(rows_left > 0 for c, rows_left in covered.items() if c >= col)
+
+
+def _expand_row(cells: list[dict], covered: dict[int, int]) -> list[dict]:
+    """One row's cells with an empty placeholder at every position a span
+    covers. `covered` maps column -> rows below still covered by a rowspan
+    from above; it's consumed and refilled as the row is laid out."""
+    out, queue, col = [], list(cells), 0
+    while queue or _still_covered_from(covered, col):
+        if covered.get(col, 0) > 0:
+            covered[col] -= 1
+            out.append(_PLACEHOLDER)
+            col += 1
+            continue
+        cell = queue.pop(0)
+        width = _span(cell, "colspan")
+        out.extend([cell] + [_PLACEHOLDER] * (width - 1))
+        for spanned in range(col, col + width):
+            covered[spanned] = _span(cell, "rowspan") - 1
+        col += width
+    return out
+
+
+def _expand_spans(rows: list[dict]) -> list[list[dict]]:
+    """The site's JSON lists only the cells that start in a row; the PDF grid
+    keeps an empty cell wherever a row/column span covers a position. Laying
+    the web grid out the same way keeps both sides' columns aligned."""
+    covered: dict[int, int] = {}
+    return [_expand_row(row.get("cells", []), covered) for row in rows]
+
+
+def _row_node(table_citation: str, row_i: int, cells_in_row: list[dict]) -> WebNode:
     identifier = f"row{row_i + 1}"
     row_citation = f"{table_citation}-{identifier}"
-    cells = [
-        _cell_node(row_citation, col_i, cell) for col_i, cell in enumerate(row.get("cells", []))
-    ]
+    cells = [_cell_node(row_citation, col_i, cell) for col_i, cell in enumerate(cells_in_row)]
     return WebNode(
         type="Row",
         identifier=identifier,
@@ -57,7 +94,7 @@ def _table_node(table: dict) -> WebNode:
         citation=citation,
         title=table.get("title", ""),
         path="",
-        children=[_row_node(citation, i, row) for i, row in enumerate(all_rows)],
+        children=[_row_node(citation, i, cells) for i, cells in enumerate(_expand_spans(all_rows))],
     )
 
 
