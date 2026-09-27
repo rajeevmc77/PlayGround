@@ -422,16 +422,35 @@ def _renumber_row(table_citation: str, row: Node, row_i: int) -> None:
 
 
 def _column_count(region: TableRegion) -> int:
+    """Its last row's - once a header-only page has taken on a body of
+    other columns, the next page carries on the body."""
     rows = region.table_node.children
-    return len(rows[0].children) if rows else 0
+    return len(rows[-1].children) if rows else 0
+
+
+def _all_bold(cell: Node) -> bool:
+    signature = StyledText.from_json(cell.content, cell.emphasis).signature()
+    return all("b" in style for char, style in signature if char.isalnum())
+
+
+def _only_header(region: TableRegion) -> bool:
+    """Whether the table so far is only its bold header - all its caption's
+    page had room for (Table 9.23.13.7.-A, page 892). The header's columns
+    need not be the body's: its spanning headings drew fewer rules."""
+    filled = [c for row in region.table_node.children for c in row.children if c.content.strip()]
+    return bool(filled) and all(_all_bold(cell) for cell in filled)
+
+
+def _same_x_range(a: BBox, b: BBox) -> bool:
+    return (
+        abs(a.x0 - b.x0) <= BOUNDARY_MERGE_TOLERANCE
+        and abs(a.x1 - b.x1) <= BOUNDARY_MERGE_TOLERANCE
+    )
 
 
 def _same_shape(prev: TableRegion, next_region: TableRegion) -> bool:
-    same_x_range = (
-        abs(prev.outer_bbox.x0 - next_region.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
-        and abs(prev.outer_bbox.x1 - next_region.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
-    )
-    return same_x_range and _column_count(prev) == _column_count(next_region)
+    same_columns = _column_count(prev) == _column_count(next_region) or _only_header(prev)
+    return _same_x_range(prev.outer_bbox, next_region.outer_bbox) and same_columns
 
 
 def _continues_previous(prev: TableRegion, next_region: TableRegion) -> bool:
@@ -669,10 +688,8 @@ def _has_leading_title_block(lines: list[PageLine], grid_top_y: float) -> bool:
 def _continuation_shape_matches(
     outer_bbox: BBox, col_count: int, expected_cols: int, pending: TableRegion
 ) -> bool:
-    return col_count == expected_cols and (
-        abs(outer_bbox.x0 - pending.outer_bbox.x0) <= BOUNDARY_MERGE_TOLERANCE
-        and abs(outer_bbox.x1 - pending.outer_bbox.x1) <= BOUNDARY_MERGE_TOLERANCE
-    )
+    same_columns = col_count == expected_cols or _only_header(pending)
+    return same_columns and _same_x_range(outer_bbox, pending.outer_bbox)
 
 
 def build_continuation_region(
