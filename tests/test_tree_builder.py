@@ -137,6 +137,45 @@ def test_a_note_on_a_table_keeps_the_tables_number_in_its_identifier():
     assert notes[3].citation == "Note:A-Table 9.23.3.5.-B"
 
 
+def test_a_notes_identifier_ends_where_its_title_begins_even_with_no_space():
+    # Real cases (Division B Parts 4-6, pages 606-709): the identifier ran to
+    # the first space, so "A-4.1.2.2.(1)Loads Not Listed." became note
+    # "A-4.1.2.2.(1)Loads" and never met the web's "A-4.1.2.2.(1)".
+    pages = _notes_page(
+        "A-4.1.2.2.(1)Loads Not Listed.The intent of Sentence 4.1.2.2.(1)",
+        "A-6.2.1.1.Good Engineering Practice.",
+        "A-4.1.7.8.(2) and (3)Exposure Factor for Dynamic Procedure.",
+        "A-9.25.3.4. and 9.25.3.6.   Air Leakage and Soil Gas Control.",
+        "A-3.8.2.3.(5) and (6) and 3.8.3.22.(1) and (4) Signs.",
+        "A-3.1.6.4.(3) to (6) Encapsulation.",
+        "A-9.10.3.1.(1)(c) Fire-Resistance Ratings.",
+        # Page 472: a period after the provision's references.
+        "A-3.8.5.7.(1)(c) and (d). Plumbing Systems. Plumbing systems",
+        "A-3.8.5.7.(1)(e).   Reinforced Grab Bar Location. This provision",
+    )
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    notes = root.children[1].children[0].children
+    assert [n.identifier for n in notes] == [
+        "A-4.1.2.2.(1)",
+        "A-6.2.1.1",
+        "A-4.1.7.8.(2) and (3)",
+        "A-9.25.3.4. and 9.25.3.6",
+        "A-3.8.2.3.(5) and (6) and 3.8.3.22.(1) and (4)",
+        "A-3.1.6.4.(3) to (6)",
+        "A-9.10.3.1.(1)(c)",
+        "A-3.8.5.7.(1)(c) and (d)",
+        "A-3.8.5.7.(1)(e)",
+    ]
+    assert notes[0].title == "Loads Not Listed.The intent of Sentence 4.1.2.2.(1)"
+
+
+def test_a_line_that_is_no_note_identifier_does_not_open_a_note():
+    # Real case: page 1537's "R-value (R)" line opened note "R-value~2".
+    pages = _notes_page("A-9.36.1.3.(6) Exemptions. Examples", "R-value (R) of the assembly")
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    assert [n.identifier for n in root.children[1].children[0].children] == ["A-9.36.1.3.(6)"]
+
+
 def test_heading_records_literal_heading_words():
     volume, _ = build_tree_from_lines(
         [

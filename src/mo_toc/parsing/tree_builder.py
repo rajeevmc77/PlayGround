@@ -33,7 +33,16 @@ from mo_toc.parsing.marker_rules import RE_MARKER
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
 from shared.styled_text import StyledText
 
-RE_NOTE_ENTRY = re.compile(r"^([A-Z]-\S+(?:\s+(?:and|to)\s+\(\d+\))*)\s+(.*)$")
+# A Note's identifier: "A-" and the provision it's on, with any further ones
+# ("A-3.8.2.3.(5) and (6) and 3.8.3.22.(1) and (4)", "A-3.1.6.4.(3) to (6)").
+# Its title can follow with no space ("A-4.1.2.2.(1)Loads Not Listed."), so
+# the identifier is read by its own shape, not up to the first space - and a
+# period can close it ("A-3.8.5.7.(1)(e).   Reinforced ...").
+_NOTE_NUMBER = r"\d+(?:\.\d+)*\.?(?:\([0-9a-z]+\))*"
+_NOTE_ALSO = rf"(?:{_NOTE_NUMBER}|(?:\([0-9a-z]+\))+)"
+RE_NOTE_ENTRY = re.compile(
+    rf"^([A-Z]-{_NOTE_NUMBER}(?:\s+(?:and|to)\s+{_NOTE_ALSO})*)\.?(?:\s+|(?=[A-Z]))(.*)$"
+)
 # A Note on a table, whose identifier is the table's own ("A-Table 9.23.3.5.-B",
 # "A-Tables 9.36.2.8.-A and -B") - RE_NOTE_ENTRY would stop at "A-Table". The
 # title can follow with no space: "A-Table 4.1.8.5.-AServiceability ...".
