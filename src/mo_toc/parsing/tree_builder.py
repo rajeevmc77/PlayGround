@@ -23,7 +23,7 @@ from mo_toc.parsing.heading_rules import (
     RANK,
     classify_caption_line,
     classify_heading_line,
-    is_caption_font,
+    is_caption_title_font,
 )
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
 
@@ -229,12 +229,14 @@ def _open_note(match, page_index: int, bbox: BBox, state: _BuildState) -> None:
 
 
 def _consume_caption_title(lines: list[PageLine], idx: int) -> tuple[str, int]:
+    caption_font = lines[idx - 1].font
     parts = []
     while idx < len(lines) and len(parts) < 3:
-        text, font = lines[idx].text, lines[idx].font
-        if not is_caption_font(font):
+        pline = lines[idx]
+        text, font = pline.text, pline.font
+        if not is_caption_title_font(font, caption_font):
             break
-        if classify_heading_line(text, font) or classify_caption_line(text, font):
+        if classify_heading_line(text, font) or classify_caption_line(text, font, pline.centred):
             break
         parts.append(text)
         idx += 1
@@ -338,7 +340,7 @@ def _process_page(
             idx += 1
             continue
         pline = lines[idx]
-        cap_match = classify_caption_line(pline.text, pline.font)
+        cap_match = classify_caption_line(pline.text, pline.font, pline.centred)
         if cap_match:
             idx = _open_caption(cap_match, page_index, lines, idx, state)
             continue

@@ -1070,3 +1070,20 @@ def test_rects_form_a_grid_false_for_a_plain_rectangle_outline():
 
 def test_rects_form_a_grid_false_for_empty_rects():
     assert rects_form_a_grid([]) is False
+
+
+def test_a_plain_font_caption_centred_on_the_page_anchors_a_table_with_its_title():
+    # Real case: page 746's "Table 9.8.4.2." is set in plain ArialMT; missed,
+    # its grid was taken by Table 9.8.4.1. above it, heading and all.
+    lines, rects = _minimal_grid_fixture()
+    lines[0] = PageLine(
+        bbox=(200, 10, 300, 20), text="Table 9.8.4.2.", font=BODY_FONT, centred=True
+    )
+    lines[1] = PageLine(bbox=(150, 22, 350, 32), text="Sample Title", font=BODY_FONT, centred=True)
+
+    regions = detect_tables_on_page(lines, rects, page_number=7)
+
+    assert len(regions) == 1
+    assert regions[0].table_node.identifier == "9.8.4.2."
+    assert regions[0].table_node.title == "Sample Title"
+    assert {0, 1} <= regions[0].consumed_line_indices

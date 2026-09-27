@@ -360,3 +360,28 @@ def test_trailing_bare_page_number_is_not_absorbed_into_sentence_content():
     assert sentence.content == (
         "Fire protection shall conform to the formula where Is is the importance factor."
     )
+
+
+def test_a_plain_font_caption_centred_on_the_page_is_captured_with_its_plain_title():
+    # Real case: page 746's "Table 9.8.4.2." and its title "Run for
+    # Rectangular Treads" are set in plain ArialMT, not the bold caption font.
+    pages = _document_fixture()
+    pages.append(
+        [
+            PageLine(
+                bbox=(278, 400, 334, 410), text="Table 9.8.4.2.", font="ArialMT", centred=True
+            ),
+            PageLine(
+                bbox=(247, 420, 365, 430),
+                text="Run for Rectangular Treads",
+                font="ArialMT",
+                centred=True,
+            ),
+            line(440, 224, "Forming Part of Sentence 9.8.4.2.(1)", BOLD),
+            line(470, 40, "Some unrelated body line.", BODY),
+        ]
+    )
+    _root, captions = build_tree(FakePdfSource(pages))
+    caption = captions[-1]
+    assert (caption.kind, caption.identifier) == ("Table", "9.8.4.2.")
+    assert caption.title == "Run for Rectangular Treads Forming Part of Sentence 9.8.4.2.(1)"

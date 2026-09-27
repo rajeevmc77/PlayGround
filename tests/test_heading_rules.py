@@ -73,6 +73,34 @@ def test_rejects_caption_in_narrow_font():
     assert classify_caption_line("Table 9.10.3.1.-A", "ArialNarrow-Bold") is None
 
 
+# Some real captions are set in the plain body font, not bold (e.g. "Table
+# 9.8.4.2." on page 746, in ArialMT). They are told apart from a body-text
+# reference by being alone on their line and centred on the page.
+def test_recognizes_a_plain_font_caption_centred_alone_on_its_line():
+    m = classify_caption_line("Table 9.8.4.2.", "ArialMT", centred=True)
+    assert m is not None
+    assert m.group(2) == "9.8.4.2."
+
+
+@pytest.mark.parametrize(
+    "text", ["Table 9.36.6.3.-B", "Table  A-9.11.1.4.-D", "Table D-2.6.1.-B", "Figure 4.1.7.13.-A"]
+)
+def test_recognizes_plain_font_captions_of_every_identifier_shape(text):
+    assert classify_caption_line(text, "BookAntiqua", centred=True) is not None
+
+
+def test_rejects_a_plain_font_caption_that_is_not_centred():
+    assert classify_caption_line("Table 1.3.1.2.", "BookAntiqua") is None
+
+
+def test_rejects_a_centred_plain_font_line_that_goes_on_past_the_identifier():
+    assert classify_caption_line("Table 9.8.4.2. lists the runs", "ArialMT", centred=True) is None
+
+
+def test_rejects_a_centred_caption_in_narrow_font():
+    assert classify_caption_line("Table 5.9.1.1.", "ArialNarrow", centred=True) is None
+
+
 def test_rank_orders_division_above_article():
     from mo_toc.parsing.heading_rules import RANK
 

@@ -11,6 +11,9 @@ class PageLine:
     font: str
     # Bold/italic [start, end, style] ranges into `text` (see StyledText).
     emphasis: tuple[tuple[int, int, str], ...] = ()
+    # Centred on its page - how a caption set in the plain body font is told
+    # apart from a body-text reference (see classify_caption_line).
+    centred: bool = False
 
     @property
     def styled(self) -> StyledText:
@@ -67,6 +70,9 @@ class PdfSource(ABC):
 _ITALIC_FLAG, _BOLD_FLAG = 2, 16
 _BOLD_FONT_WORDS = ("Bold", "Black", "Heavy", "Semibold", "Demi")
 _ITALIC_FONT_WORDS = ("Italic", "Oblique")
+# Points a line's midpoint may sit off the page's to count as centred. Real
+# centred captions sit ~4pt off; left-margin body lines ~185pt.
+CENTRE_TOLERANCE = 20.0
 
 
 def _span_style(span) -> str:
@@ -81,7 +87,13 @@ def _line_font(spans) -> str:
     return fonts.pop() if len(fonts) == 1 else "/".join(sorted(fonts))
 
 
-def _line_from_span_dict(line_dict) -> PageLine | None:
+def _is_centred(bbox, page_width: float | None) -> bool:
+    if page_width is None:
+        return False
+    return abs((bbox[0] + bbox[2]) / 2 - page_width / 2) <= CENTRE_TOLERANCE
+
+
+def _line_from_span_dict(line_dict, page_width: float | None = None) -> PageLine | None:
     spans = [s for s in line_dict["spans"] if s["text"].strip()]
     if not spans:
         return None
@@ -91,6 +103,7 @@ def _line_from_span_dict(line_dict) -> PageLine | None:
         text=styled.text,
         font=_line_font(spans),
         emphasis=styled.emphasis,
+        centred=_is_centred(line_dict["bbox"], page_width),
     )
 
 
@@ -105,9 +118,11 @@ class PyMuPdfSource(PdfSource):
         return self._doc.page_count
 
     def page_lines(self, page_index: int) -> list[PageLine]:
-        blocks = self._doc[page_index].get_text("dict")["blocks"]
+        page = self._doc[page_index]
+        blocks = page.get_text("dict")["blocks"]
         raw_lines = [line for block in blocks for line in block.get("lines", [])]
-        lines = [ln for ln in (_line_from_span_dict(rl) for rl in raw_lines) if ln]
+        width = page.rect.width
+        lines = [ln for ln in (_line_from_span_dict(rl, width) for rl in raw_lines) if ln]
         lines.sort(key=lambda ln: (ln.y0, ln.x0))
         return lines
 

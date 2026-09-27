@@ -168,3 +168,30 @@ def test_page_lines_read_emphasis_from_a_real_pdf(tmp_path):
 
     emphasised = [line.text[s:e] for line in lines for s, e, _ in line.emphasis]
     assert emphasised == ["slanted"]
+
+
+def _centred_line_pdf(tmp_path, page_width):
+    doc = fitz.open()
+    page = doc.new_page(width=page_width, height=792)
+    text = "Table 9.8.4.2."
+    x = (page_width - fitz.get_text_length(text, fontname="helv", fontsize=10)) / 2
+    page.insert_text((x, 100), text, fontname="helv", fontsize=10)
+    page.insert_text((72, 140), "Table 1.3.1.2. is referenced here", fontname="helv", fontsize=10)
+    path = tmp_path / "centred.pdf"
+    doc.save(str(path))
+    doc.close()
+    return str(path)
+
+
+@pytest.mark.parametrize("page_width", [612, 792])
+def test_page_lines_mark_a_line_centred_on_its_page(tmp_path, page_width):
+    lines = PyMuPdfSource(_centred_line_pdf(tmp_path, page_width)).page_lines(0)
+
+    assert [(line.text, line.centred) for line in lines] == [
+        ("Table 9.8.4.2.", True),
+        ("Table 1.3.1.2. is referenced here", False),
+    ]
+
+
+def test_a_line_read_without_its_page_width_is_not_centred():
+    assert _line_from_span_dict(_line_dict(_span("word", "BookAntiqua"))).centred is False

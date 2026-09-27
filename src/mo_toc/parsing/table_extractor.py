@@ -14,7 +14,11 @@ import re
 from dataclasses import dataclass
 
 from mo_toc.domain.models import BBox, Caption, Node
-from mo_toc.parsing.heading_rules import classify_caption_line, is_caption_font
+from mo_toc.parsing.heading_rules import (
+    classify_caption_line,
+    is_caption_font,
+    is_caption_title_font,
+)
 from mo_toc.parsing.image_matcher import assign_owner
 from mo_toc.parsing.pdf_source import PageLine
 from shared.styled_text import StyledText
@@ -60,7 +64,7 @@ class TableRegion:
 def find_table_anchors(lines: list[PageLine], page_index: int) -> list[TableAnchor]:
     anchors = []
     for idx, pline in enumerate(lines):
-        cap_match = classify_caption_line(pline.text, pline.font)
+        cap_match = classify_caption_line(pline.text, pline.font, pline.centred)
         if cap_match and cap_match.group(1) == "Table":
             anchors.append(
                 TableAnchor(
@@ -265,11 +269,12 @@ def _consume_table_title(
     also picked up by _append_to_current_article as body content of
     whatever Sentence/Clause/Subclause happens to be open on the page.
     """
+    caption_font = lines[caption_idx].font
     parts = []
     idx = caption_idx + 1
     while idx < len(lines) and len(parts) < 3:
         pline = lines[idx]
-        if pline.bbox[1] >= grid_top_y or not is_caption_font(pline.font):
+        if pline.bbox[1] >= grid_top_y or not is_caption_title_font(pline.font, caption_font):
             break
         parts.append(pline.text)
         idx += 1
