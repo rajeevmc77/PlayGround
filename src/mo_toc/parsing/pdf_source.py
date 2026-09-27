@@ -60,6 +60,10 @@ class PdfSource(ABC):
     def page_drawing_rects(self, page_index: int) -> list[tuple[float, float, float, float]]: ...
 
     @abstractmethod
+    def page_rule_rects(self, page_index: int) -> list[tuple[float, float, float, float]]:
+        """The page's black or grey drawings - its table rules."""
+
+    @abstractmethod
     def render_region(
         self, page_index: int, bbox: tuple[float, float, float, float]
     ) -> ExtractedImage: ...
@@ -80,6 +84,18 @@ def _span_style(span) -> str:
     bold = bool(flags & _BOLD_FLAG) or any(word in font for word in _BOLD_FONT_WORDS)
     italic = bool(flags & _ITALIC_FLAG) or any(word in font for word in _ITALIC_FONT_WORDS)
     return style_of(bold=bold, italic=italic)
+
+
+# How far apart a drawing's RGB channels may be for it to count as black or
+# grey. Table rules are black; the PDF's coloured strokes are the blue
+# underlines under its cross-references (page 60's Table 1.3.1.2.), which a
+# table's grid must not read as row rules.
+_NEUTRAL_SPREAD = 0.05
+
+
+def _is_neutral(drawing) -> bool:
+    colour = drawing.get("fill") or drawing.get("color")
+    return colour is None or max(colour) - min(colour) <= _NEUTRAL_SPREAD
 
 
 def _line_font(spans) -> str:
@@ -139,6 +155,10 @@ class PyMuPdfSource(PdfSource):
     def page_drawing_rects(self, page_index: int) -> list[tuple[float, float, float, float]]:
         drawings = self._doc[page_index].get_drawings()
         return [tuple(d["rect"]) for d in drawings]
+
+    def page_rule_rects(self, page_index: int) -> list[tuple[float, float, float, float]]:
+        drawings = self._doc[page_index].get_drawings()
+        return [tuple(d["rect"]) for d in drawings if _is_neutral(d)]
 
     def render_region(
         self, page_index: int, bbox: tuple[float, float, float, float]
