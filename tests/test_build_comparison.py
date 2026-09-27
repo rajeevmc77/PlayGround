@@ -12,7 +12,9 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+import build_comparison
 from build_comparison import main, run
+from image_compare.domain.models import ComparisonResult
 
 
 def _png_bytes(color) -> bytes:
@@ -151,6 +153,54 @@ def test_missing_web_toc_json_fails_every_node(tmp_path):
 
     result = json.loads((tmp_path / "comparison.json").read_text())
     assert result["statuses"]["V.P1"] is False
+
+
+def _score_every_image_pair(monkeypatch, similarity_percent):
+    """Stands in for the phash step with a fixed score, so the threshold
+    decision is what's under test."""
+    monkeypatch.setattr(
+        build_comparison,
+        "compare_images",
+        lambda stem, a, b: ComparisonResult(stem, 0, similarity_percent),
+    )
+
+
+def _rename_image(tmp_path, unified_number):
+    for name in ("bcbc_pdf.json", "bcbc_web.json"):
+        payload = json.loads((tmp_path / name).read_text())
+        payload["images"][0]["unified_number"] = unified_number
+        (tmp_path / name).write_text(json.dumps(payload))
+
+
+def test_an_equation_passes_at_75_percent_where_a_figure_fails(tmp_path, monkeypatch):
+    """A PDF formula raster (small, its own typeface) against the site's
+    MathJax render tops out lower than a figure pair does: on the real data,
+    correct equation pairs score a median 75% and no wrong pair reached 70%,
+    so equations get their own 70% bar while figures keep 80%."""
+    _score_every_image_pair(monkeypatch, 75.0)
+    _write_fixtures(tmp_path)
+    run(str(tmp_path))
+    assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1.Fig1"] is False
+
+    _rename_image(tmp_path, "V.P1.Eq1")
+    run(str(tmp_path))
+    assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1.Eq1"] is True
+
+
+def test_an_equation_still_fails_below_70_percent(tmp_path, monkeypatch):
+    _score_every_image_pair(monkeypatch, 69.9)
+    _write_fixtures(tmp_path)
+    _rename_image(tmp_path, "V.P1.Eq1")
+    run(str(tmp_path))
+    assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1.Eq1"] is False
+
+
+def test_the_equation_threshold_is_recorded(tmp_path):
+    _write_fixtures(tmp_path)
+    run(str(tmp_path))
+    assert (
+        json.loads((tmp_path / "comparison.json").read_text())["equation_threshold_percent"] == 70.0
+    )
 
 
 def test_custom_threshold_percent_is_recorded(tmp_path):
