@@ -8,8 +8,12 @@ A PDF leaf node (Sentence, Clause, Subclause, Cell) and its web counterpart
 1. their text is identical once **all whitespace is dropped**. The PDF breaks
    lines inside words and citations ("fire- resistance", "A- 1.1.1.1."), where
    the web doesn't. Curly and straight quotes (“ ” ‘ ’ vs " ') count as the
-   same character. Anything else, case and other punctuation glyphs included,
-   has to match exactly.
+   same character, and so do dashes (– en dash, — em dash, − minus, and
+   typographic/non-breaking hyphens) vs a plain "-": the PDF typesets them
+   where the site has a hyphen - an empty table cell's "—", a range
+   "negligible – 0.01", a formula's minus. (Added 2026-09-27: ~490 leaves
+   differed only by a dash, all typographic.) Anything else, case and other
+   punctuation glyphs included, has to match exactly.
 2. every **letter and digit** is in the same style on both sides: plain, bold,
    italic or bold-italic. How punctuation is styled is ignored (e.g. whether
    the comma after an italic term is italic too).
