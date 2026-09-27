@@ -16,9 +16,25 @@ from dataclasses import dataclass
 
 STYLES = frozenset({"b", "i", "bi"})
 
-# Curly and straight quotes read as the same character: the PDF typesets
-# “ ” ‘ ’ where the web often has plain " and '.
-_STRAIGHT_QUOTES = str.maketrans({"“": '"', "”": '"', "„": '"', "‘": "'", "’": "'", "‚": "'"})
+# Typographic variants read as the same character: the PDF typesets curly
+# quotes “ ” ‘ ’ where the web often has plain " and ', and – — − (en dash,
+# em dash, minus) and non-breaking/typographic hyphens where it has "-".
+_PLAIN_CHARACTERS = str.maketrans(
+    {
+        "“": '"',
+        "”": '"',
+        "„": '"',
+        "‘": "'",
+        "’": "'",
+        "‚": "'",
+        "‐": "-",  # hyphen
+        "‑": "-",  # non-breaking hyphen
+        "‒": "-",  # figure dash
+        "–": "-",  # en dash
+        "—": "-",  # em dash
+        "−": "-",  # minus sign
+    }
+)
 
 Range = tuple[int, int, str]
 
@@ -87,13 +103,14 @@ class StyledText:
 
     def signature(self) -> list[tuple[str, str]]:
         """(character, style) for every non-whitespace character, curly
-        quotes straightened; the style only counts on letters and digits."""
+        quotes and dashes made plain; the style only counts on letters and
+        digits."""
         styles = [""] * len(self.text)
         for start, end, style in _clip(self.emphasis, 0, len(self.text)):
             styles[start:end] = [style] * (end - start)
         return [
             (char, style if char.isalnum() else "")
-            for char, style in zip(self.text.translate(_STRAIGHT_QUOTES), styles, strict=True)
+            for char, style in zip(self.text.translate(_PLAIN_CHARACTERS), styles, strict=True)
             if not char.isspace()
         ]
 

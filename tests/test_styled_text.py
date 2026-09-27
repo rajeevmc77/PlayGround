@@ -100,6 +100,21 @@ def test_matches_treats_curly_and_straight_quotes_as_the_same():
     assert not matches(StyledText('"quoted"'), StyledText("'quoted'"))
 
 
+def test_matches_treats_every_dash_as_a_hyphen():
+    """The PDF typesets – (en dash), — (em dash) and − (minus) where the
+    web has a plain hyphen: an empty table cell's "—", a range
+    "negligible – 0.01", a formula's "0.68 – (0.0005 Vr)"."""
+    assert matches(StyledText("—"), StyledText("-"))
+    assert matches(StyledText("negligible – 0.01"), StyledText("negligible - 0.01"))
+    assert matches(StyledText("x − 1"), StyledText("x - 1"))
+    assert matches(StyledText("non‑combustible"), StyledText("non-combustible"))
+
+
+def test_a_dash_still_differs_from_other_punctuation_and_from_nothing():
+    assert not matches(StyledText("—"), StyledText(""))
+    assert not matches(StyledText("a – b"), StyledText("a , b"))
+
+
 def test_matches_is_case_and_character_exact_otherwise():
     assert not matches(StyledText("Building"), StyledText("building"))
     assert not matches(StyledText("a building,"), StyledText("a building;"))
