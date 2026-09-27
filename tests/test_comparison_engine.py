@@ -363,3 +363,47 @@ def test_a_pdf_table_with_no_web_counterpart_never_meets_the_same_numbered_one()
     assert counterparts["A.Tbl1"] == "A.Tbl2"
     assert counterparts["A.Tbl2"] is None
     assert counterparts["A.Tbl2.Row1.Col1"] is None
+
+
+def test_a_table_the_pdf_prints_under_another_note_pairs_by_its_unique_title():
+    # Real case: the PDF prints A-Table 9.23.3.5.-C's table inside the -B
+    # note; the site gives it a note of its own. Left unpaired in both
+    # scopes, the two meet on their title - the only one of its kind.
+    pdf_b = _node(
+        "B",
+        "b",
+        "",
+        [
+            _titled_table("B.Tbl1", "Nail Sizes", [["n"]]),
+            _titled_table("B.Tbl2", "Shear Resistances", [["s"]]),
+        ],
+    )
+    web_b = _node("B", "b", "", [_titled_table("B.Tbl1", "Nail Sizes", [["n"]])])
+    web_c = _node("C", "c", "", [_titled_table("C.Tbl1", "Shear Resistances", [["s"]])])
+    pdf = _node("R", "r", "", [pdf_b])
+    web = _node("R", "r", "", [web_b, web_c])
+
+    counterparts = table_counterparts_in(pdf, web)
+
+    assert counterparts["B.Tbl2"] == "C.Tbl1"
+    assert counterparts["B.Tbl2.Row1.Col1"] == "C.Tbl1.Row1.Col1"
+
+
+def test_leftover_tables_sharing_a_title_with_another_leftover_stay_unpaired():
+    pdf = _node("R", "r", "", [_node("A", "a", "", [_titled_table("A.Tbl1", "Notes", [["x"]])])])
+    web = _node(
+        "R",
+        "r",
+        "",
+        [
+            _node("B", "b", "", [_titled_table("B.Tbl1", "Notes", [["x"]])]),
+            _node("C", "c", "", [_titled_table("C.Tbl1", "Notes", [["y"]])]),
+        ],
+    )
+    assert "A.Tbl1" not in table_counterparts_in(pdf, web)
+
+
+def test_an_untitled_leftover_table_never_pairs_across_scopes():
+    pdf = _node("R", "r", "", [_node("A", "a", "", [_titled_table("A.Tbl1", "", [["x"]])])])
+    web = _node("R", "r", "", [_node("B", "b", "", [_titled_table("B.Tbl1", "", [["x"]])])])
+    assert "A.Tbl1" not in table_counterparts_in(pdf, web)
