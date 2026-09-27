@@ -32,7 +32,8 @@ independent tools live here:
    node's `emphasis` ranges) - see `ai_docs/2026-09-26-compare-emphasis-design.md`.
    A Note's content is its body after the run-in title; the web's note heading
    (identifier + title) is dropped before comparing, like a sentence's own "1)" marker.
-   Tables are paired PDF-to-web by title within their article/note, and their rows/cells
+   Tables are paired PDF-to-web by title within their article/note (a table left unpaired
+   there pairs across articles on a title no other leftover shares), and their rows/cells
    by content, not by their positional unified number (`src/comparison/row_alignment.py`);
    an empty PDF cell with no web cell in a paired row passes (the site lists only the cells
    a row starts, not the positions a span covers). `comparison.json`'s `counterparts` records

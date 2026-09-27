@@ -24,7 +24,7 @@ row_alignment.py), and compare_trees looks each one up through that map."""
 import re
 from collections.abc import Callable
 
-from comparison.row_alignment import table_counterparts, table_pairs
+from comparison.row_alignment import table_counterparts, table_pairs, title_key
 
 # (pdf node, web node) -> whether they show the same content.
 TextMatcher = Callable[[dict, dict], bool]
@@ -84,9 +84,8 @@ def _unpaired(node: dict) -> dict[str, None]:
 
 
 def _scope_counterparts(
-    pdf_tables: list[dict], web_tables: list[dict], web_nodes: dict
+    pdf_tables: list[dict], web_tables: list[dict], pairs: dict[int, int], web_nodes: dict
 ) -> dict[str, str | None]:
-    pairs = table_pairs(pdf_tables, web_tables)
     counterparts: dict[str, str | None] = {}
     for index, pdf_table in enumerate(pdf_tables):
         if index in pairs:
@@ -99,18 +98,54 @@ def _scope_counterparts(
     return counterparts
 
 
+def _unique_by_title(tables: list[dict]) -> dict[str, dict]:
+    by_title: dict[str, list[dict]] = {}
+    for table in tables:
+        key = title_key(table, "")
+        if key:
+            by_title.setdefault(key, []).append(table)
+    return {key: found[0] for key, found in by_title.items() if len(found) == 1}
+
+
+def _leftovers_by_title(pdf_tables: list[dict], web_tables: list[dict]) -> dict[str, str | None]:
+    """Tables left unpaired in their own article/note pair across scopes on a
+    title no other leftover shares: the PDF prints A-Table 9.23.3.5.-C's
+    table inside the -B note, where the site gives it a note of its own."""
+    web_by_title = _unique_by_title(web_tables)
+    counterparts: dict[str, str | None] = {}
+    for key, pdf_table in _unique_by_title(pdf_tables).items():
+        web_table = web_by_title.get(key)
+        if web_table is None:
+            continue
+        counterparts[pdf_table["unified_number"]] = web_table["unified_number"]
+        counterparts.update(table_counterparts(pdf_table, web_table))
+    return counterparts
+
+
+def _leftovers(tables: list[dict], paired: set[int]) -> list[dict]:
+    return [table for index, table in enumerate(tables) if index not in paired]
+
+
 def table_counterparts_in(pdf_tree: dict, web_tree: dict | None) -> dict[str, str | None]:
     """Table/row/cell counterparts: each article's tables pair by title
-    (table_pairs), then each paired table's rows and cells by content."""
+    (table_pairs), then each paired table's rows and cells by content;
+    tables left over pair across articles on a unique title."""
     web_nodes: dict[str, dict] = {}
     web_scopes: dict[str, list[dict]] = {}
     if web_tree is not None:
         _index_nodes(web_tree, web_nodes)
         web_scopes = _tables_by_scope(web_tree)
+    pdf_scopes = _tables_by_scope(pdf_tree)
     counterparts: dict[str, str | None] = {}
-    for scope, pdf_tables in _tables_by_scope(pdf_tree).items():
-        web_tables = web_scopes.get(scope, [])
-        counterparts.update(_scope_counterparts(pdf_tables, web_tables, web_nodes))
+    leftover_pdf: list[dict] = []
+    leftover_web: list[dict] = []
+    for scope in pdf_scopes.keys() | web_scopes.keys():
+        pdf_tables, web_tables = pdf_scopes.get(scope, []), web_scopes.get(scope, [])
+        pairs = table_pairs(pdf_tables, web_tables)
+        counterparts.update(_scope_counterparts(pdf_tables, web_tables, pairs, web_nodes))
+        leftover_pdf += _leftovers(pdf_tables, set(pairs))
+        leftover_web += _leftovers(web_tables, set(pairs.values()))
+    counterparts.update(_leftovers_by_title(leftover_pdf, leftover_web))
     return counterparts
 
 

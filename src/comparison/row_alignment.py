@@ -139,7 +139,7 @@ _FOOTNOTE = re.compile(r"\^\{\(\d+\)\}|\(\d+\)")
 _NOT_WORD = re.compile(r"[\W_]+")
 
 
-def _title_key(table: dict, untitled: str) -> str:
+def title_key(table: dict, untitled: str) -> str:
     title = _FORMING_PART_OF.sub("", table.get("title") or "")
     key = _NOT_WORD.sub("", _FOOTNOTE.sub("", title)).lower()
     return key or untitled
@@ -148,8 +148,8 @@ def _title_key(table: dict, untitled: str) -> str:
 def table_pairs(pdf_tables: list[dict], web_tables: list[dict]) -> dict[int, int]:
     """PDF table index -> its web table's index, by title. An untitled table
     never matches by title, so it pairs only by position in a differing block."""
-    pdf_keys = [_title_key(t, f"\0pdf{i}") for i, t in enumerate(pdf_tables)]
-    web_keys = [_title_key(t, f"\0web{i}") for i, t in enumerate(web_tables)]
+    pdf_keys = [title_key(t, f"\0pdf{i}") for i, t in enumerate(pdf_tables)]
+    web_keys = [title_key(t, f"\0web{i}") for i, t in enumerate(web_tables)]
     return _pairs(pdf_keys, web_keys)
 
 
