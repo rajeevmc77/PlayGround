@@ -5,11 +5,14 @@ side (B.9.38.1.1 has 88 more on the web; a PDF row split by a page break
 used to add one) shifted every row below it, and the cells compared were
 never the same cells. Here rows are aligned on their whole text (whitespace
 dropped, quotes and dashes made plain - the comparison's own rule, see
-shared/styled_text.py): identical runs pair one-to-one, a block of differing
-rows pairs by position inside the block - so a table with no identical rows
-at all falls back to plain positional pairing - and a row only one side has
-stays unpaired. Cells pair by column within paired rows. Pure: dicts in,
-dict out.
+shared/styled_text.py): identical runs pair one-to-one, and a row only one
+side has stays unpaired. Inside a block of differing rows, rows sharing most
+of their words pair first, in order, and the rows left between them pair by
+position - Table 1.3.1.2. has no identical rows at all (the site writes
+"Note A-..." in every last column), and by position alone each row only one
+side had shifted every row below it. A block with no similar rows, or with
+as many rows on each side, is all by position. Cells pair by column within
+paired rows. Pure: dicts in, dict out.
 
 Tables within one article/note are paired the same way, on their titles
 (table_pairs): B.A-9.36.2.4.(1)'s web note has four untitled worked-example
@@ -28,19 +31,100 @@ def _row_key(row: dict) -> str:
     return "|".join("".join(char for char, _ in signature) for signature in cells)
 
 
-def _pairs(pdf_keys: list[str], web_keys: list[str]) -> dict[int, int]:
-    """Identical runs pair one-to-one; a block of differing keys pairs by
-    position inside the block; a key only one side has stays unpaired."""
+def _positional(n: int, m: int) -> list[tuple[int, int]]:
+    return list(zip(range(n), range(m), strict=False))
+
+
+def _by_position(n: int, m: int, _i1: int, _j1: int) -> list[tuple[int, int]]:
+    return _positional(n, m)
+
+
+def _pairs(pdf_keys: list, web_keys: list, pair_block=_by_position) -> dict[int, int]:
+    """Identical runs pair one-to-one; a key only one side has stays
+    unpaired; a block of differing keys - n PDF keys from i1, m web keys
+    from j1 - pairs by `pair_block(n, m, i1, j1)`, which returns
+    block-local index pairs: by position unless told otherwise."""
     matcher = SequenceMatcher(None, pdf_keys, web_keys, autojunk=False)
     pairs: dict[int, int] = {}
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag in ("equal", "replace"):
+        if tag == "equal":
             pairs.update(zip(range(i1, i2), range(j1, j2), strict=False))
+        elif tag == "replace":
+            pairs.update((i1 + i, j1 + j) for i, j in pair_block(i2 - i1, j2 - j1, i1, j1))
     return pairs
 
 
+# Rows differing only a little (the site's "Note A-..." for the PDF's
+# "A-...", an extra reference) share most of their words.
+SIMILAR_ROW = 0.5
+
+
+def _words(row: dict) -> frozenset[str]:
+    return frozenset(
+        word
+        for cell in row.get("children", [])
+        for word in (cell.get("content") or "").lower().split()
+    )
+
+
+def _similarity(a: frozenset[str], b: frozenset[str]) -> float:
+    return len(a & b) / len(a | b) if a or b else 0.0
+
+
+def _best_scores(pdf_words: list, web_words: list) -> list[list[float]]:
+    """score[i][j]: the most total similarity pairing the first i PDF rows
+    with the first j web rows in order, pairing only similar rows."""
+    score = [[0.0] * (len(web_words) + 1) for _ in range(len(pdf_words) + 1)]
+    for i, a in enumerate(pdf_words, start=1):
+        for j, b in enumerate(web_words, start=1):
+            sim = _similarity(a, b)
+            paired = score[i - 1][j - 1] + sim if sim >= SIMILAR_ROW else 0.0
+            score[i][j] = max(score[i - 1][j], score[i][j - 1], paired)
+    return score
+
+
+def _anchors(pdf_words: list, web_words: list) -> list[tuple[int, int]]:
+    """The similar pairs of the best in-order pairing, first to last."""
+    score = _best_scores(pdf_words, web_words)
+    i, j, anchors = len(pdf_words), len(web_words), []
+    while i and j:
+        if score[i][j] == score[i - 1][j]:
+            i -= 1
+        elif score[i][j] == score[i][j - 1]:
+            j -= 1
+        else:
+            anchors.append((i - 1, j - 1))
+            i, j = i - 1, j - 1
+    return anchors[::-1]
+
+
+def _with_gaps_by_position(anchors: list[tuple[int, int]], n: int, m: int) -> list[tuple[int, int]]:
+    """Anchors, plus the rows between two of them paired by position."""
+    pairs, prev_i, prev_j = [], -1, -1
+    for i, j in [*anchors, (n, m)]:
+        gap = _positional(i - prev_i - 1, j - prev_j - 1)
+        pairs.extend((prev_i + 1 + a, prev_j + 1 + b) for a, b in gap)
+        pairs.append((i, j))
+        prev_i, prev_j = i, j
+    return pairs[:-1]
+
+
 def _row_pairs(pdf_rows: list[dict], web_rows: list[dict]) -> dict[int, int]:
-    return _pairs([_row_key(r) for r in pdf_rows], [_row_key(r) for r in web_rows])
+    """Inside a block of differing rows, similar rows pair first (so a row
+    only one side has no longer shifts the rest) and the rows left between
+    them by position - a block with no similar rows is all by position.
+    A block with as many rows on each side stays by position: no row is
+    missing there, and a spanning cell's text split differently (Table
+    3.1.8.17.) can make the wrong row look the most similar."""
+
+    def by_similarity(n: int, m: int, i1: int, j1: int) -> list[tuple[int, int]]:
+        if n == m:
+            return _positional(n, m)
+        pdf_words = [_words(r) for r in pdf_rows[i1 : i1 + n]]
+        web_words = [_words(r) for r in web_rows[j1 : j1 + m]]
+        return _with_gaps_by_position(_anchors(pdf_words, web_words), n, m)
+
+    return _pairs([_row_key(r) for r in pdf_rows], [_row_key(r) for r in web_rows], by_similarity)
 
 
 # What differs between the two sides' titles for the same table: the PDF
