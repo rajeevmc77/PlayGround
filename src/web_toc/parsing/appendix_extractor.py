@@ -6,7 +6,9 @@ so the PDF's "D-1.1.1." articles and their sentences had nothing to meet.
 Numbers come from each level's position in its id ("appsect1.subsect1.
 article3" -> "D-1.1.3"), the way the PDF prints them; a paragraph opening
 with "1)" is a Sentence, as in the PDF, and one with no number is none
-(the PDF's body segmenter keeps no unnumbered text either)."""
+(the PDF's body segmenter keeps no unnumbered text either). A Sentence's
+lettered list items are its Clauses (a), (b), ...; they have no ids, so
+each is cited by its position, "<paragraph id>.li2"."""
 
 import re
 
@@ -14,6 +16,9 @@ from web_toc.domain.models import WebNode
 
 _ORDINAL = re.compile(r"(\d+)$")
 _PARAGRAPH_NUMBER = re.compile(r"^(\d+)\)\s")
+# The list types the site renders as a lettered <ol> - a sentence's clauses;
+# a "variable" list ("where t = ...") is a <dl>.
+_LETTERED_LISTS = frozenset({"bulleted", "alphabetic"})
 
 
 def _ordinal(item: dict) -> str:
@@ -33,6 +38,25 @@ def _node(item: dict, type_: str, identifier: str, heading: str, children) -> We
     )
 
 
+def _clause(paragraph: dict, position: int, item: dict) -> WebNode:
+    return WebNode(
+        type="Clause",
+        identifier=f"({chr(ord('a') + position)})",
+        citation=f"{paragraph['id']}.li{position + 1}",
+        title="",
+        path="",
+        content=item.get("content", ""),
+    )
+
+
+def _clauses(paragraph: dict) -> list[WebNode]:
+    """The paragraph's lettered list items, cited by their position the way
+    the layout lists them (layout_join._list_item_entry)."""
+    lists = [lst for lst in paragraph.get("lists", []) if lst.get("type") in _LETTERED_LISTS]
+    items = [item for lst in lists for item in lst.get("items", [])]
+    return [_clause(paragraph, i, item) for i, item in enumerate(items)]
+
+
 def _sentence(paragraph: dict) -> WebNode | None:
     text = paragraph.get("content")
     match = _PARAGRAPH_NUMBER.match(text) if isinstance(text, str) else None
@@ -45,6 +69,7 @@ def _sentence(paragraph: dict) -> WebNode | None:
         title="",
         path="",
         content=text,
+        children=_clauses(paragraph),
     )
 
 

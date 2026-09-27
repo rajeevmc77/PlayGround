@@ -7,7 +7,8 @@ get the text the site actually renders, in place of the JSON's unresolved
 A node lives on the page of its nearest ancestor-or-self that has a saved
 page (subsections/articles are cut from their section's page). Match rules:
 - the site's own element id == node citation (sentences, clauses,
-  subclauses, tables, notes, ...);
+  subclauses, tables, notes, ...), or a list item's position under one
+  (Appendix D's clauses, see _list_item_entry);
 - Row/Cell by position inside their table's grid - they have no ids, and the
   JSON rows/cells line up 1:1 with the rendered tr/td|th;
 - part/section/subsection/article by their heading number against the
@@ -129,8 +130,30 @@ def _nodes_with_page(
         yield from _nodes_with_page(child, page, page_citations)
 
 
+# A list item with no id of its own - Appendix D's clauses - is cited by its
+# position under the element that has one: "<para>.li2.li1".
+_LIST_ITEM = re.compile(r"^(.*?)((?:\.li\d+)+)$")
+
+
+def _list_item_entry(citation: str, layout: dict) -> dict | None:
+    match = _LIST_ITEM.match(citation)
+    if match is None:
+        return None
+    entry, items = None, layout.get("lists", {}).get(match.group(1), [])
+    for position in map(int, re.findall(r"\d+", match.group(2))):
+        if position > len(items):
+            return None
+        entry = items[position - 1]
+        items = entry["items"]
+    return entry
+
+
 def _place_node(node: WebNode, page: str, layout: dict) -> list[str]:
-    entry = layout.get("elements", {}).get(node.citation) or _heading_entry(node, layout)
+    entry = (
+        layout.get("elements", {}).get(node.citation)
+        or _list_item_entry(node.citation, layout)
+        or _heading_entry(node, layout)
+    )
     _place(node, page, entry)
     return _place_grid(node, page, layout) if node.type == "Table" else []
 

@@ -123,3 +123,37 @@ def test_an_appendixs_sections_that_are_no_appendix_sections_are_left_out():
 def test_content_that_is_no_appendix_has_no_structure():
     assert extract_appendix({"id": "nbc.divB.part3.sect1", "content": []}, "x") == []
     assert extract_appendix({"type": "appendix", "letter": "C"}, "x") == []
+
+
+def _article_with(paragraph):
+    content = {**CONTENT, "sections": [dict(CONTENT["sections"][0])]}
+    subsection = dict(content["sections"][0]["subsections"][0])
+    subsection["articles"] = [{"id": ARTICLE, "type": "appendix_article", "content": [paragraph]}]
+    content["sections"][0]["subsections"] = [subsection]
+    [(_owner, section)] = extract_appendix(content, APPENDIX_D)
+    return section.children[0].children[0]
+
+
+def test_a_sentences_lettered_list_items_are_its_clauses_cited_by_position():
+    # The site renders them a), b), ... with no ids; "<para>.li2" is the
+    # layout's name for the paragraph's second list item.
+    paragraph = _paragraph(1, "1) Provided:[LIST:bulleted]")
+    paragraph["lists"] = [{"type": "bulleted", "items": [{"content": "one,"}, {"content": "two."}]}]
+    [sentence] = _article_with(paragraph).children
+    assert [(c.type, c.identifier, c.citation, c.content) for c in sentence.children] == [
+        ("Clause", "(a)", f"{ARTICLE}.para1.li1", "one,"),
+        ("Clause", "(b)", f"{ARTICLE}.para1.li2", "two."),
+    ]
+
+
+def test_a_variable_list_is_no_clause_and_takes_no_list_position():
+    # "where t = ..." lists render as a <dl>, not the lettered <ol>.
+    paragraph = _paragraph(1, "1) Use:[LIST:variable][LIST:alphabetic]")
+    paragraph["lists"] = [
+        {"type": "variable", "items": [{"symbol": "t", "description": "thickness"}]},
+        {"type": "alphabetic", "items": [{"content": "first,"}]},
+    ]
+    [sentence] = _article_with(paragraph).children
+    assert [(c.identifier, c.citation) for c in sentence.children] == [
+        ("(a)", f"{ARTICLE}.para1.li1")
+    ]

@@ -120,6 +120,15 @@ LAYOUT_JS = f"""async () => {{
   for (const el of root.querySelectorAll('[id]')) {{
     if (inHtml(el)) elements[el.id] = entry(el);
   }}
+  // Appendix D's clauses are bare <li>s of an ol inside the paragraph that
+  // holds the id; they are listed under that id, each with its own items.
+  const unlabelled = (el) => [...el.querySelectorAll(':scope > ol > li:not([id])')]
+    .map((li) => ({{ ...entry(li), items: unlabelled(li) }}));
+  const lists = {{}};
+  for (const el of root.querySelectorAll('[id]')) {{
+    const items = inHtml(el) ? unlabelled(el) : [];
+    if (items.length) lists[el.id] = items;
+  }}
   {GRID_ROWS_JS}
   const tables = {{}};
   for (const table of root.querySelectorAll('table')) {{
@@ -142,5 +151,5 @@ LAYOUT_JS = f"""async () => {{
       text: img.getAttribute('alt') || '', xpath: xpathOf(img), bbox: bboxOf(img),
     }}));
   const headings = [...root.querySelectorAll('h1, h2, h3, h4, h5, h6')].map(entry);
-  return {{ elements, tables, images, equations, headings }};
+  return {{ elements, lists, tables, images, equations, headings }};
 }}"""
