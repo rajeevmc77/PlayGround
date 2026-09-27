@@ -20,11 +20,15 @@ from mo_toc.domain.models import BBox, Caption, Node
 from mo_toc.parsing.body_segmenter import segment_article_body
 from mo_toc.parsing.heading_rules import (
     ARTICLE_TYPES,
+    BODY_FONT_FAMILY,
     RANK,
     classify_caption_line,
     classify_heading_line,
+    font_family,
     is_caption_title_font,
+    is_table_notes_heading,
 )
+from mo_toc.parsing.marker_rules import RE_MARKER
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
 
 RE_NOTE_ENTRY = re.compile(r"^([A-Z]-\S+(?:\s+(?:and|to)\s+\(\d+\))*)\s+(.*)$")
@@ -52,6 +56,9 @@ class _BuildState:
     # silently dropped.
     current_note: Node | None = None
     current_note_page: int | None = None
+    # Inside the notes printed under a table/figure: None outside one, "" just
+    # after its heading, then the font family its notes are set in.
+    table_notes: str | None = None
 
 
 def _citation_division(match, division: str | None) -> tuple[str, str, str]:
@@ -143,6 +150,7 @@ def _close_stack_to_rank(state: _BuildState, rank: int) -> Node:
 def _update_state_after_open(ntype: str, node: Node, state: _BuildState) -> None:
     rank = RANK[ntype]
     state.current_note = None
+    state.table_notes = None
     if rank <= 2:
         state.in_notes = ntype == "NotesContainer"
     if ntype in ("Division", "Appendix"):
@@ -258,6 +266,7 @@ def _caption_block_bbox(lines: list[PageLine], start_idx: int, end_idx: int) -> 
 def _open_caption(
     match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
 ) -> int:
+    state.table_notes = None
     title, next_idx = _consume_caption_title(lines, idx + 1)
     bbox = _caption_block_bbox(lines, idx, next_idx)
     owner = state.stack[-1][1].citation if len(state.stack) > 1 else ""
@@ -297,6 +306,11 @@ def _append_to_current_article(pline: PageLine, page_index: int, state: _BuildSt
     state.current_body.append((page_index, pline))
 
 
+def _append_body_line(pline: PageLine, page_index: int, state: _BuildState) -> None:
+    if not _in_table_notes(pline, state):
+        _append_to_current_article(pline, page_index, state)
+
+
 def _continue_current_note(pline: PageLine, page_index: int, state: _BuildState) -> bool:
     if state.current_note is None:
         return False
@@ -316,6 +330,34 @@ def _try_handle_note_line(pline: PageLine, page_index: int, state: _BuildState) 
     if _try_open_note(pline, page_index, state):
         return True
     return _continue_current_note(pline, page_index, state)
+
+
+def _in_table_notes(pline: PageLine, state: _BuildState) -> bool:
+    """The notes printed under a table or figure ("Notes to Table 3.1.13.2.:",
+    then "(1) See ...") are no part of the Sentence before it, and the site
+    keeps them out of it too. They're set in a font of their own, so the block
+    runs while lines keep the family of its first note - unless that is the
+    body's own family, where only the heading can be told apart - and until a
+    Sentence/Clause marker ("5)", where a note entry starts "(1)"): a BC
+    amendment can be set in the notes' font too."""
+    if is_table_notes_heading(pline.text):
+        state.table_notes = ""
+        return True
+    if state.table_notes is None:
+        return False
+    state.table_notes = _table_notes_after(state.table_notes, pline)
+    return state.table_notes is not None
+
+
+def _table_notes_after(block_family: str, pline: PageLine) -> str | None:
+    """The notes block's font family once `pline` is read, or None when
+    `pline` ends the block."""
+    family = font_family(pline.font)
+    if block_family == "" and family != BODY_FONT_FAMILY:
+        block_family = family
+    if family == block_family and not RE_MARKER.match(pline.text):
+        return block_family
+    return None
 
 
 def _is_trailing_page_number(lines: list[PageLine], idx: int) -> bool:
@@ -348,10 +390,8 @@ def _process_page(
         if heading:
             idx = _open_node(heading[0], heading[1], page_index, lines, idx, state)
             continue
-        if _try_handle_note_line(pline, page_index, state):
-            idx += 1
-            continue
-        _append_to_current_article(pline, page_index, state)
+        if not _try_handle_note_line(pline, page_index, state):
+            _append_body_line(pline, page_index, state)
         idx += 1
 
 

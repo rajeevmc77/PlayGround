@@ -28,6 +28,14 @@ RE_CAPTION = re.compile(r"^(Table|Figure)\s+(\S.*)$")
 # A caption line holding nothing but its identifier, e.g. "Table 9.36.6.3.-B"
 # or "Table A-9.11.1.4.-D" - never a body sentence that goes on past it.
 RE_BARE_CAPTION = re.compile(r"^(Table|Figure)\s+([A-Z]-)?\d+(\.\d+)*\.?(-[A-Z])?$")
+# The heading over the notes printed beneath a table or figure, e.g.
+# "Notes to Table 3.1.13.2.:" or "Note to Figure4.1.7.4.:".
+RE_TABLE_NOTES_HEADING = re.compile(r"^Notes? to (Table|Figure)\s*[A-Z0-9]\S*:?\s*$")
+# A font name's family, without its weight/style/foundry suffixes:
+# "Arial-ItalicMT" -> "Arial", "TimesNewRomanPS-BoldMT" -> "TimesNewRoman".
+RE_FONT_FAMILY = re.compile(r"[A-Za-z]*?(?=MT|PS|-|/|$)")
+# The family every Sentence/Clause is set in.
+BODY_FONT_FAMILY = "BookAntiqua"
 
 # (type, pattern, required substring somewhere in the line's font name)
 HEADING_PATTERNS = [
@@ -91,6 +99,14 @@ def classify_caption_line(text: str, font: str, centred: bool = False) -> re.Mat
     if not (is_caption_font(font) or _is_plain_font_caption(text, font, centred)):
         return None
     return RE_CAPTION.match(text)
+
+
+def is_table_notes_heading(text: str) -> bool:
+    return bool(RE_TABLE_NOTES_HEADING.match(text))
+
+
+def font_family(font: str) -> str:
+    return RE_FONT_FAMILY.match(font).group(0)
 
 
 def is_caption_title_font(font: str, caption_font: str) -> bool:
