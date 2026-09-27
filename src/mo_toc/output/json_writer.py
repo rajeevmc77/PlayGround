@@ -6,8 +6,9 @@ from mo_toc.domain.models import Caption, ImageAsset, Node
 
 _CONTENT_TYPES = {"Sentence", "Clause", "Subclause", "Cell"}
 _NO_TITLE_TYPES = _CONTENT_TYPES | {"Row"}
-# A Note keeps its title too: its content is the body after it.
-_KEEPS_CONTENT = _CONTENT_TYPES | {"Note"}
+# A Note keeps its title too: its content is the body after it; so does an
+# appendix article with no numbered sentence (tree_builder._segment_article).
+_KEEPS_CONTENT = _CONTENT_TYPES | {"Note", "AppendixArticle"}
 
 
 def _prune_node(node_dict: dict) -> dict:
