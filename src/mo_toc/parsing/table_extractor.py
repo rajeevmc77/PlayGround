@@ -144,7 +144,12 @@ def _assign_lines_to_cells(
         cy = (pline.bbox[1] + pline.bbox[3]) / 2
         if not (outer[0] <= cx <= outer[2] and outer[1] <= cy <= outer[3]):
             continue
-        row_i, col_i = _band_index(cy, row_ys), _band_index(cx, col_xs)
+        # Column by where the line starts, not its centre: a line spanning
+        # columns (a full-width heading row with no divider, e.g. Table
+        # 9.38.1.1.'s "9.3.1.3. ...") belongs to the column it starts in -
+        # where the site files a spanning cell. A line inside one cell starts
+        # and centres in the same column either way.
+        row_i, col_i = _band_index(cy, row_ys), _band_index(pline.bbox[0], col_xs)
         if row_i is None or col_i is None:
             continue
         cells.setdefault((row_i, col_i), []).append(pline)
