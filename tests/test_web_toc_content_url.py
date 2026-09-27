@@ -34,8 +34,11 @@ def test_division_appendix_node_lowercases_letter():
 
 
 def test_spectables_node_returns_spectables_url():
+    """spectables-<n>.json, hyphenated - the URL the site's own span-table
+    page fetches. The earlier guess, spectables/<n>.json, isn't served, so
+    no span table ever reached the web index."""
     node = _node("spectables", "nbc.divBV2.part9.spectables1")
-    assert content_url(node, "2024") == "/data/2024/content/nbc-divbv2/part-9/spectables/1.json"
+    assert content_url(node, "2024") == "/data/2024/content/nbc-divbv2/part-9/spectables-1.json"
 
 
 def test_front_matter_article_uses_last_path_segment():
