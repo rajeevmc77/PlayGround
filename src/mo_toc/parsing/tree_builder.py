@@ -32,6 +32,12 @@ from mo_toc.parsing.marker_rules import RE_MARKER
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
 
 RE_NOTE_ENTRY = re.compile(r"^([A-Z]-\S+(?:\s+(?:and|to)\s+\(\d+\))*)\s+(.*)$")
+# A Note on a table, whose identifier is the table's own ("A-Table 9.23.3.5.-B",
+# "A-Tables 9.36.2.8.-A and -B") - RE_NOTE_ENTRY would stop at "A-Table". The
+# title can follow with no space: "A-Table 4.1.8.5.-AServiceability ...".
+RE_TABLE_NOTE_ENTRY = re.compile(
+    r"^([A-Z]-Tables?\s+\d+(?:\.\d+)*\.?(?:-[A-Z])?(?:\s+and\s+-[A-Z])?)\s*(\S.*)$"
+)
 RE_ENDS_WITH_CONJUNCTION = re.compile(r"\b(?:and|or)\s*$", re.IGNORECASE)
 RE_PAGE_NUMBER = re.compile(r"^\d+$")
 
@@ -293,7 +299,7 @@ def _classify_heading(pline: PageLine, state: _BuildState):
 
 
 def _try_open_note(pline: PageLine, page_index: int, state: _BuildState) -> bool:
-    note_match = RE_NOTE_ENTRY.match(pline.text)
+    note_match = RE_TABLE_NOTE_ENTRY.match(pline.text) or RE_NOTE_ENTRY.match(pline.text)
     if not note_match:
         return False
     _open_note(note_match, page_index, BBox(*pline.bbox), state)
