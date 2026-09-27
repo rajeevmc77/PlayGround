@@ -163,6 +163,40 @@ def _assign_lines_to_cells(
     return cells, consumed
 
 
+def _rule_across(rules: list, y: float, x0: float, x1: float) -> bool:
+    """Whether horizontal rules at row boundary `y` cover at least half of
+    the column [x0, x1] - the PDF draws its row rules one column at a time."""
+    at_y = [r for r in rules if abs((r[1] + r[3]) / 2 - y) <= BOUNDARY_MERGE_TOLERANCE]
+    covered = sum(max(0.0, min(r[2], x1) - max(r[0], x0)) for r in at_y)
+    return covered >= (x1 - x0) / 2
+
+
+def _fold_column(cell_lines: dict, folded: dict, col: int, grid) -> None:
+    row_ys, col_xs, rules = grid
+    first = 0
+    for row in range(len(row_ys) - 1):
+        if row and _rule_across(rules, row_ys[row], col_xs[col], col_xs[col + 1]):
+            first = row
+        folded.setdefault((first, col), []).extend(cell_lines.get((row, col), []))
+
+
+def _fold_row_spans(
+    cell_lines: dict[tuple[int, int], list[PageLine]],
+    row_ys: list[float],
+    col_xs: list[float],
+    rects: list[tuple[float, float, float, float]],
+) -> dict[tuple[int, int], list[PageLine]]:
+    """Moves a cell spanning several rows - no rule between them across its
+    column - into the first of them, leaving the rest empty, as the site does.
+    The PDF centres such a cell's text vertically (Spec Table 2's "140"),
+    so its lines land in whichever row holds the middle."""
+    rules = [r for r in rects if _classify_rect(r) == "horizontal"]
+    folded: dict[tuple[int, int], list[PageLine]] = {}
+    for col in range(len(col_xs) - 1):
+        _fold_column(cell_lines, folded, col, (row_ys, col_xs, rules))
+    return {key: lines for key, lines in folded.items() if lines}
+
+
 def _union_bbox(a: BBox, b: BBox) -> BBox:
     return BBox(min(a.x0, b.x0), min(a.y0, b.y0), max(a.x1, b.x1), max(a.y1, b.y1))
 
@@ -322,6 +356,7 @@ def _region_from_grid(
     title, forming_part_of, caption_lines = caption
     row_ys, col_xs = grid.row_ys, grid.col_xs
     cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
+    cell_lines = _fold_row_spans(cell_lines, row_ys, col_xs, grid.drawing_rects)
     table_citation = f"Table:{anchor.identifier}"
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
     table_node = Node(
@@ -670,6 +705,7 @@ def build_continuation_region(
         return None
 
     cell_lines, consumed = _assign_lines_to_cells(lines, row_ys, col_xs)
+    cell_lines = _fold_row_spans(cell_lines, row_ys, col_xs, drawing_rects)
     rows = _build_rows(row_ys, col_xs, cell_lines, pending.table_node.citation, page_number)
     table_node = Node(
         type="Table",
