@@ -38,7 +38,11 @@ independent tools live here:
    an empty PDF cell with no web cell in a paired row passes (the site lists only the cells
    a row starts, not the positions a span covers). `comparison.json`'s `counterparts` records
    every pairing that differs (null = no web counterpart) and the viewer's web highlight
-   follows it (`webLocationFor` in `both_view.mjs`).
+   follows it (`webLocationFor` in `both_view.mjs`). Its `reasons` say why each failed text
+   item or image differs - the differing stretches with context and their kind, or which
+   words' bold/italic differ (`src/comparison/reasons.py`, `difference.py`) - shown in the
+   viewer's "Why it differs" box above the web page when a ✗ item is selected
+   (`reason_view.mjs`).
    See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
    A second, independent index (`src/web_toc/`, `src/build_web_toc.py`) is sourced from the
    BC Building Code website instead of the PDF, and feeds the viewer's web side.
@@ -175,7 +179,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (921 tests — 903 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (942 tests — 924 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD

@@ -3,7 +3,9 @@
 comparing bcbc_pdf.json's text/images against bcbc_web.json's - see
 src/comparison/engine.py for the rollup rules that decide each status. Text
 must match exactly apart from whitespace, bold/italic included
-(comparison/content_match.py); the threshold applies to images only.
+(comparison/content_match.py); the threshold applies to images only. Each
+failed text item and image also gets a `reasons` entry saying why it differs
+(comparison/reasons.py), which the viewer shows.
 
 Usage:
     python3 src/build_mo_toc.py      # once
@@ -28,6 +30,7 @@ from comparison.image_similarity import (
     images_match,
     threshold_for,
 )
+from comparison.reasons import failure_reasons
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
@@ -59,20 +62,25 @@ def run(output_dir: str, threshold_percent: float = DEFAULT_THRESHOLD_PERCENT) -
     web_tree = web_payload["tree"] if web_payload else None
     counterparts = table_counterparts_in(pdf_payload["volume"], web_tree)
 
+    web_images = web_payload["images"] if web_payload else []
     statuses = compare_trees(
         pdf_payload["volume"],
         pdf_payload["images"],
         web_tree,
-        web_payload["images"] if web_payload else [],
+        web_images,
         content_matches,
         _image_matcher(out, threshold_percent),
         counterparts=counterparts,
+    )
+    reasons = failure_reasons(
+        pdf_payload["volume"], pdf_payload["images"], web_tree, web_images, statuses, counterparts
     )
     payload = {
         "threshold_percent": threshold_percent,
         "equation_threshold_percent": EQUATION_THRESHOLD_PERCENT,
         "statuses": statuses,
         "counterparts": _changed(counterparts),
+        "reasons": reasons,
     }
     (out / "comparison.json").write_text(json.dumps(payload, indent=2))
 
