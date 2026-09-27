@@ -98,6 +98,35 @@ def test_page_drawing_rects_returns_bbox_of_each_path(pdf_with_vector_drawing):
     assert rects[0] == pytest.approx((50, 50, 150, 150))
 
 
+@pytest.fixture
+def pdf_with_coloured_rules(tmp_path):
+    """Real case: page 60's Table 1.3.1.2. has blue underlines under the
+    cross-references in its last column; the grid read them as row rules."""
+    doc = fitz.open()
+    page = doc.new_page()
+    page.draw_rect(fitz.Rect(90, 100, 520, 100.7), color=None, fill=(0, 0, 0))  # black rule
+    page.draw_rect(fitz.Rect(90, 140, 520, 140.7), color=None, fill=(0.14, 0.12, 0.13))  # grey
+    page.draw_rect(fitz.Rect(399, 120, 437, 120.6), color=None, fill=(0, 0, 1))  # blue underline
+    page.draw_line((90, 160), (520, 160), color=(0, 0, 0))  # stroked, not filled
+    path = tmp_path / "rules.pdf"
+    doc.save(str(path))
+    doc.close()
+    return str(path)
+
+
+def test_page_rule_rects_keep_black_and_grey_rules_but_not_coloured_ones(pdf_with_coloured_rules):
+    source = PyMuPdfSource(pdf_with_coloured_rules)
+
+    tops = sorted(round(rect[1]) for rect in source.page_rule_rects(0))
+
+    assert tops == [100, 140, 160]
+
+
+def test_page_drawing_rects_still_include_coloured_drawings(pdf_with_coloured_rules):
+    # Vector figures are clustered from every drawing, coloured or not.
+    assert len(PyMuPdfSource(pdf_with_coloured_rules).page_drawing_rects(0)) == 4
+
+
 def test_render_region_returns_raster_bytes_at_requested_bbox(pdf_with_vector_drawing):
     source = PyMuPdfSource(pdf_with_vector_drawing)
     extracted = source.render_region(0, (50, 50, 150, 150))

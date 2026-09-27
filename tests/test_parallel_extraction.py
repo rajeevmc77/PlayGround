@@ -21,7 +21,8 @@ def test_extract_page_matches_the_sequential_primitives_for_one_real_page():
     expected_lines = source.page_lines(0)
     expected_raster = raster_images_on_page(source, 0)
     expected_rects = source.page_drawing_rects(0)
-    expected_table_regions = detect_tables_on_page(expected_lines, expected_rects, page_number=1)
+    expected_rules = source.page_rule_rects(0)
+    expected_table_regions = detect_tables_on_page(expected_lines, expected_rules, page_number=1)
     expected_table_bboxes = [r.outer_bbox.as_tuple() for r in expected_table_regions]
     expected_vector = vector_images_on_page(
         source, 0, [r.bbox for r in expected_raster], expected_rects, expected_table_bboxes
@@ -30,7 +31,28 @@ def test_extract_page_matches_the_sequential_primitives_for_one_real_page():
     assert lines == expected_lines
     assert images == expected_raster + expected_vector
     assert table_regions == expected_table_regions
-    assert rects == expected_rects
+    assert rects == expected_rules  # what the cross-page table pass reads
+
+
+def test_extract_page_finds_tables_from_rules_and_figures_from_every_drawing(monkeypatch):
+    from mo_toc.parsing import parallel_extraction
+
+    source = MagicMock()
+    source.page_lines.return_value = ["LINE"]
+    source.page_drawing_rects.return_value = ["RULE", "BLUE UNDERLINE"]
+    source.page_rule_rects.return_value = ["RULE"]
+    monkeypatch.setattr(parallel_extraction, "_worker_source", source)
+    monkeypatch.setattr(parallel_extraction, "raster_images_on_page", lambda src, i: [])
+    detect = MagicMock(return_value=[])
+    vector = MagicMock(return_value=[])
+    monkeypatch.setattr(parallel_extraction, "detect_tables_on_page", detect)
+    monkeypatch.setattr(parallel_extraction, "vector_images_on_page", vector)
+
+    _lines, _images, _regions, rects = parallel_extraction._extract_page(4)
+
+    detect.assert_called_once_with(["LINE"], ["RULE"], page_number=5)
+    assert vector.call_args.args[3] == ["RULE", "BLUE UNDERLINE"]
+    assert rects == ["RULE"]
 
 
 @patch("mo_toc.parsing.parallel_extraction.ProcessPoolExecutor")

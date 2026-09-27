@@ -34,12 +34,14 @@ def _extract_page(
     lines = _worker_source.page_lines(page_index)
     raster = raster_images_on_page(_worker_source, page_index)
     rects = _worker_source.page_drawing_rects(page_index)
-    table_regions = detect_tables_on_page(lines, rects, page_number=page_index + 1)
+    # Tables are ruled in black; vector figures may be drawn in any colour.
+    rules = _worker_source.page_rule_rects(page_index)
+    table_regions = detect_tables_on_page(lines, rules, page_number=page_index + 1)
     table_bboxes = [r.outer_bbox.as_tuple() for r in table_regions]
     vector = vector_images_on_page(
         _worker_source, page_index, [r.bbox for r in raster], rects, table_bboxes
     )
-    return lines, raster + vector, table_regions, rects
+    return lines, raster + vector, table_regions, rules
 
 
 def _unzip_one(
