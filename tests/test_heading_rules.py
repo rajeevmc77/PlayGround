@@ -1,6 +1,11 @@
 import pytest
 
-from mo_toc.parsing.heading_rules import classify_caption_line, classify_heading_line
+from mo_toc.parsing.heading_rules import (
+    classify_caption_line,
+    classify_heading_line,
+    font_family,
+    is_table_notes_heading,
+)
 
 BLACK = "Arial-Black"
 BOLD = "Arial-BoldMT"
@@ -112,3 +117,41 @@ def test_article_types_includes_appendix_article():
 
     assert "Article" in ARTICLE_TYPES
     assert "AppendixArticle" in ARTICLE_TYPES
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Notes to Table 3.1.13.2.:",
+        "Note to Figure4.1.7.4.:",
+        "Notes to Table A-9.11.1.4.-A:",
+        "Notes to Figure A-1.1.3.1.(4):",
+    ],
+)
+def test_recognizes_a_table_or_figure_notes_heading(text):
+    assert is_table_notes_heading(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Notes to Part 1", "Notes to Table", "See the Notes to Table 3.1.13.2. for details."],
+)
+def test_rejects_lines_that_do_not_head_a_table_or_figure_notes_block(text):
+    assert not is_table_notes_heading(text)
+
+
+@pytest.mark.parametrize(
+    ("font", "family"),
+    [
+        ("ArialMT", "Arial"),
+        ("Arial-ItalicMT/ArialMT", "Arial"),
+        ("Arial-BoldMT", "Arial"),
+        ("ArialNarrow-Bold", "ArialNarrow"),
+        ("TimesNewRomanPSMT", "TimesNewRoman"),
+        ("TimesNewRomanPS-BoldMT", "TimesNewRoman"),
+        ("BookAntiqua/BookAntiqua-Italic", "BookAntiqua"),
+        ("", ""),
+    ],
+)
+def test_font_family_drops_weight_style_and_foundry_suffixes(font, family):
+    assert font_family(font) == family

@@ -385,3 +385,129 @@ def test_a_plain_font_caption_centred_on_the_page_is_captured_with_its_plain_tit
     caption = captions[-1]
     assert (caption.kind, caption.identifier) == ("Table", "9.8.4.2.")
     assert caption.title == "Run for Rectangular Treads Forming Part of Sentence 9.8.4.2.(1)"
+
+
+NOTES_FONT = "ArialMT"
+
+
+def _article_pages(*body_pages):
+    """One Article's heading chain followed by the given body lines - the
+    first list on the heading's page, any further lists on the pages after."""
+    heading = [
+        line(10, 40, "Division B", BLACK),
+        line(50, 40, "Part 3", BLACK),
+        line(70, 40, "Section  3.1.   General", BLACK),
+        line(90, 40, "3.1.13. Interior Finish", BLACK),
+        line(110, 40, "3.1.13.2. Flame-Spread Rating", BLACK),
+    ]
+    return [heading + list(body_pages[0]), *[list(page) for page in body_pages[1:]]]
+
+
+def _articles(pages):
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    return root.children[1].children[0].children[0].children[0].children
+
+
+def _sentences(pages, article_index=0):
+    return [sentence.content for sentence in _articles(pages)[article_index].children]
+
+
+def test_a_table_notes_block_is_left_out_of_the_sentence_it_follows():
+    # The notes printed under a table ("Notes to Table 3.1.13.2.:" and its
+    # "(1) ..." entries) fell through to body text and were appended to the
+    # sentence before the table; the site keeps no such text in it.
+    pages = _article_pages(
+        [
+            line(130, 40, "1) Finishes shall conform to Table 3.1.13.2.", BODY),
+            line(300, 40, "Notes to Table 3.1.13.2.:", BOLD),
+            line(312, 40, "(1) See Articles 3.1.13.8. and 3.1.13.10.", NOTES_FONT),
+            line(324, 40, "(2) Other requirements of this Part apply.", "Arial-ItalicMT/ArialMT"),
+            line(340, 40, "2) Doors need not conform to Sentence (1).", BODY),
+        ]
+    )
+    assert _sentences(pages) == [
+        "Finishes shall conform to Table 3.1.13.2.",
+        "Doors need not conform to Sentence (1).",
+    ]
+
+
+def test_a_table_notes_block_running_onto_the_next_page_is_left_out():
+    pages = _article_pages(
+        [
+            line(130, 40, "1) Finishes shall conform to Table 3.1.13.2.", BODY),
+            line(690, 40, "Notes to Table 3.1.13.2.:", BOLD),
+            line(713, 40, "43", "TimesNewRomanPSMT"),  # running footer
+        ],
+        [
+            line(50, 40, "(1) See Articles 3.1.13.8. and 3.1.13.10.", NOTES_FONT),
+            line(70, 40, "2) Doors need not conform to Sentence (1).", BODY),
+        ],
+    )
+    assert _sentences(pages) == [
+        "Finishes shall conform to Table 3.1.13.2.",
+        "Doors need not conform to Sentence (1).",
+    ]
+
+
+def test_a_sentence_set_in_the_notes_font_ends_a_table_notes_block():
+    # Real case: page 910's Sentence 9.23.13.7.(5), a BC amendment, is set in
+    # Arial like the notes above it. A note entry starts "(1)"; a Sentence or
+    # Clause starts "5)" or "a)".
+    pages = _article_pages(
+        [
+            line(130, 40, "1) Finishes shall conform to Table 3.1.13.2.", BODY),
+            line(300, 40, "Notes to Table 3.1.13.2.:", BOLD),
+            line(312, 40, "(1) See Articles 3.1.13.8. and 3.1.13.10.", NOTES_FONT),
+            line(340, 40, "2)   Doors need not conform", "Arial-ItalicMT/ArialMT"),
+            line(352, 40, "to Sentence (1).", NOTES_FONT),
+        ]
+    )
+    assert _sentences(pages) == [
+        "Finishes shall conform to Table 3.1.13.2.",
+        "Doors need not conform to Sentence (1).",
+    ]
+
+
+def test_notes_set_in_the_body_font_keep_their_lines_as_body_text():
+    # Only the heading can be told apart there: the notes share the body's
+    # font, so where they end can't be seen.
+    pages = _article_pages(
+        [
+            line(130, 40, "1) Finishes shall conform to Table 3.1.13.2.", BODY),
+            line(300, 40, "Notes to Table 3.1.13.2.:", "BookAntiqua-Bold"),
+            line(312, 40, "2) Doors need not conform to Sentence (1).", BODY),
+        ]
+    )
+    assert _sentences(pages) == [
+        "Finishes shall conform to Table 3.1.13.2.",
+        "Doors need not conform to Sentence (1).",
+    ]
+
+
+def test_a_heading_ends_a_table_notes_block():
+    pages = _article_pages(
+        [
+            line(130, 40, "1) Finishes shall conform to Table 3.1.13.2.", BODY),
+            line(300, 40, "Notes to Table 3.1.13.2.:", BOLD),
+            line(312, 40, "(1) See Articles 3.1.13.8. and 3.1.13.10.", NOTES_FONT),
+            line(330, 40, "3.1.13.3. Bathrooms", BLACK),
+            line(350, 40, "1) Bathroom finishes set in the notes font.", NOTES_FONT),
+        ]
+    )
+    assert _sentences(pages, article_index=1) == ["Bathroom finishes set in the notes font."]
+
+
+def test_a_caption_ends_a_table_notes_block():
+    pages = _article_pages(
+        [
+            line(130, 40, "1) Finishes shall conform to Table 3.1.13.2.", BODY),
+            line(300, 40, "Notes to Table 3.1.13.2.:", BOLD),
+            line(312, 40, "(1) See Articles 3.1.13.8. and 3.1.13.10.", NOTES_FONT),
+            line(330, 40, "Figure 3.1.13.2.", BOLD),
+            line(345, 40, "A figure title", BOLD),
+            line(360, 40, "Figure text set in the notes font.", NOTES_FONT),
+        ]
+    )
+    assert _sentences(pages) == [
+        "Finishes shall conform to Table 3.1.13.2. Figure text set in the notes font."
+    ]
