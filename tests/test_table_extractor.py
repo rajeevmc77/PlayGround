@@ -1377,3 +1377,27 @@ def test_a_region_records_which_column_rules_run_its_full_height():
     lines, rects = _stacked_grid_fixture()
     region = build_continuation_region(lines, rects, page_number=8, pending=pending)
     assert region.through_xs == pytest.approx((90.2, 259.8), abs=0.5)
+
+
+def test_an_underline_inside_a_cell_is_not_a_row_rule():
+    # The marked-up PDF underlines revised words: Table 9.23.13.7.-C's
+    # "Diagonal-Lumber-Sheathed" heading has a short rule under each line,
+    # which made thin, empty rows.
+    lines, rects = _minimal_grid_fixture()
+    rects.append((120.0, 80.6, 200.0, 81.0))  # under "First row content."
+    [region] = detect_tables_on_page(lines, rects, page_number=1)
+    assert len(region.table_node.children) == 2
+
+
+def test_a_rule_running_past_the_grids_outer_edges_is_still_a_row_rule():
+    lines, rects = _minimal_grid_fixture()
+    rects.append((88.0, 75.0, 262.0, 75.4))
+    [region] = detect_tables_on_page(lines, rects, page_number=1)
+    assert len(region.table_node.children) == 3
+
+
+def test_a_rule_spanning_some_columns_edge_to_edge_is_still_a_row_rule():
+    lines, rects = _minimal_grid_fixture()
+    rects.append((115.0, 75.0, 260.0, 75.4))
+    [region] = detect_tables_on_page(lines, rects, page_number=1)
+    assert len(region.table_node.children) == 3
