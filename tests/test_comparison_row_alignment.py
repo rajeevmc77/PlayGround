@@ -7,7 +7,41 @@ one-to-one, a block of differing rows pairs by position inside the block
 pairing), and a row only one side has stays unpaired. Cells pair by column
 within paired rows."""
 
-from comparison.row_alignment import table_counterparts
+from comparison.row_alignment import table_counterparts, table_pairs
+
+
+# Tables within an article/note are paired the same way, on their titles:
+# B.A-9.36.2.4.(1)'s web note has four untitled worked-example tables among
+# its four captioned ones, so by position every PDF table met the wrong one.
+def _titled(title):
+    return {"type": "Table", "title": title, "children": []}
+
+
+def test_tables_pair_on_their_titles_past_untitled_tables_only_one_side_has():
+    pdf = [_titled("Values for K1 and K2"), _titled("Thermal Resistance Values(1)")]
+    web = [
+        _titled(""),
+        _titled("Values for K_{1} and K_{2}"),
+        _titled(""),
+        _titled("Thermal Resistance Values^{(1)}"),
+    ]
+    assert table_pairs(pdf, web) == {0: 1, 1: 3}
+
+
+def test_a_pdf_titles_forming_part_of_tail_is_ignored():
+    pdf = [_titled("Rise for Treads Forming Part of Sentence 9.8.4.1.(1)")]
+    assert table_pairs(pdf, [_titled(""), _titled("Rise for Treads")]) == {0: 1}
+
+
+def test_tables_with_no_matching_titles_pair_by_position():
+    pdf = [_titled(""), _titled("PDF only")]
+    web = [_titled(""), _titled("Web only"), _titled("Extra")]
+    assert table_pairs(pdf, web) == {0: 0, 1: 1}
+
+
+def test_no_tables_on_one_side_pair_nothing():
+    assert table_pairs([_titled("A")], []) == {}
+    assert table_pairs([], [_titled("A")]) == {}
 
 
 def _table(number, rows):

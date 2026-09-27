@@ -30,8 +30,9 @@ independent tools live here:
    The tree's ✓/✗ comes from `src/build_comparison.py`: a leaf's text must match the web's
    exactly apart from whitespace, and the only formatting checked is bold/italic (each
    node's `emphasis` ranges) - see `ai_docs/2026-09-26-compare-emphasis-design.md`.
-   Table rows/cells are paired PDF-to-web by content, not by their positional unified
-   number (`src/comparison/row_alignment.py`); `comparison.json`'s `counterparts` records
+   Tables are paired PDF-to-web by title within their article/note, and their rows/cells
+   by content, not by their positional unified number (`src/comparison/row_alignment.py`);
+   `comparison.json`'s `counterparts` records
    every pairing that differs (null = no web counterpart) and the viewer's web highlight
    follows it (`webLocationFor` in `both_view.mjs`).
    See `ai_docs/2026-09-20-mo-toc-viewer-design.md` for the full design.
