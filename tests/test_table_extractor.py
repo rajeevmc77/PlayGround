@@ -71,6 +71,29 @@ def test_detect_tables_on_page_builds_header_and_data_row():
     assert [c.content for c in data.children] == ["1", "First row content."]
 
 
+def test_a_line_spanning_columns_goes_to_the_column_it_starts_in():
+    """Table 9.38.1.1.'s article-heading rows ("9.3.1.3. Concrete in Contact
+    with Sulphate Soil") span the full width: the line starts in Col1 but
+    its centre falls in Col2. The site files a spanning cell under the column
+    it starts in (and web_toc lays spans out that way), so the PDF does too."""
+    lines, rects = _minimal_grid_fixture()
+    lines[4:6] = [pline(92, 70, 250, 80, "9.3.1.3. Concrete in Contact with Sulphate Soil")]
+    [region] = detect_tables_on_page(lines, rects, page_number=7)
+    _, data = region.table_node.children
+    assert [c.content for c in data.children] == [
+        "9.3.1.3. Concrete in Contact with Sulphate Soil",
+        "",
+    ]
+
+
+def test_a_line_inside_one_cell_stays_in_that_cell_however_it_is_aligned():
+    lines, rects = _minimal_grid_fixture()
+    lines[5] = pline(200, 70, 258, 80, "right")  # right-aligned in Col2
+    [region] = detect_tables_on_page(lines, rects, page_number=7)
+    _, data = region.table_node.children
+    assert [c.content for c in data.children] == ["1", "right"]
+
+
 def test_detect_tables_on_page_assigns_citations_by_position():
     lines, rects = _minimal_grid_fixture()
     regions = detect_tables_on_page(lines, rects, page_number=7)
