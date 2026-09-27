@@ -130,6 +130,30 @@ def test_write_json_keeps_emphasis_on_content_bearing_types_only(tmp_path):
     assert "emphasis" not in payload["volume"]
 
 
+def test_write_json_keeps_a_notes_content_emphasis_and_title(tmp_path):
+    note = Node(
+        type="Note",
+        identifier="A-3.1.2.3.(1)",
+        citation="Note:A-3.1.2.3.(1)",
+        title="Arena Regulation.",
+        content="An arena is regulated.",
+        emphasis=[(3, 8, "i")],
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    out_path = tmp_path / "out.json"
+    write_json(note, [], [], str(out_path))
+    payload = json.loads(out_path.read_text())
+
+    written = payload["volume"]
+    assert (written["content"], written["emphasis"], written["title"]) == (
+        "An arena is regulated.",
+        [[3, 8, "i"]],
+        "Arena Regulation.",
+    )
+
+
 def test_write_json_drops_both_title_and_content_for_row(tmp_path):
     row = Node(
         type="Row",

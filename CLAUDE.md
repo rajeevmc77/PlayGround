@@ -30,6 +30,8 @@ independent tools live here:
    The tree's ✓/✗ comes from `src/build_comparison.py`: a leaf's text must match the web's
    exactly apart from whitespace, and the only formatting checked is bold/italic (each
    node's `emphasis` ranges) - see `ai_docs/2026-09-26-compare-emphasis-design.md`.
+   A Note's content is its body after the run-in title; the web's note heading
+   (identifier + title) is dropped before comparing, like a sentence's own "1)" marker.
    Tables are paired PDF-to-web by title within their article/note, and their rows/cells
    by content, not by their positional unified number (`src/comparison/row_alignment.py`);
    an empty PDF cell with no web cell in a paired row passes (the site lists only the cells

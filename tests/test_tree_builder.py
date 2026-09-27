@@ -233,6 +233,77 @@ def test_note_bbox_spans_continuation_lines_on_same_page():
     assert note.bbox == BBox(40, 70, 340, 100)
 
 
+def _note_pages(*pages):
+    return [
+        [line(50, 40, "Division A", BLACK)],
+        [line(50, 40, "Notes to Part 1", BLACK)] + list(pages[0]),
+        *[list(page) for page in pages[1:]],
+    ]
+
+
+def _first_note(pages):
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    return root.children[1].children[0].children[0]
+
+
+def test_a_notes_content_is_its_body_after_the_title_across_lines_and_pages():
+    pages = _note_pages(
+        [
+            line(70, 40, "A-9.15.3.4.(2)   Footing Sizes. The footing sizes in", BODY),
+            line(90, 40, "Table 9.15.3.4. are based on typical construction.", BODY),
+            line(713, 500, "706", "TimesNewRomanPSMT"),  # running footer
+        ],
+        [line(50, 40, "Where these spans exceed 4.9 m, see below.", BODY)],
+    )
+    note = _first_note(pages)
+    assert note.content == (
+        "The footing sizes in Table 9.15.3.4. are based on typical construction."
+        " Where these spans exceed 4.9 m, see below."
+    )
+
+
+def test_a_note_title_wrapping_onto_its_next_line_is_left_out_of_its_content():
+    pages = _note_pages(
+        [
+            line(70, 40, "A-9.25.4.2.(2)   Insulation and Vapour Barriers in", BODY),
+            line(90, 40, "Heated Crawl Spaces. In the summer, solar heating", BODY),
+        ]
+    )
+    assert _first_note(pages).content == "In the summer, solar heating"
+
+
+def test_a_note_title_followed_with_no_space_ends_at_its_period():
+    pages = _note_pages(
+        [line(70, 40, "A-4.1.1.3.(1)Structural Integrity.The requirements apply.", BODY)]
+    )
+    assert _first_note(pages).content == "The requirements apply."
+
+
+def test_a_notes_content_keeps_its_bold_and_italic():
+    pages = _note_pages(
+        [
+            PageLine(
+                bbox=(40, 70, 340, 80),
+                text="A-3.1.2.3.(1) Arena Regulation. An arena is regulated.",
+                font=BODY,
+                emphasis=((35, 40, "i"),),  # "arena"
+            )
+        ]
+    )
+    note = _first_note(pages)
+    assert (note.content, note.emphasis) == ("An arena is regulated.", [(3, 8, "i")])
+
+
+def test_a_note_with_nothing_after_its_title_has_no_content():
+    pages = _note_pages([line(70, 40, "A-Table 4.1.5.3.Considerations for Live Loads.", BODY)])
+    assert _first_note(pages).content == ""
+
+
+def test_a_note_whose_title_never_ends_in_a_period_has_no_content():
+    pages = _note_pages([line(70, 40, "A-9.1.1.1.(1)   Application of Part 9", BODY)])
+    assert _first_note(pages).content == ""
+
+
 def test_continuation_line_attaches_to_the_currently_open_note():
     pages = [
         [line(50, 40, "Random front matter text.", BODY)],  # page 0: FrontMatter
