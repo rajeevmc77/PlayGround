@@ -21,7 +21,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from comparison.asset_loader import load_pdf_image_bytes, load_web_image_bytes
 from comparison.content_match import content_matches
 from comparison.engine import compare_trees
-from comparison.image_similarity import DEFAULT_THRESHOLD_PERCENT, compare_images, images_match
+from comparison.image_similarity import (
+    DEFAULT_THRESHOLD_PERCENT,
+    EQUATION_THRESHOLD_PERCENT,
+    compare_images,
+    images_match,
+    threshold_for,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
@@ -33,8 +39,9 @@ def _image_matcher(output_dir: Path, threshold_percent: float):
         web_bytes = load_web_image_bytes(output_dir, web_image)
         if pdf_bytes is None or web_bytes is None:
             return False
-        result = compare_images(pdf_image.get("unified_number", ""), pdf_bytes, web_bytes)
-        return images_match(result, threshold_percent)
+        unified_number = pdf_image.get("unified_number", "")
+        result = compare_images(unified_number, pdf_bytes, web_bytes)
+        return images_match(result, threshold_for(unified_number, threshold_percent))
 
     return _match
 
@@ -53,7 +60,11 @@ def run(output_dir: str, threshold_percent: float = DEFAULT_THRESHOLD_PERCENT) -
         content_matches,
         _image_matcher(out, threshold_percent),
     )
-    payload = {"threshold_percent": threshold_percent, "statuses": statuses}
+    payload = {
+        "threshold_percent": threshold_percent,
+        "equation_threshold_percent": EQUATION_THRESHOLD_PERCENT,
+        "statuses": statuses,
+    }
     (out / "comparison.json").write_text(json.dumps(payload, indent=2))
 
 
