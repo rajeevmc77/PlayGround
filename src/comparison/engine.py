@@ -20,9 +20,10 @@ numbered by position, so a row present on only one side would shift every
 row below it. table_counterparts_in pairs them by content instead (see
 row_alignment.py), and compare_trees looks each one up through that map."""
 
+import re
 from collections.abc import Callable
 
-from comparison.row_alignment import table_counterparts
+from comparison.row_alignment import table_counterparts, table_pairs
 
 # (pdf node, web node) -> whether they show the same content.
 TextMatcher = Callable[[dict, dict], bool]
@@ -56,16 +57,59 @@ def _tables(node: dict):
         yield from _tables(child)
 
 
+_TABLE_ORDINAL = re.compile(r"\.Tbl(\d+)$")
+
+
+def _ordinal(table: dict) -> int:
+    match = _TABLE_ORDINAL.search(table["unified_number"])
+    return int(match.group(1)) if match else 0
+
+
+def _tables_by_scope(tree: dict) -> dict[str, list[dict]]:
+    """Tables grouped by the article/note their "...TblN" number counts in,
+    in N order - not tree order, which differs where a table sits deeper
+    than its siblings (the PDF numbers them in page order)."""
+    scopes: dict[str, list[dict]] = {}
+    for table in _tables(tree):
+        scopes.setdefault(_TABLE_ORDINAL.sub("", table["unified_number"]), []).append(table)
+    return {scope: sorted(tables, key=_ordinal) for scope, tables in scopes.items()}
+
+
+def _unpaired(node: dict) -> dict[str, None]:
+    unpaired = {node["unified_number"]: None}
+    for child in node.get("children", []):
+        unpaired.update(_unpaired(child))
+    return unpaired
+
+
+def _scope_counterparts(
+    pdf_tables: list[dict], web_tables: list[dict], web_nodes: dict
+) -> dict[str, str | None]:
+    pairs = table_pairs(pdf_tables, web_tables)
+    counterparts: dict[str, str | None] = {}
+    for index, pdf_table in enumerate(pdf_tables):
+        if index in pairs:
+            web_table = web_tables[pairs[index]]
+            counterparts[pdf_table["unified_number"]] = web_table["unified_number"]
+            counterparts.update(table_counterparts(pdf_table, web_table))
+        elif pdf_table["unified_number"] in web_nodes:
+            # Unpaired, yet a web table has its number: never compare the two.
+            counterparts.update(_unpaired(pdf_table))
+    return counterparts
+
+
 def table_counterparts_in(pdf_tree: dict, web_tree: dict | None) -> dict[str, str | None]:
-    """Row/cell counterparts for every table present on both sides."""
+    """Table/row/cell counterparts: each article's tables pair by title
+    (table_pairs), then each paired table's rows and cells by content."""
     web_nodes: dict[str, dict] = {}
+    web_scopes: dict[str, list[dict]] = {}
     if web_tree is not None:
         _index_nodes(web_tree, web_nodes)
+        web_scopes = _tables_by_scope(web_tree)
     counterparts: dict[str, str | None] = {}
-    for pdf_table in _tables(pdf_tree):
-        web_table = web_nodes.get(pdf_table["unified_number"])
-        if web_table is not None:
-            counterparts.update(table_counterparts(pdf_table, web_table))
+    for scope, pdf_tables in _tables_by_scope(pdf_tree).items():
+        web_tables = web_scopes.get(scope, [])
+        counterparts.update(_scope_counterparts(pdf_tables, web_tables, web_nodes))
     return counterparts
 
 

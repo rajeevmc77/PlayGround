@@ -273,3 +273,62 @@ def test_an_unpaired_pdf_row_fails():
     statuses = compare_trees(pdf, [], web, [], ALWAYS_MATCH, NEVER_MATCH, counterparts=counterparts)
     assert statuses["A.Tbl1.Row2"] is False
     assert statuses["A.Tbl1.Row3"] is True
+
+
+def _titled_table(number, title, rows):
+    table = _table_node(number, number, rows)
+    table["title"] = title
+    return table
+
+
+def test_tables_in_one_scope_pair_by_title_and_their_rows_follow():
+    pdf = _node("A", "a", "", [_titled_table("A.Tbl1", "Values", [["x"]])])
+    web_tables = [
+        _titled_table("A.Tbl1", "", [["worked example"]]),
+        _titled_table("A.Tbl2", "Values", [["x"]]),
+    ]
+    web = _node("A", "a", "", web_tables)
+
+    counterparts = table_counterparts_in(pdf, web)
+
+    assert counterparts["A.Tbl1"] == "A.Tbl2"
+    assert counterparts["A.Tbl1.Row1.Col1"] == "A.Tbl2.Row1.Col1"
+
+
+def test_a_scopes_tables_pair_in_number_order_not_tree_order():
+    # PDF tables are numbered in page order (B.9.36.2.6.Tbl3 sits deeper in
+    # the tree, under a clause, so a tree walk meets it first).
+    clause = _node("A.(1)(a)", "c", "", [_titled_table("A.Tbl3", "Third", [["3"]])])
+    pdf_tables = [
+        _titled_table("A.Tbl1", "First", [["1"]]),
+        _titled_table("A.Tbl2", "Second", [["2"]]),
+    ]
+    pdf = _node("A", "a", "", [clause, *pdf_tables])
+    web_tables = [
+        _titled_table("A.Tbl1", "First", [["1"]]),
+        _titled_table("A.Tbl2", "Second", [["2"]]),
+        _titled_table("A.Tbl3", "Third", [["3"]]),
+    ]
+
+    counterparts = table_counterparts_in(pdf, _node("A", "a", "", web_tables))
+
+    assert [counterparts[f"A.Tbl{i}"] for i in (1, 2, 3)] == ["A.Tbl1", "A.Tbl2", "A.Tbl3"]
+
+
+def test_a_pdf_table_with_no_web_counterpart_never_meets_the_same_numbered_one():
+    pdf_tables = [
+        _titled_table("A.Tbl1", "Kept", [["k"]]),
+        _titled_table("A.Tbl2", "PDF only", [["p"]]),
+    ]
+    web_tables = [
+        _titled_table("A.Tbl1", "Worked", [["w"]]),
+        _titled_table("A.Tbl2", "Kept", [["k"]]),
+    ]
+
+    counterparts = table_counterparts_in(
+        _node("A", "a", "", pdf_tables), _node("A", "a", "", web_tables)
+    )
+
+    assert counterparts["A.Tbl1"] == "A.Tbl2"
+    assert counterparts["A.Tbl2"] is None
+    assert counterparts["A.Tbl2.Row1.Col1"] is None
