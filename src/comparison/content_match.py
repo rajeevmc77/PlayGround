@@ -30,10 +30,16 @@ def _without_own_marker(node: dict, styled: StyledText) -> StyledText:
     return styled.slice(match.end())
 
 
+# How the site heads each node type's rendered text with its own identifier
+# and title: "A-9.15.3.4.(2) Footing Sizes ...", "D-1.1.3. Applicability ...".
+_OWN_HEADINGS = {"Note": "{identifier} {title}", "appendix_article": "{identifier}. {title}"}
+
+
 def _without_own_heading(node: dict, styled: StyledText) -> StyledText:
-    if node.get("type") != "Note":
+    template = _OWN_HEADINGS.get(node.get("type", ""))
+    if template is None:
         return styled
-    heading = f"{node.get('identifier', '')} {node.get('title', '')}"
+    heading = template.format(identifier=node.get("identifier", ""), title=node.get("title", ""))
     return styled.slice(len(heading)) if styled.text.startswith(heading) else styled
 
 

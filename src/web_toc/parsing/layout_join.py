@@ -28,7 +28,11 @@ from web_toc.parsing.owner_resolution import resolve_owner
 from web_toc.parsing.page_html import ASSET_PREFIX
 
 PAGES_DIR = "web_pages"
-RENDERED_TEXT_TYPES = frozenset({"Cell", "Sentence", "Clause", "Subclause", "Note"})
+# An appendix_article's own text matters where it has no Sentence: Appendix
+# D's short articles hold one unnumbered paragraph.
+RENDERED_TEXT_TYPES = frozenset(
+    {"Cell", "Sentence", "Clause", "Subclause", "Note", "appendix_article"}
+)
 HEADING_TYPES = frozenset({"part", "section", "subsection", "article"})
 
 

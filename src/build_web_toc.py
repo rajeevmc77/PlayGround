@@ -26,6 +26,7 @@ from shared.numbering import assign_unified_numbers, number_images
 from web_toc.domain.models import WebImage, WebNode
 from web_toc.output.json_writer import write_json
 from web_toc.output.page_writer import citation_file
+from web_toc.parsing.appendix_extractor import extract_appendix
 from web_toc.parsing.body_extractor import attach_body, extract_body
 from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
 from web_toc.parsing.image_extractor import extract_images
@@ -129,6 +130,10 @@ def _build_tree(source: LocalWebSource) -> tuple[WebNode, list[WebImage], dict[s
     root = build_tree(source.fetch_navigation_tree())
     fetched = _cached_contents(root, source, source.fetch_snapshot()["date"])
     citations = _attach_notes(root, fetched, collect_citations(root))
+    # Appendix D's own structure goes in without widening `citations`: its
+    # tables and figures stay the appendix's, which is where the PDF counts
+    # them too ("AppD.Tbl3").
+    attach_owned_nodes(root, [o for n, c in fetched for o in extract_appendix(c, n.citation)])
     images, owned_tables, owned_sentences = _extract_owned(fetched, citations)
     attach_tables(root, owned_tables)
     attach_body(root, owned_sentences)

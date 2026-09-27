@@ -134,6 +134,17 @@ def test_a_rendered_text_node_gets_the_emphasis_measured_with_its_text():
     assert _find(root, SENTENCE).emphasis == []  # measured without any
 
 
+def test_an_appendix_article_gets_its_rendered_text_and_emphasis():
+    # Appendix D's short articles hold one unnumbered paragraph and no
+    # Sentence: their text is compared as the article's own.
+    article = "nbc.divB.appendixD.appsect1.subsect1.article3"
+    root = _node("root", "root", [_node("appendix_article", article)])
+    text = "D-1.1.3. Applicability of Ratings The ratings shown apply."
+    layout = {"elements": {article: {**_entry("article[3]", text, 1), "emphasis": [[0, 33, "b"]]}}}
+    joined = _join(root, {article: layout}, pages=(article,))
+    assert (joined.children[0].content, joined.children[0].emphasis) == (text, [[0, 33, "b"]])
+
+
 def test_a_heading_gets_a_location_but_no_emphasis():
     layout = _layout()
     layout["headings"][3]["emphasis"] = [[0, 8, "b"]]

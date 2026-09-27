@@ -67,6 +67,9 @@ independent tools live here:
    does it, so only ~136 pages are scraped. Both indexes key every node by `unified_number`
    (built from the code's own numbering, identical in both files for the same node); heading
    nodes also carry a `heading` field with the literal heading words, e.g. `Part 1`.
+   The site's navigation stops at Appendix D itself, so its sections/subsections/articles and
+   numbered paragraphs (as Sentences) are built from its content JSON
+   (`src/web_toc/parsing/appendix_extractor.py`), numbered like the PDF (`AppD.D-1.1.1`).
 
 A standalone CLI companion, `src/check_directory_access.py`, checks (outside the web app) 
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,
