@@ -159,9 +159,11 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     volume, _captions = _build_real_tree_with_tables()
     sentence = _find_by_citation(volume, "A-1.1.1.1.(5)")
     table = next(c for c in sentence.children if c.type == "Table")
-    assert len(table.children) == 35
+    # 39 since rows 34-37 on page 12, above Table 1.1.1.1.(6)'s caption,
+    # are read too (see the end of this test).
+    assert len(table.children) == 39
     assert table.page == 8
-    assert table.end_page == 11
+    assert table.end_page == 12
 
     # Locks in the known cosmetic extra row-band's actual content, so a
     # future regression is caught here instead of silently passing on a
@@ -180,10 +182,14 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     assert spurious_row.children[1].content == ""
     assert "smoke detectors" in spurious_row.children[2].content
 
+    row_33 = table.children[-5]
+    assert row_33.children[0].content == "33"
+    assert "Height of Rooms" in row_33.children[1].content
+    assert "Existing rooms are not required to comply" in row_33.children[2].content
+
     last_row = table.children[-1]
-    assert last_row.children[0].content == "33"
-    assert "Height of Rooms" in last_row.children[1].content
-    assert "Existing rooms are not required to comply" in last_row.children[2].content
+    assert last_row.children[0].content == "37"
+    assert "Mechanical and Plumbing" in last_row.children[1].content
 
     # A representative middle row (page 9 - previously an empty page slot,
     # since it has no caption of its own) is now a proper structured
@@ -192,20 +198,15 @@ def test_table_1_1_1_1_5_continuation_rows_are_captured_and_do_not_leak():
     assert row_five.children[0].content == "5"
     assert "Rating of Supporting Construction" in row_five.children[1].content
 
-    # Known, documented residual limitation (see task-14-report.md): rows
-    # 34-37 sit on page 12, ABOVE Table 1.1.1.1.(6)'s own caption/grid on
-    # that same page - a page that already has its own anchor-detected
-    # region. A first attempt to capture that shared-page leading fragment
-    # (bounding the rect scan to "everything above the next anchor's own
-    # grid top") was reverted after real-PDF verification showed it
-    # silently misfiled Sentence 1.1.1.1.(6)'s own introductory prose as
-    # fake Table 1.1.1.1.(5) rows - a worse failure than the leak it
-    # targeted, since there is no geometric signal in this document
-    # distinguishing "one more continuation row" from "ordinary body text
-    # sitting in the same gap". This assertion documents that residual
-    # leak honestly rather than letting it silently regress further or be
-    # silently claimed as fixed.
-    assert "Part 6 and Part 7" in sentence.content
+    # Rows 34-37 sit on page 12, ABOVE Table 1.1.1.1.(6)'s own caption and
+    # grid. They were once left leaking into this Sentence's text: a first
+    # attempt to read them also took Sentence 1.1.1.1.(6)'s prose for rows.
+    # They are now read from the ruled grid above that caption, bounded by
+    # where its column rules end, so they join the table and the next
+    # Sentence keeps its own text.
+    assert "Part 6 and Part 7" not in sentence.content
+    next_sentence = _find_by_citation(volume, "A-1.1.1.1.(6)")
+    assert next_sentence.content.startswith("For the design and construction of alterations")
 
 
 @pytest.mark.slow

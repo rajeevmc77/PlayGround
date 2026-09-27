@@ -942,6 +942,56 @@ def _handle_gap_page(
     return _next_pending(filled[page_index])
 
 
+def _within_column_reach(rects: list) -> list:
+    """Drops the rules below where the column rules end."""
+    verticals = _rules_of_kind(rects, "vertical")
+    if not verticals:
+        return rects
+    bottom = max(rect[3] for rect in verticals) + BOUNDARY_MERGE_TOLERANCE
+    return [rect for rect in rects if rect[1] <= bottom]
+
+
+def _add_tail_above_caption(
+    lines: list[PageLine],
+    drawing_rects: list[tuple[float, float, float, float]],
+    regions: list[TableRegion],
+    pending: TableRegion,
+) -> None:
+    """A table can end at the top of a page that opens the next table
+    further down (9.23.4.2.-K's last rows over 9.23.4.2.-L's caption, page
+    1364). Only the lines before that caption and the rules ending above
+    it are read, with every continuation guard, so the next table's own
+    text never joins the grid; prose there forms no grid of its own, and a
+    rule under the tail that no column reaches (page 12's, above
+    1.1.1.1.(6)'s caption) bounds no row."""
+    caption_idx = regions[0].anchor.caption_line_idx
+    caption_top = lines[caption_idx].bbox[1]
+    rects_above = _within_column_reach([r for r in drawing_rects if r[3] <= caption_top])
+    page_number = regions[0].table_node.page
+    tail = _fill_one_gap(lines[:caption_idx], rects_above, page_number, pending)
+    if tail is not None:
+        regions.insert(0, tail)
+
+
+def _add_leading_region(
+    all_lines: list[list[PageLine]],
+    all_drawing_rects: list[list[tuple[float, float, float, float]]],
+    page_regions: tuple[list[list[TableRegion]], list[TableRegion]],
+    page_index: int,
+    pending: TableRegion | None,
+) -> None:
+    """Puts the grid atop a page, if it belongs to a table from the page
+    before, first among `regions` (this page's regions): an orphaned
+    caption's grid, else the tail of `pending`."""
+    regions_by_page, regions = page_regions
+    orphaned = _orphaned_region(all_lines, all_drawing_rects, regions_by_page, page_index)
+    if orphaned is not None:
+        regions.insert(0, orphaned)
+    elif regions and pending is not None:
+        lines, rects = all_lines[page_index], all_drawing_rects[page_index]
+        _add_tail_above_caption(lines, rects, regions, pending)
+
+
 def fill_continuation_gaps(
     all_lines: list[list[PageLine]],
     all_drawing_rects: list[list[tuple[float, float, float, float]]],
@@ -963,18 +1013,12 @@ def fill_continuation_gaps(
     reference to the `regions_by_page` argument after calling this will see
     that correction reflected in those same objects too.
 
-    Deliberately does NOT also handle a continuation fragment that shares a
-    page with the NEXT table's own anchor (confirmed on the real document:
-    Table 1.1.1.1.(5)'s final rows sit above Table 1.1.1.1.(6)'s own
-    caption, both on page 12) - an earlier attempt at that bounded the rect
-    scan to "everything above the next anchor's own grid top," but the real
-    document has ordinary sentence body text (Sentence 1.1.1.1.(6)'s own
-    prose) sitting in that same gap, with no geometric signal separating it
-    from a genuine continuation row. That attempt silently misfiled that
-    prose as fake table rows - a worse failure than the leak it was meant
-    to close - so it was reverted rather than shipped. See task-14-report.md
-    for the full investigation; this is a confirmed, documented residual
-    limitation, not an oversight.
+    A continuation's tail that shares a page with the NEXT table's caption
+    (Table 1.1.1.1.(5)'s last rows above 1.1.1.1.(6)'s caption, page 12) is
+    read by _add_tail_above_caption. An earlier attempt at that took
+    Sentence 1.1.1.1.(6)'s prose, sitting in the same gap, for rows (see
+    task-14-report.md); the tail is now bounded to the ruled grid the
+    column rules reach, above the caption.
 
     Also rejects a candidate page outright, without even attempting a
     shape/forming-part-of/title-block match, when the immediately
@@ -984,9 +1028,9 @@ def fill_continuation_gaps(
     filled = [list(regions) for regions in regions_by_page]
     pending: TableRegion | None = None
     for page_index, regions in enumerate(filled):
-        orphaned = _orphaned_region(all_lines, all_drawing_rects, regions_by_page, page_index)
-        if orphaned is not None:
-            regions.insert(0, orphaned)
+        _add_leading_region(
+            all_lines, all_drawing_rects, (regions_by_page, regions), page_index, pending
+        )
         if regions:
             pending = _next_pending(regions)
             continue
