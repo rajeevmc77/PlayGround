@@ -300,3 +300,43 @@ def test_roman_v_continuing_subclause_sequence_is_subclause_despite_threshold():
     sentences = segment_article_body(body, "B-5.5.5.5.", article_end_page=7)
     clause_a = sentences[0].children[0]
     assert [s.identifier for s in clause_a.children] == ["(i)", "(ii)", "(iii)", "(iv)", "(v)"]
+
+
+def test_a_see_note_paragraph_after_a_sentences_clauses_belongs_to_the_sentence():
+    # Real case: 4.1.8.3.(8) - "(See Note A-4.1.8.3.(8).)" is set as a
+    # paragraph of its own after clause d); the site keeps it at the end of
+    # the Sentence, not in its last clause.
+    body = [
+        line(5, 100, 109, "8) The effects shall include"),
+        line(5, 112, 109, "a) sway effects, and"),
+        line(5, 124, 109, "d) other effects that influence the"),
+        line(5, 136, 91, "lateral stiffness of the building."),
+        line(5, 154, 109, "(See Note A-4.1.8.3.(8).)"),
+    ]
+    sentence = segment_article_body(body, "4.1.8.3.", article_end_page=7)[0]
+    assert sentence.children[-1].content == (
+        "other effects that influence the lateral stiffness of the building."
+    )
+    assert sentence.content == "The effects shall include (See Note A-4.1.8.3.(8).)"
+
+
+def test_a_see_note_paragraph_after_a_subclause_belongs_to_the_sentence_too():
+    body = [
+        line(5, 100, 109, "9) Wiring shall be"),
+        line(5, 112, 109, "b) Class A, where"),
+        line(5, 124, 109, "ii) the loop is closed,"),
+        line(5, 142, 109, "(See Note A-3.2.4.18.(9) and (10).)"),
+    ]
+    sentence = segment_article_body(body, "3.2.4.18.", article_end_page=7)[0]
+    assert sentence.children[0].children[0].content == "the loop is closed,"
+    assert sentence.content.endswith("(See Note A-3.2.4.18.(9) and (10).)")
+
+
+def test_a_wrapped_line_of_a_clause_starting_with_see_stays_in_the_clause():
+    body = [
+        line(5, 100, 109, "1) Doors shall"),
+        line(5, 112, 109, "a) swing in the direction of travel"),
+        line(5, 124, 91, "(see Note A-3.4.6.12.), and"),
+    ]
+    clause = segment_article_body(body, "3.4.6.12.", article_end_page=7)[0].children[0]
+    assert clause.content == "swing in the direction of travel (see Note A-3.4.6.12.), and"
