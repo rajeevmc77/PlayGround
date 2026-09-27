@@ -3,9 +3,10 @@ tree/images on the shared unified_number key both sides already carry (the
 same join the viewer's Both tab uses - see shared/numbering.py). A node
 passes only if its own text matches, every image it owns matches, and every
 child passes; a unified_number with no counterpart on the other side always
-fails. text_matches/images_match are injected so this orchestration stays
-free of PDF/image-library specifics - see content_match.py and
-image_similarity.py for the real implementations.
+fails - except an empty table cell whose row is paired (_span_covered).
+text_matches/images_match are injected so this orchestration stays free of
+PDF/image-library specifics - see content_match.py and image_similarity.py
+for the real implementations.
 
 A container node's own `content` is never text-compared directly: the web
 pipeline's `content` for a node with children includes its descendants'
@@ -113,6 +114,14 @@ def table_counterparts_in(pdf_tree: dict, web_tree: dict | None) -> dict[str, st
     return counterparts
 
 
+def _span_covered(pdf_node: dict, parent_web: dict | None) -> bool:
+    """An empty PDF cell whose row has a web counterpart: the site lists only
+    the cells a row starts, so a position a span covers has no web cell of
+    its own - and the PDF shows nothing there either."""
+    empty = not (pdf_node.get("content") or "").strip()
+    return pdf_node.get("type") == "Cell" and parent_web is not None and empty
+
+
 def _web_node_for(unified_number: str, web_nodes: dict, counterparts: dict) -> dict | None:
     if not unified_number:
         return None
@@ -144,17 +153,17 @@ def compare_trees(
         statuses[unified_number] = status
         return status
 
-    def own_text_ok(pdf_node: dict, web_node: dict | None, unified_number: str) -> bool:
+    def own_text_ok(pdf_node: dict, web_node: dict | None, unified_number: str, parent_web) -> bool:
         if web_node is None:
-            return not unified_number
+            return not unified_number or _span_covered(pdf_node, parent_web)
         if pdf_node.get("children"):
             return True
         return text_matches(pdf_node, web_node)
 
-    def node_status(pdf_node: dict) -> bool:
+    def node_status(pdf_node: dict, parent_web: dict | None = None) -> bool:
         unified_number = pdf_node.get("unified_number", "")
         web_node = _web_node_for(unified_number, web_nodes, counterparts)
-        own_ok = own_text_ok(pdf_node, web_node, unified_number)
+        own_ok = own_text_ok(pdf_node, web_node, unified_number, parent_web)
         # Eagerly evaluated as lists, not passed straight to all(...) as
         # generators - all() short-circuits on the first False, which would
         # skip visiting (and recording a status for) every sibling/image
@@ -162,7 +171,7 @@ def compare_trees(
         owned_image_statuses = [
             image_status(img) for img in pdf_images_by_owner.get(pdf_node.get("citation", ""), [])
         ]
-        child_statuses = [node_status(child) for child in pdf_node.get("children", [])]
+        child_statuses = [node_status(child, web_node) for child in pdf_node.get("children", [])]
         owned_images_ok = all(owned_image_statuses)
         children_ok = all(child_statuses)
         result = own_ok and owned_images_ok and children_ok

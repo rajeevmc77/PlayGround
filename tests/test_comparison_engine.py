@@ -275,6 +275,37 @@ def test_an_unpaired_pdf_row_fails():
     assert statuses["A.Tbl1.Row3"] is True
 
 
+def _same_text(p, w):
+    return p["content"] == w["content"]
+
+
+def test_an_empty_pdf_cell_with_no_web_cell_in_a_paired_row_passes():
+    # The site lists only the cells a row starts: a position a span covers
+    # has no web cell, and the PDF's empty cell there shows nothing either.
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["", "", "3", "120"]])])
+    web = _node("A", "a", "", [_table_node("A.Tbl1", "wt", [["3", "120"]])])
+    counterparts = table_counterparts_in(pdf, web)
+    statuses = compare_trees(pdf, [], web, [], _same_text, NEVER_MATCH, counterparts=counterparts)
+    assert statuses["A.Tbl1.Row1.Col1"] is True
+    assert statuses["A.Tbl1"] is True
+
+
+def test_a_pdf_cell_with_text_and_no_web_cell_still_fails():
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["3", "120", "extra"]])])
+    web = _node("A", "a", "", [_table_node("A.Tbl1", "wt", [["3", "120"]])])
+    counterparts = table_counterparts_in(pdf, web)
+    statuses = compare_trees(pdf, [], web, [], _same_text, NEVER_MATCH, counterparts=counterparts)
+    assert statuses["A.Tbl1.Row1.Col3"] is False
+
+
+def test_an_empty_cell_of_an_unpaired_pdf_row_still_fails():
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["x"], ["", "extra"], ["z"]])])
+    web = _node("A", "a", "", [_table_node("A.Tbl1", "wt", [["x"], ["z"]])])
+    counterparts = table_counterparts_in(pdf, web)
+    statuses = compare_trees(pdf, [], web, [], _same_text, NEVER_MATCH, counterparts=counterparts)
+    assert statuses["A.Tbl1.Row2.Col1"] is False
+
+
 def _titled_table(number, title, rows):
     table = _table_node(number, number, rows)
     table["title"] = title
