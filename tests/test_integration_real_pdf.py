@@ -329,10 +329,16 @@ def test_table_9_23_13_11_c_does_not_absorb_the_next_tables_orphaned_grid():
     # to see (both only ever inspect the CANDIDATE page, never the
     # preceding one). Before this guard, page 916 was silently absorbed as
     # fake continuation rows of Table 9.23.13.11.-C.
+    #
+    # 6 rows: C's own ruled lines on page 915 run y=269-573 (two header
+    # rows, the DWB/GWB/WSP sub-header, three data rows). This used to read
+    # 8 because C's grid also took every rule below it - the 573-677 band
+    # holding C's notes and D's caption, and D's own header row (677-696).
+    # A table's grid now stops at the next caption on its page.
     volume, _captions = _build_real_tree_with_tables()
     table = _find_by_citation(volume, "Table:9.23.13.11.-C")
     assert table is not None
-    assert len(table.children) == 8
+    assert len(table.children) == 6
     assert table.page == 915
     assert table.end_page == 915
 

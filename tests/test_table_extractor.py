@@ -94,6 +94,42 @@ def test_a_line_inside_one_cell_stays_in_that_cell_however_it_is_aligned():
     assert [c.content for c in data.children] == ["1", "right"]
 
 
+def _two_tables_with_a_heading_between():
+    lines, rects = _minimal_grid_fixture()  # Table 1.1.(1): caption y10, grid y45-90
+    heading_idx = len(lines)
+    lines += [
+        pline(90, 100, 300, 112, "4.1.8.6. Structural Configuration", HEADING_FONT),
+        pline(200, 120, 300, 130, "Table 4.1.8.6.", CAPTION_FONT),
+        pline(90, 160, 110, 170, "A", BODY_FONT),
+        pline(120, 160, 250, 170, "Second table row.", BODY_FONT),
+    ]
+    rects += [
+        (90.0, 150.0, 260.0, 150.4),  # top border
+        (90.0, 150.0, 90.4, 180.0),  # left border
+        (259.6, 150.0, 260.0, 180.0),  # right border
+        (90.0, 179.6, 260.0, 180.0),  # bottom border
+        (114.6, 150.0, 115.0, 180.0),  # column divider
+    ]
+    return lines, rects, heading_idx
+
+
+def test_a_tables_grid_stops_at_the_next_table_caption_on_the_page():
+    """Page 543 holds Tables 4.1.8.5.-A, -B and 4.1.8.6. with the Article
+    4.1.8.6. heading between them. Each table's grid took every ruled line
+    below its caption, so the first swallowed the others and the heading
+    line became table content - Article 4.1.8.6. vanished from the tree."""
+    lines, rects, heading_idx = _two_tables_with_a_heading_between()
+    first, second = detect_tables_on_page(lines, rects, page_number=543)
+    assert [[c.content for c in r.children] for r in first.table_node.children] == [
+        ["No.", "Description"],
+        ["1", "First row content."],
+    ]
+    assert heading_idx not in first.consumed_line_indices
+    assert [[c.content for c in r.children] for r in second.table_node.children] == [
+        ["A", "Second table row."]
+    ]
+
+
 def test_detect_tables_on_page_assigns_citations_by_position():
     lines, rects = _minimal_grid_fixture()
     regions = detect_tables_on_page(lines, rects, page_number=7)
