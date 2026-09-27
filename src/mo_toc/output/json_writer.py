@@ -6,10 +6,12 @@ from mo_toc.domain.models import Caption, ImageAsset, Node
 
 _CONTENT_TYPES = {"Sentence", "Clause", "Subclause", "Cell"}
 _NO_TITLE_TYPES = _CONTENT_TYPES | {"Row"}
+# A Note keeps its title too: its content is the body after it.
+_KEEPS_CONTENT = _CONTENT_TYPES | {"Note"}
 
 
 def _prune_node(node_dict: dict) -> dict:
-    if node_dict["type"] not in _CONTENT_TYPES:
+    if node_dict["type"] not in _KEEPS_CONTENT:
         node_dict.pop("content", None)
         node_dict.pop("emphasis", None)
     if node_dict["type"] in _NO_TITLE_TYPES:

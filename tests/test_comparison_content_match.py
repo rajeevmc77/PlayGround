@@ -56,6 +56,27 @@ def test_the_webs_own_marker_is_dropped_from_a_sentence_clause_or_subclause():
     assert content_matches(pdf_clause, web_clause)
 
 
+def test_the_webs_own_heading_is_dropped_from_a_note():
+    # The site renders a note's identifier and title as its bold heading, in
+    # front of the body; the PDF Note's content is the body alone.
+    pdf = _node("The footing sizes are based on typical construction.", type_="Note")
+    web = _node(
+        "A-9.15.3.4.(2) Footing Sizes The footing sizes are based on typical construction.",
+        [[0, 28, "b"]],
+        "Note",
+        "A-9.15.3.4.(2)",
+    )
+    web["title"] = "Footing Sizes"
+    assert content_matches(pdf, web)
+
+
+def test_a_note_whose_web_text_does_not_start_with_its_own_heading_is_kept_whole():
+    pdf = _node("The footing sizes", type_="Note")
+    web = _node("Footing Sizes The footing sizes", type_="Note", identifier="A-9.15.3.4.(2)")
+    web["title"] = "Footing Sizes"
+    assert not content_matches(pdf, web)
+
+
 def test_a_leading_token_that_is_not_the_nodes_own_marker_is_kept():
     pdf = _node("the design", type_="Clause", identifier="(a)")
     web = _node("b) the design", type_="Clause", identifier="(a)")

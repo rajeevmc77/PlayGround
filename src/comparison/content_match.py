@@ -4,7 +4,9 @@ see shared/styled_text.py for the rule itself.
 
 The web renders a sentence/clause/subclause with its own "1)"/"a)"/"i)"
 marker in front, where the PDF pipeline has already cut it off, so the
-web's leading marker is dropped first - only when it is that node's own."""
+web's leading marker is dropped first - only when it is that node's own. A
+note the same way: the web renders its identifier and title as its heading
+in front of the body, where the PDF Note's content is the body alone."""
 
 import re
 
@@ -28,6 +30,13 @@ def _without_own_marker(node: dict, styled: StyledText) -> StyledText:
     return styled.slice(match.end())
 
 
+def _without_own_heading(node: dict, styled: StyledText) -> StyledText:
+    if node.get("type") != "Note":
+        return styled
+    heading = f"{node.get('identifier', '')} {node.get('title', '')}"
+    return styled.slice(len(heading)) if styled.text.startswith(heading) else styled
+
+
 def content_matches(pdf_node: dict, web_node: dict) -> bool:
-    web = _without_own_marker(web_node, _styled(web_node))
+    web = _without_own_heading(web_node, _without_own_marker(web_node, _styled(web_node)))
     return matches(_styled(pdf_node), web)

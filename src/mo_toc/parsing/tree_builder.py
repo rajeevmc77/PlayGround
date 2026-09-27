@@ -15,6 +15,7 @@ the title captured so far trails off on "and"/"or".
 
 import re
 from dataclasses import dataclass, field
+from functools import reduce
 
 from mo_toc.domain.models import BBox, Caption, Node
 from mo_toc.parsing.body_segmenter import segment_article_body
@@ -30,6 +31,7 @@ from mo_toc.parsing.heading_rules import (
 )
 from mo_toc.parsing.marker_rules import RE_MARKER
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
+from shared.styled_text import StyledText
 
 RE_NOTE_ENTRY = re.compile(r"^([A-Z]-\S+(?:\s+(?:and|to)\s+\(\d+\))*)\s+(.*)$")
 # A Note on a table, whose identifier is the table's own ("A-Table 9.23.3.5.-B",
@@ -62,6 +64,10 @@ class _BuildState:
     # silently dropped.
     current_note: Node | None = None
     current_note_page: int | None = None
+    # (Note, its lines' styled text) for every Note, the open one's list also
+    # held as current_note_text - its content is set from them at the end.
+    note_texts: list = field(default_factory=list)
+    current_note_text: list | None = None
     # Inside the notes printed under a table/figure: None outside one, "" just
     # after its heading, then the font family its notes are set in.
     table_notes: str | None = None
@@ -303,6 +309,8 @@ def _try_open_note(pline: PageLine, page_index: int, state: _BuildState) -> bool
     if not note_match:
         return False
     _open_note(note_match, page_index, BBox(*pline.bbox), state)
+    state.current_note_text = [pline.styled.slice(note_match.start(2))]
+    state.note_texts.append((state.current_note, state.current_note_text))
     return True
 
 
@@ -322,7 +330,25 @@ def _continue_current_note(pline: PageLine, page_index: int, state: _BuildState)
         return False
     if page_index == state.current_note_page:
         state.current_note.bbox = state.current_note.bbox.union(BBox(*pline.bbox))
+    state.current_note_text.append(pline.styled)
     return True
+
+
+# Where a note's run-in title ends: "Footing Sizes. The footing ...", also
+# "Structural Integrity.The requirements ..." with no space after it.
+RE_NOTE_TITLE_END = re.compile(r"\.(?=\s|[A-Z]|$)")
+
+
+def _note_body(lines: list[StyledText]) -> StyledText:
+    """A note's text after its title - which can wrap onto the next line, so
+    it's looked for in the joined text. The site shows the title as the
+    note's heading, apart from its body."""
+    text = reduce(StyledText.join, lines, StyledText(""))
+    title_end = RE_NOTE_TITLE_END.search(text.text)
+    if title_end is None:
+        return StyledText("")
+    body = text.slice(title_end.end())
+    return body.slice(len(body.text) - len(body.text.lstrip()))
 
 
 def _try_handle_note_line(pline: PageLine, page_index: int, state: _BuildState) -> bool:
@@ -464,4 +490,7 @@ def build_tree_from_lines(
     _finalize_end_pages(volume, page_count)
     for article, body in state.article_bodies:
         article.children = segment_article_body(body, article.citation, article.end_page)
+    for note, lines in state.note_texts:
+        body = _note_body(lines)
+        note.content, note.emphasis = body.text, list(body.emphasis)
     return volume, state.captions
