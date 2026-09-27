@@ -241,3 +241,56 @@ def test_number_images_uses_the_given_label():
     number_images(images, {"a": "B.9.15.3.4"}, label="Eq")
 
     assert [i.unified_number for i in images] == ["B.9.15.3.4.Eq1", "B.9.15.3.4.Eq2"]
+
+
+@dataclass
+class _PlacedNode(_StubNode):
+    position: tuple = ()
+
+
+def _table(citation, position, rows=0):
+    children = [_StubNode("Row", "", f"{citation}r{i}") for i in range(rows)]
+    return _PlacedNode("Table", citation, citation, children, position=position)
+
+
+def test_scoped_ordinals_follow_the_given_position_not_the_tree_walk():
+    # Real case: Table 9.36.6.3.-H sits under a clause of Sentence (1), so a
+    # tree walk counts it before -A to -F, appended to Sentence (1) after
+    # its clauses - though -H comes last on the page, as on the web.
+    late_but_deep = _table("h", position=(1048, 100), rows=1)
+    clause = _StubNode("Clause", "(c)", "c", [late_but_deep])
+    early = _table("a", position=(1045, 300))
+    sentence = _StubNode("Sentence", "(1)", "s", [clause, early])
+    article = _StubNode("Article", "1.1.1.1", "art", [sentence])
+    division = _StubNode("Division", "A", "d", [article])
+
+    assign_unified_numbers([division], RULES, SCOPES, position=lambda n: n.position)
+
+    assert early.unified_number == "A.1.1.1.1.Tbl1"
+    assert late_but_deep.unified_number == "A.1.1.1.1.Tbl2"
+    assert late_but_deep.children[0].unified_number == "A.1.1.1.1.Tbl2.Row1"
+
+
+def test_scoped_ordinals_at_the_same_position_keep_their_tree_order():
+    first, second = _table("x", position=(5, 0)), _table("y", position=(5, 0))
+    article = _StubNode("Article", "1.1.1.1", "art", [first, second])
+    division = _StubNode("Division", "A", "d", [article])
+
+    assign_unified_numbers([division], RULES, SCOPES, position=lambda n: n.position)
+
+    assert [first.unified_number, second.unified_number] == [
+        "A.1.1.1.1.Tbl1",
+        "A.1.1.1.1.Tbl2",
+    ]
+
+
+def test_position_ordering_counts_each_scope_separately():
+    one = _table("one", position=(9, 0))
+    two = _table("two", position=(1, 0))
+    art1 = _StubNode("Article", "1.1.1.1", "a1", [one])
+    art2 = _StubNode("Article", "1.1.1.2", "a2", [two])
+    division = _StubNode("Division", "A", "d", [art1, art2])
+
+    assign_unified_numbers([division], RULES, SCOPES, position=lambda n: n.position)
+
+    assert (one.unified_number, two.unified_number) == ("A.1.1.1.1.Tbl1", "A.1.1.1.2.Tbl1")

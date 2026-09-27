@@ -71,3 +71,12 @@ def test_appendix_sub_levels_are_not_table_scopes():
     # the web keeps Appendix C/D tables directly under the appendix
     assert {"AppendixPart", "AppendixSection", "AppendixArticle"}.isdisjoint(MO_TOC_SCOPE_TYPES)
     assert {"Article", "Note", "NotesContainer", "TableGroup"} <= MO_TOC_SCOPE_TYPES
+
+
+def test_a_nodes_position_is_its_page_then_its_top_edge():
+    from types import SimpleNamespace
+
+    from mo_toc.parsing.numbering_config import mo_toc_position
+
+    node = SimpleNamespace(page=1047, bbox=SimpleNamespace(y0=219.5))
+    assert mo_toc_position(node) == (1047, 219.5)

@@ -12,7 +12,7 @@ import pytest
 from build_mo_toc import build_document, drop_images_over_tables, main, partition_equations, run
 from mo_toc.domain.models import BBox, ImageAsset, Node
 from mo_toc.parsing.image_extractor import RawImage
-from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES
+from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES, mo_toc_position
 from mo_toc.parsing.table_extractor import TableAnchor, TableRegion
 
 
@@ -79,7 +79,10 @@ def test_run_wires_pipeline_in_order(
 
     mock_extract_all_pages.assert_called_once_with("some.pdf")
     mock_build_document.assert_called_once_with("ALL_LINES", "TABLE_REGIONS", "DRAWING_RECTS")
-    mock_assign_numbers.assert_called_once_with(["VOLUME"], MO_TOC_RULES, MO_TOC_SCOPE_TYPES)
+    # Tables are numbered in page order within their article, as the web does.
+    mock_assign_numbers.assert_called_once_with(
+        ["VOLUME"], MO_TOC_RULES, MO_TOC_SCOPE_TYPES, position=mo_toc_position
+    )
     mock_drop_images.assert_called_once_with("RAW_IMAGES", "STITCHED_REGIONS")
     mock_write_images.assert_called_once_with(["FILTERED_RAW_IMAGE"], str(tmp_path / "images"))
     mock_match_images.assert_called_once_with(["IMAGE_ASSET"], ["CAPTION"], "VOLUME")

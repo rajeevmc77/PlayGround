@@ -39,3 +39,10 @@ MO_TOC_RULES: dict[str, Rule] = {
 MO_TOC_SCOPE_TYPES: frozenset[str] = frozenset(
     {"Part", "Section", "Subsection", "Article", "NotesContainer", "Note", "TableGroup"}
 )
+
+
+def mo_toc_position(node) -> tuple[int, float]:
+    """Where a node starts in the PDF: its page, then its top edge. Tables
+    are numbered in this order within their article, as the web numbers
+    them in reading order."""
+    return node.page, node.bbox.y0
