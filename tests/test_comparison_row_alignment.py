@@ -4,8 +4,8 @@ the web) used to shift every row below it, so the cells compared were never
 the same cells. Rows are aligned on their whole text; identical runs pair
 one-to-one, a block of differing rows pairs by position inside the block
 (so a table with no identical rows at all falls back to plain positional
-pairing), and a row only one side has stays unpaired. Cells pair by column
-within paired rows."""
+pairing), and a row only one side has stays unpaired. Cells pair the same
+way within paired rows."""
 
 from comparison.row_alignment import table_counterparts, table_pairs
 
@@ -166,6 +166,57 @@ def test_a_pdf_cell_beyond_the_paired_web_rows_width_is_unpaired():
     counterparts = table_counterparts(pdf, web)
     assert counterparts["T.Row1.Col2"] == "T.Row1.Col2"
     assert counterparts["T.Row1.Col3"] is None
+
+
+def test_cells_of_a_web_row_that_leaves_out_span_covered_positions_pair_by_content():
+    # Real case: Table 9.36.6.3.-H - its JSON lists only the cells a row
+    # starts, so a row under two rowspans starts at the PDF's third column.
+    pdf = _table("T", [["", "", "3", "120", "100"]])
+    web = _table("T", [["3", "120", "100"]])
+    counterparts = table_counterparts(pdf, web)
+    assert [counterparts[f"T.Row1.Col{n}"] for n in (1, 2, 3, 4, 5)] == [
+        None,
+        None,
+        "T.Row1.Col1",
+        "T.Row1.Col2",
+        "T.Row1.Col3",
+    ]
+
+
+def test_a_pdf_cells_text_centred_over_the_columns_it_spans_pairs_with_the_web_cell():
+    # The PDF places a colspan cell's text in the column it starts in - the
+    # middle of its span; the site in the span's first column.
+    pdf = _table("T", [["Total", "", "Step", ""]])
+    web = _table("T", [["Total", "Step", "", ""]])
+    counterparts = table_counterparts(pdf, web)
+    assert counterparts["T.Row1.Col1"] == "T.Row1.Col1"
+    assert counterparts["T.Row1.Col3"] == "T.Row1.Col2"
+
+
+def test_empty_cells_never_anchor_a_rows_cell_pairing():
+    # Real case: Table 9.23.13.7.-A - pairing the PDF's two empty cells with
+    # two empty web cells mid-row dragged the rest of the row out of line.
+    pdf = _table("T", [["", "", "Diagonal", "Gypsum"]])
+    web = _table("T", [["HWP", "Storey", "Diagonal-", "Gypsum-", "", "", "Wood"]])
+    counterparts = table_counterparts(pdf, web)
+    assert [counterparts[f"T.Row1.Col{n}"] for n in (1, 2, 3, 4)] == [
+        "T.Row1.Col1",
+        "T.Row1.Col2",
+        "T.Row1.Col3",
+        "T.Row1.Col4",
+    ]
+
+
+def test_differing_cells_between_identical_ones_pair_by_position():
+    pdf = _table("T", [["a", "2(7)", "x", "c"]])
+    web = _table("T", [["a", "2", "y", "c"]])
+    counterparts = table_counterparts(pdf, web)
+    assert [counterparts[f"T.Row1.Col{n}"] for n in (1, 2, 3, 4)] == [
+        "T.Row1.Col1",
+        "T.Row1.Col2",
+        "T.Row1.Col3",
+        "T.Row1.Col4",
+    ]
 
 
 def test_rows_align_on_text_with_whitespace_quotes_and_dashes_made_plain():

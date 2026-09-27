@@ -11,8 +11,9 @@ of their words pair first, in order, and the rows left between them pair by
 position - Table 1.3.1.2. has no identical rows at all (the site writes
 "Note A-..." in every last column), and by position alone each row only one
 side had shifted every row below it. A block with no similar rows, or with
-as many rows on each side, is all by position. Cells pair by column within
-paired rows. Pure: dicts in, dict out.
+as many rows on each side, is all by position. Cells pair within paired
+rows the same way, on their text (_cell_counterparts). Pure: dicts in, dict
+out.
 
 Tables within one article/note are paired the same way, on their titles
 (table_pairs): B.A-9.36.2.4.(1)'s web note has four untitled worked-example
@@ -26,9 +27,12 @@ from difflib import SequenceMatcher
 from shared.styled_text import StyledText
 
 
+def _cell_key(cell: dict) -> str:
+    return "".join(char for char, _ in StyledText(cell.get("content") or "").signature())
+
+
 def _row_key(row: dict) -> str:
-    cells = (StyledText(c.get("content") or "").signature() for c in row.get("children", []))
-    return "|".join("".join(char for char, _ in signature) for signature in cells)
+    return "|".join(_cell_key(cell) for cell in row.get("children", []))
 
 
 def _positional(n: int, m: int) -> list[tuple[int, int]]:
@@ -150,11 +154,27 @@ def table_pairs(pdf_tables: list[dict], web_tables: list[dict]) -> dict[int, int
 
 
 def _cell_counterparts(pdf_row: dict, web_row: dict | None) -> dict[str, str | None]:
-    web_cells = web_row.get("children", []) if web_row else []
+    """Cells pair the way rows do: identical ones first, differing ones by
+    position between them. The site lists only the cells a row starts, so a
+    row under a span starts further right in the PDF; and the PDF places a
+    colspan cell's text in the middle of its span, the site in its first
+    column - by column index, neither met its counterpart. An empty cell is
+    never identical to another: matched mid-row, two empty cells dragged the
+    rest of the row out of line (Table 9.23.13.7.-A)."""
+    pdf_cells = pdf_row.get("children", [])
+    web_cells = (web_row or {}).get("children", [])
+    pairs = _pairs(_cell_keys(pdf_cells, "pdf"), _cell_keys(web_cells, "web"))
+    web_numbers = [cell["unified_number"] for cell in web_cells]
     return {
-        cell["unified_number"]: web_cells[col]["unified_number"] if col < len(web_cells) else None
-        for col, cell in enumerate(pdf_row.get("children", []))
+        cell["unified_number"]: web_numbers[pairs[col]] if col in pairs else None
+        for col, cell in enumerate(pdf_cells)
     }
+
+
+def _cell_keys(cells: list[dict], side: str) -> list[str]:
+    """Each cell's text key; an empty cell's key is its own, so it's never
+    identical to another cell."""
+    return [_cell_key(cell) or f"\0{side}{i}" for i, cell in enumerate(cells)]
 
 
 def table_counterparts(pdf_table: dict, web_table: dict) -> dict[str, str | None]:
