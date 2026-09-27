@@ -59,6 +59,10 @@ class TableRegion:
     consumed_line_indices: set[int]
     has_bottom_border: bool
     outer_bbox: BBox
+    # The grid's column rules - a cell's bbox hugs its text, not the grid -
+    # and those of them that run the grid's full height.
+    col_xs: tuple[float, ...] = ()
+    through_xs: tuple[float, ...] = ()
 
 
 def find_table_anchors(lines: list[PageLine], page_index: int) -> list[TableAnchor]:
@@ -111,6 +115,26 @@ def _grid_boundaries(
         elif kind == "vertical":
             col_xs.append((x0 + x1) / 2)
     return _merge_boundaries(row_ys), _merge_boundaries(col_xs)
+
+
+def _rule_extent(x: float, verticals: list) -> tuple[float, float]:
+    """The topmost and lowest y the vertical rules at `x` reach."""
+    near = [
+        rect for rect in verticals if abs((rect[0] + rect[2]) / 2 - x) <= BOUNDARY_MERGE_TOLERANCE
+    ]
+    return min(rect[1] for rect in near), max(rect[3] for rect in near)
+
+
+def _runs_full_height(x: float, verticals: list, top: float, bottom: float) -> bool:
+    rule_top, rule_bottom = _rule_extent(x, verticals)
+    tolerance = BOUNDARY_MERGE_TOLERANCE
+    return rule_top <= top + tolerance and rule_bottom >= bottom - tolerance
+
+
+def _through_columns(rects, col_xs: list[float], row_ys: list[float]) -> tuple[float, ...]:
+    """Every x in `col_xs` came from a vertical rule among `rects`."""
+    verticals = [rect for rect in rects if _classify_rect(rect) == "vertical"]
+    return tuple(x for x in col_xs if _runs_full_height(x, verticals, row_ys[0], row_ys[-1]))
 
 
 def rects_form_a_grid(rects: list[tuple[float, float, float, float]]) -> bool:
@@ -376,6 +400,8 @@ def _region_from_grid(
         consumed_line_indices=consumed | caption_lines,
         has_bottom_border=_has_bottom_border(grid.drawing_rects, row_ys[-1]),
         outer_bbox=outer_bbox,
+        col_xs=tuple(col_xs),
+        through_xs=_through_columns(grid.drawing_rects, col_xs, row_ys),
     )
 
 
@@ -448,8 +474,26 @@ def _same_x_range(a: BBox, b: BBox) -> bool:
     )
 
 
+def _splits_columns(prev_xs: tuple[float, ...], next_xs: tuple[float, ...]) -> bool:
+    """Whether the next page keeps every column rule of the page before and
+    only adds rules - Table 9.23.13.7.-D's page 904 splits page 903's factor
+    column in two. `next_xs` are the rules running the next grid's full
+    height: on page 1425 -D's middle rule stops under its last row, over
+    another table whose rules happen to include -D's."""
+    tolerance = BOUNDARY_MERGE_TOLERANCE
+    return bool(prev_xs) and all(any(abs(p - n) <= tolerance for n in next_xs) for p in prev_xs)
+
+
+def _columns_carry_on(pending: TableRegion, col_count: int, through_xs: tuple[float, ...]) -> bool:
+    return (
+        col_count == _column_count(pending)
+        or _only_header(pending)
+        or _splits_columns(pending.col_xs, through_xs)
+    )
+
+
 def _same_shape(prev: TableRegion, next_region: TableRegion) -> bool:
-    same_columns = _column_count(prev) == _column_count(next_region) or _only_header(prev)
+    same_columns = _columns_carry_on(prev, _column_count(next_region), next_region.through_xs)
     return _same_x_range(prev.outer_bbox, next_region.outer_bbox) and same_columns
 
 
@@ -686,9 +730,9 @@ def _has_leading_title_block(lines: list[PageLine], grid_top_y: float) -> bool:
 
 
 def _continuation_shape_matches(
-    outer_bbox: BBox, col_count: int, expected_cols: int, pending: TableRegion
+    outer_bbox: BBox, col_count: int, through_xs: tuple[float, ...], pending: TableRegion
 ) -> bool:
-    same_columns = col_count == expected_cols or _only_header(pending)
+    same_columns = _columns_carry_on(pending, col_count, through_xs)
     return same_columns and _same_x_range(outer_bbox, pending.outer_bbox)
 
 
@@ -710,9 +754,9 @@ def build_continuation_region(
     row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=0.0)
     if len(row_ys) - 1 < 1 or len(col_xs) - 1 < MIN_TABLE_COLS:
         return None
-    expected_cols = len(pending.table_node.children[-1].children)
     outer_bbox = BBox(col_xs[0], row_ys[0], col_xs[-1], row_ys[-1])
-    same_shape = _continuation_shape_matches(outer_bbox, len(col_xs) - 1, expected_cols, pending)
+    through_xs = _through_columns(drawing_rects, col_xs, row_ys)
+    same_shape = _continuation_shape_matches(outer_bbox, len(col_xs) - 1, through_xs, pending)
     rejected = (
         not same_shape
         or _forming_part_of_conflicts(lines, pending, row_ys[0])
@@ -747,6 +791,8 @@ def build_continuation_region(
         consumed_line_indices=consumed,
         has_bottom_border=_has_bottom_border(drawing_rects, row_ys[-1]),
         outer_bbox=outer_bbox,
+        col_xs=tuple(col_xs),
+        through_xs=through_xs,
     )
 
 

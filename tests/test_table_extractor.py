@@ -1306,3 +1306,74 @@ def test_a_continuation_after_the_body_began_is_matched_against_the_body_not_the
     )
     [stitched] = stitch_continuations(filled)
     assert [len(row.children) for row in stitched.table_node.children] == [3, 2, 2]
+
+
+def _refined_pending(col_xs=(90.0, 260.0)):
+    """A plain (not bold) table whose next page draws an extra column rule
+    (Table 9.23.13.7.-D: page 903's 5 columns, page 904 splitting one)."""
+    pending = _pending_region(cols=len(col_xs) - 1, x_range=(col_xs[0], col_xs[-1]))
+    pending.col_xs = col_xs
+    return pending
+
+
+def test_build_continuation_region_accepts_a_grid_that_splits_a_column():
+    pending = _refined_pending(col_xs=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()  # rules at 90, 175, 260
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region is not None
+    assert region.col_xs == pytest.approx((90.0, 175.0, 260.0), abs=0.5)
+
+
+def test_a_split_column_still_keeps_every_rule_of_the_page_before():
+    pending = _refined_pending(col_xs=(90.0, 130.0, 260.0))
+    lines, rects = _continuation_grid_fixture(div_x=175.0)  # 130 is gone
+    pending.table_node.children[0].children.pop()  # 1 column: counts differ
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_a_region_records_its_grid_columns():
+    lines, rects = _minimal_grid_fixture()
+    [region] = detect_tables_on_page(lines, rects, page_number=1)
+    assert len(region.col_xs) == len(region.table_node.children[0].children) + 1
+
+
+def test_stitching_joins_a_captioned_continuation_that_splits_a_column():
+    pending = _refined_pending(col_xs=(90.0, 260.0))
+    lines, rects = _continuation_grid_fixture()
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    [stitched] = stitch_continuations([[pending], [region]])
+    assert [len(row.children) for row in stitched.table_node.children] == [1, 2]
+
+
+def _stacked_grid_fixture():
+    """Page 1425: A-Table 9.11.1.4.-D's last row, its middle rule stopping at
+    that row's foot, over another table's rules - not a split of -D."""
+    lines = [
+        pline(100, 50, 160, 60, "F8 to F38"),
+        pline(185, 50, 250, 60, "Add heavier material"),
+        pline(100, 80, 160, 90, "Particleboard"),
+        pline(225, 80, 250, 90, "8.1"),
+    ]
+    rects = [
+        (90.0, 45.0, 260.0, 45.4),
+        (90.0, 69.8, 260.0, 70.2),
+        (90.0, 99.6, 260.0, 100.0),
+        (90.0, 45.0, 90.4, 100.0),
+        (259.6, 45.0, 260.0, 100.0),
+        (174.8, 45.0, 175.2, 70.0),  # -D's middle rule, one row deep
+        (219.8, 70.0, 220.2, 100.0),  # the other table's own rule
+    ]
+    return lines, rects
+
+
+def test_a_split_keeps_every_rule_of_the_page_before_running_the_grids_full_height():
+    pending = _refined_pending(col_xs=(90.0, 175.0, 260.0))
+    lines, rects = _stacked_grid_fixture()
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_a_region_records_which_column_rules_run_its_full_height():
+    pending = _refined_pending(col_xs=(90.0, 260.0))
+    lines, rects = _stacked_grid_fixture()
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region.through_xs == pytest.approx((90.2, 259.8), abs=0.5)
