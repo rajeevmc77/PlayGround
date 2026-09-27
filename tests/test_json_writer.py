@@ -154,6 +154,26 @@ def test_write_json_keeps_a_notes_content_emphasis_and_title(tmp_path):
     )
 
 
+def test_write_json_keeps_an_appendix_articles_content_and_title(tmp_path):
+    article = Node(
+        type="AppendixArticle",
+        identifier="D-1.1.3.",
+        citation="Appendix-D-1.1.3.",
+        title="Applicability of Ratings",
+        content="The ratings apply.",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    out_path = tmp_path / "out.json"
+    write_json(article, [], [], str(out_path))
+    written = json.loads(out_path.read_text())["volume"]
+    assert (written["content"], written["title"]) == (
+        "The ratings apply.",
+        "Applicability of Ratings",
+    )
+
+
 def test_write_json_drops_both_title_and_content_for_row(tmp_path):
     row = Node(
         type="Row",

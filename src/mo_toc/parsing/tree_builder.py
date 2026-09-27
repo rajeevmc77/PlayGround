@@ -446,6 +446,17 @@ def _process_page(
         idx += 1
 
 
+def _segment_article(article: Node, body: list) -> None:
+    """An article's numbered sentences; an appendix article with none keeps
+    its body as its own text - Appendix D's short articles are one
+    unnumbered paragraph (D-1.1.3.), which the site shows as the article's."""
+    article.children = segment_article_body(body, article.citation, article.end_page)
+    if article.children or article.type != "AppendixArticle":
+        return
+    text = reduce(StyledText.join, (pline.styled for _page, pline in body), StyledText(""))
+    article.content, article.emphasis = text.text, list(text.emphasis)
+
+
 def _finalize_end_pages(node: Node, last_page: int) -> None:
     # Both branches are clamped, not just the sibling-boundary one: the last
     # child in a list inherits `last_page` verbatim from its parent, which is
@@ -508,7 +519,7 @@ def build_tree_from_lines(
 
     _finalize_end_pages(volume, page_count)
     for article, body in state.article_bodies:
-        article.children = segment_article_body(body, article.citation, article.end_page)
+        _segment_article(article, body)
     for note, lines in state.note_texts:
         body = _note_body(lines)
         note.content, note.emphasis = body.text, list(body.emphasis)

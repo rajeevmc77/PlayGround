@@ -693,3 +693,36 @@ def test_a_caption_ends_a_table_notes_block():
     assert _sentences(pages) == [
         "Finishes shall conform to Table 3.1.13.2. Figure text set in the notes font."
     ]
+
+
+def _appendix_d(*body):
+    pages = [
+        [
+            line(50, 40, "Appendix D", BLACK),
+            line(70, 40, "Section  D-1  General", BLACK),
+            line(90, 40, "D-1.1. Introduction", BLACK),
+            line(110, 40, "D-1.1.3. Applicability of Ratings", BLACK),
+            *body,
+        ]
+    ]
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    return root.children[1].children[0].children[0].children[0]
+
+
+def test_an_appendix_article_with_no_numbered_sentence_keeps_its_text():
+    # Real case: D-1.1.3. is one unnumbered paragraph. The segmenter keeps
+    # only numbered sentences, so its text was lost; the site shows it.
+    article = _appendix_d(
+        line(130, 40, "The ratings shown in this document apply if more", BODY),
+        line(142, 40, "specific test values are not available.", BODY),
+    )
+    assert article.children == []
+    assert article.content == (
+        "The ratings shown in this document apply if more specific test values are not available."
+    )
+
+
+def test_an_appendix_article_with_numbered_sentences_keeps_them_and_no_text_of_its_own():
+    article = _appendix_d(line(130, 40, "1) This information is presented.", BODY))
+    assert [s.content for s in article.children] == ["This information is presented."]
+    assert article.content == ""
