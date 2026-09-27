@@ -106,6 +106,37 @@ def test_notes_container_holds_note():
     assert notes_container.children[0].identifier == "A-1.1.1.1"
 
 
+def _notes_page(*entries):
+    return [
+        [line(50, 40, "Division B", BLACK)],
+        [line(50, 40, "Notes to Part 9", BLACK)]
+        + [line(70 + 20 * i, 40, text, BODY) for i, text in enumerate(entries)],
+    ]
+
+
+def test_a_note_on_a_table_keeps_the_tables_number_in_its_identifier():
+    # Real cases (pages 606-1543): the identifier stopped at the first space,
+    # so all 22 "A-Table ..." notes became "A-Table", collided, and never met
+    # their web notes ("A-Table 9.23.3.5.-B").
+    pages = _notes_page(
+        "A-Table 4.1.2.1.Importance Categories for Buildings.",
+        "A-Table 4.1.8.5.-AServiceability Limit States for Earthquake.",
+        "A-Table 9.6.1.3   Glass in Doors. Maximum areas in Table 9.6.1.3.",
+        "A-Table 9.23.3.5.-B   Alternative Nail Sizes. Where power nails",
+        "A-Tables 9.36.2.8.-A and -B   Multiple Applicable Requirements.",
+    )
+    root, _captions = build_tree_from_lines(pages, len(pages))
+    notes = root.children[1].children[0].children
+    assert [(n.identifier, n.title) for n in notes] == [
+        ("A-Table 4.1.2.1", "Importance Categories for Buildings."),
+        ("A-Table 4.1.8.5.-A", "Serviceability Limit States for Earthquake."),
+        ("A-Table 9.6.1.3", "Glass in Doors. Maximum areas in Table 9.6.1.3."),
+        ("A-Table 9.23.3.5.-B", "Alternative Nail Sizes. Where power nails"),
+        ("A-Tables 9.36.2.8.-A and -B", "Multiple Applicable Requirements."),
+    ]
+    assert notes[3].citation == "Note:A-Table 9.23.3.5.-B"
+
+
 def test_heading_records_literal_heading_words():
     volume, _ = build_tree_from_lines(
         [
