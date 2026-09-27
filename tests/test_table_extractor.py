@@ -1000,7 +1000,101 @@ def test_fill_continuation_gaps_rejects_candidate_when_preceding_page_has_an_orp
         all_drawing_rects=[minimal_rects, candidate_rects],
         regions_by_page=[preceding_page_regions, []],
     )
-    assert filled[1] == []
+    # Not a continuation of "Table 1.1.(1)": the grid is the orphaned
+    # table's own, and becomes that table (it used to be dropped).
+    assert [r.table_node.identifier for r in filled[1]] == ["9.9.(9)"]
+    assert filled[1][0].table_node.page == 2
+
+
+def _orphaned_caption_page():
+    """A page ending in a caption whose grid did not fit on it."""
+    lines = [pline(200, 700, 300, 710, "Table 9.9.(9)", CAPTION_FONT)]
+    return lines, detect_tables_on_page(lines, [], page_number=1)
+
+
+def test_a_caption_at_a_pages_foot_takes_the_grid_at_the_top_of_the_next_page():
+    # Real case: "Table 9.24.2.5." is the last line of page 926; its grid
+    # is at the top of page 927. With no pending table to continue, that
+    # grid used to be lost.
+    orphan_lines, orphan_regions = _orphaned_caption_page()
+    assert orphan_regions == []
+    lines, rects = _continuation_grid_fixture()
+
+    filled = fill_continuation_gaps(
+        all_lines=[orphan_lines, lines],
+        all_drawing_rects=[[], rects],
+        regions_by_page=[orphan_regions, []],
+    )
+
+    (region,) = filled[1]
+    assert region.table_node.identifier == "9.9.(9)"
+    assert region.table_node.citation == "Table:9.9.(9)"
+    assert [c.content for c in region.table_node.children[0].children] == [
+        "continued row 1 col a",
+        "continued row 1 col b",
+    ]
+    assert {0, 1} <= region.consumed_line_indices
+
+
+def test_an_orphaned_grid_keeps_the_forming_part_of_line_left_under_its_caption():
+    # Real case: page 264 ends with "Table 3.4.2.1.-B" and its "Forming Part
+    # of Sentence 3.4.2.1.(3)" line. Without that reference the table was
+    # placed by position, under a clause ahead of Table 3.4.2.1.-A.
+    orphan_lines = [
+        pline(200, 680, 300, 690, "Table 9.9.(9)", CAPTION_FONT),
+        pline(150, 700, 350, 710, "Forming Part of Sentence 9.9.1.(3)", CAPTION_FONT),
+    ]
+    lines, rects = _continuation_grid_fixture()
+
+    filled = fill_continuation_gaps(
+        all_lines=[orphan_lines, lines],
+        all_drawing_rects=[[], rects],
+        regions_by_page=[detect_tables_on_page(orphan_lines, [], page_number=1), []],
+    )
+
+    assert filled[1][0].forming_part_of == ("Sentence", "9.9.1.(3)")
+
+
+def test_an_orphaned_grid_stops_at_the_next_pages_own_first_caption():
+    # Real case: "Table D-2.6.1.-D" ends page 1611; page 1612 holds its grid,
+    # then Tables D-2.6.1.-E and -F with their own captions and grids.
+    orphan_lines, orphan_regions = _orphaned_caption_page()
+    top_lines, top_rects = _continuation_grid_fixture()
+    own_lines, own_rects = _minimal_grid_fixture()
+    shift = 200.0
+    own_lines = [
+        PageLine(
+            bbox=(ln.bbox[0], ln.bbox[1] + shift, ln.bbox[2], ln.bbox[3] + shift),
+            text=ln.text,
+            font=ln.font,
+        )
+        for ln in own_lines
+    ]
+    own_rects = [(x0, y0 + shift, x1, y1 + shift) for x0, y0, x1, y1 in own_rects]
+    lines, rects = top_lines + own_lines, top_rects + own_rects
+    page_regions = detect_tables_on_page(lines, rects, page_number=2)
+
+    filled = fill_continuation_gaps(
+        all_lines=[orphan_lines, lines],
+        all_drawing_rects=[[], rects],
+        regions_by_page=[orphan_regions, page_regions],
+    )
+
+    assert [r.table_node.identifier for r in filled[1]] == ["9.9.(9)", "1.1.(1)"]
+    assert len(filled[1][0].table_node.children) == 1  # only the top grid's one row
+
+
+def test_a_table_under_a_different_caption_is_never_stitched_onto_the_one_before():
+    pending = _pending_region(has_bottom_border=False)
+    lines, rects = _continuation_grid_fixture()
+    other = detect_tables_on_page(
+        [pline(200, 10, 300, 20, "Table 2.2.(2)", CAPTION_FONT), *lines], rects, page_number=8
+    )
+    assert abs(other[0].outer_bbox.x0 - pending.outer_bbox.x0) <= 2  # same shape as pending
+
+    stitched = stitch_continuations([[pending], other])
+
+    assert [r.table_node.identifier for r in stitched] == ["1.1.(1)", "2.2.(2)"]
 
 
 def test_stitch_continuations_after_fill_continuation_gaps_merges_all_rows():
@@ -1087,3 +1181,20 @@ def test_a_plain_font_caption_centred_on_the_page_anchors_a_table_with_its_title
     assert regions[0].table_node.identifier == "9.8.4.2."
     assert regions[0].table_node.title == "Sample Title"
     assert {0, 1} <= regions[0].consumed_line_indices
+
+
+def test_a_caption_at_a_pages_foot_with_no_grid_on_the_next_page_makes_no_table():
+    minimal_lines, minimal_rects = _minimal_grid_fixture()
+    orphan_caption = pline(200, 100, 300, 110, "Table 9.9.(9)", CAPTION_FONT)
+    preceding_page_lines = [*minimal_lines, orphan_caption]
+    preceding_page_regions = detect_tables_on_page(
+        preceding_page_lines, minimal_rects, page_number=1
+    )
+
+    filled = fill_continuation_gaps(
+        all_lines=[preceding_page_lines, [pline(90, 50, 400, 60, "Just body text.")]],
+        all_drawing_rects=[minimal_rects, []],
+        regions_by_page=[preceding_page_regions, []],
+    )
+
+    assert filled[1] == []
