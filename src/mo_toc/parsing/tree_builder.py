@@ -284,12 +284,22 @@ def _caption_block_bbox(lines: list[PageLine], start_idx: int, end_idx: int) -> 
     return BBox(x0, y0, x1, max(y1, last_line_y1))
 
 
+def _add_figure_caption_to_note(kind: str, caption_lines: list[PageLine], state) -> None:
+    """The site keeps a figure's caption in its note's text, where the figure
+    stands (A-3.6.5.6.(2): "... Figure A-3.6.5.6.(2) Clearance for warm-air
+    supply ducts"); a table's caption heads its table instead."""
+    if kind != "Figure" or state.current_note is None:
+        return
+    state.current_note_text.extend(pline.styled for pline in caption_lines)
+
+
 def _open_caption(
     match, page_index: int, lines: list[PageLine], idx: int, state: _BuildState
 ) -> int:
     state.table_notes = None
     title, next_idx = _consume_caption_title(lines, idx + 1)
     bbox = _caption_block_bbox(lines, idx, next_idx)
+    _add_figure_caption_to_note(match.group(1), lines[idx:next_idx], state)
     owner = state.stack[-1][1].citation if len(state.stack) > 1 else ""
     state.captions.append(
         Caption(

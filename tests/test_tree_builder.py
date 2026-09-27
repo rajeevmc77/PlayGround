@@ -338,6 +338,47 @@ def test_a_note_with_nothing_after_its_title_has_no_content():
     assert _first_note(pages).content == ""
 
 
+def _bold(y0, text):
+    return PageLine(
+        bbox=(40, y0, 340, y0 + 10), text=text, font=BOLD, emphasis=((0, len(text), "b"),)
+    )
+
+
+def test_a_figure_caption_inside_a_note_is_part_of_its_text_where_it_stands():
+    # Real case: A-3.6.5.6.(2) - the site keeps a figure's caption in the
+    # note's text, in bold, where the figure stands.
+    pages = _note_pages(
+        [
+            line(70, 40, "A-3.6.5.6.(2)   Clearances. Applicable to furnaces.", BODY),
+            _bold(90, "Figure A-3.6.5.6.(2)"),
+            _bold(102, "Clearance for warm-air supply ducts"),
+            line(120, 40, "Where the clearance is 75 mm or less.", BODY),
+        ]
+    )
+    note = _first_note(pages)
+    identifier, title = "Figure A-3.6.5.6.(2)", "Clearance for warm-air supply ducts"
+    caption = f"{identifier} {title}"
+    after = "Where the clearance is 75 mm or less."
+    assert note.content == f"Applicable to furnaces. {caption} {after}"
+    start = note.content.index("Figure")
+    title_start = start + len(identifier) + 1
+    assert note.emphasis == [
+        (start, start + len(identifier), "b"),
+        (title_start, title_start + len(title), "b"),
+    ]
+
+
+def test_a_table_caption_inside_a_note_stays_out_of_its_text():
+    pages = _note_pages(
+        [
+            line(70, 40, "A-9.23.4.3.   Spans for Steel Beams. The spans reflect a balance.", BODY),
+            _bold(90, "Table A-9.23.4.3."),
+            _bold(102, "Spans for Steel Beams"),
+        ]
+    )
+    assert _first_note(pages).content == "The spans reflect a balance."
+
+
 def test_a_note_whose_title_never_ends_in_a_period_has_no_content():
     pages = _note_pages([line(70, 40, "A-9.1.1.1.(1)   Application of Part 9", BODY)])
     assert _first_note(pages).content == ""
