@@ -45,6 +45,8 @@ class="equation-image" data-equation="eg2" data-owner="t3" src="/web-assets/equa
 </th></tr></table></div>
 <div id="em1">a new <span class="term">building</span>, <strong>Bold <em>both</em>
 </strong><span class="hidden">gone</span></div>
+<div id="d1">1) Provided:<ol type="a"><li>first item,</li><li>second item with<ol type="i">
+<li>sub one,</li><li>sub two</li></ol></li></ol></div>
 <img src="/web-assets/graphics/a.jpg" alt="A figure" style="width:10px;height:10px">
 <div style="height:600px"></div>
 </div></main></div></main></body></html>"""
@@ -193,6 +195,16 @@ def test_equation_images_are_listed_apart_from_figures_once_each(measured):
 def test_an_equation_image_adds_no_text_to_what_holds_it(measured):
     assert measured["page"]["elements"]["s2"]["text"] == "b) the formula"
     assert measured["page"]["tables"]["t3"][0]["cells"][0]["text"] == "Value of"
+
+
+def test_an_elements_unlabelled_list_items_are_listed_with_their_own_items(measured):
+    # Appendix D's clauses are bare <li>s inside a paragraph that has the id.
+    [first, second] = measured["page"]["lists"]["d1"]
+    assert first["text"] == "first item,"
+    assert first["items"] == []
+    assert second["text"].startswith("second item with")
+    assert [item["text"] for item in second["items"]] == ["sub one,", "sub two"]
+    assert first["xpath"].endswith("/ol[1]/li[1]")
 
 
 def test_bbox_is_relative_to_the_panel_not_the_page(measured):

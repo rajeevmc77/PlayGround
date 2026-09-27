@@ -70,7 +70,9 @@ independent tools live here:
    nodes also carry a `heading` field with the literal heading words, e.g. `Part 1`.
    The site's navigation stops at Appendix D itself, so its sections/subsections/articles and
    numbered paragraphs (as Sentences) are built from its content JSON
-   (`src/web_toc/parsing/appendix_extractor.py`), numbered like the PDF (`AppD.D-1.1.1`).
+   (`src/web_toc/parsing/appendix_extractor.py`), numbered like the PDF (`AppD.D-1.1.1`);
+   a Sentence's lettered list items are its Clauses, which have no ids on the site, so the
+   layout pass lists them under their paragraph and they are cited by position (`<para>.li2`).
 
 A standalone CLI companion, `src/check_directory_access.py`, checks (outside the web app) 
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,

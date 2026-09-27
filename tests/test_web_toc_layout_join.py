@@ -145,6 +145,25 @@ def test_an_appendix_article_gets_its_rendered_text_and_emphasis():
     assert (joined.children[0].content, joined.children[0].emphasis) == (text, [[0, 33, "b"]])
 
 
+def test_an_unlabelled_list_item_is_matched_by_its_position_under_its_paragraph():
+    # Appendix D's clauses have no ids: "<para>.li2" is the paragraph's
+    # second list item, "<para>.li2.li1" that item's first.
+    para = "nbc.divB.appendixD.appsect2.subsect3.article10.para1"
+    clause = _node("Clause", f"{para}.li2", [_node("Subclause", f"{para}.li2.li1")])
+    sentence = _node("Sentence", para, [_node("Clause", f"{para}.li1"), clause])
+    root = _node("root", "root", [sentence])
+    sub = {**_entry("div[1]/ol[1]/li[2]/ol[1]/li[1]", "sub one,", 4), "items": []}
+    items = [
+        {**_entry("div[1]/ol[1]/li[1]", "first item,", 2), "items": []},
+        {**_entry("div[1]/ol[1]/li[2]", "second item with sub one,", 3), "items": [sub]},
+    ]
+    layout = {"elements": {para: _entry("div[1]", "1) Provided:", 1)}, "lists": {para: items}}
+    joined = _join(root, {para: layout}, pages=(para,))
+    assert _find(joined, f"{para}.li1").content == "first item,"
+    assert _find(joined, f"{para}.li2").location["xpath"] == f"{ROOT}/div[1]/ol[1]/li[2]"
+    assert _find(joined, f"{para}.li2.li1").content == "sub one,"
+
+
 def test_a_heading_gets_a_location_but_no_emphasis():
     layout = _layout()
     layout["headings"][3]["emphasis"] = [[0, 8, "b"]]
@@ -336,3 +355,12 @@ def test_location_report_counts_equations_apart_from_figures():
 
     assert report["Image"] == {"located": 0, "unlocated": 1}
     assert report["Equation"] == {"located": 1, "unlocated": 0}
+
+
+def test_a_list_item_position_past_the_measured_items_is_left_unlocated():
+    para = "nbc.divB.appendixD.appsect2.subsect3.article10.para1"
+    root = _node("root", "root", [_node("Sentence", para, [_node("Clause", f"{para}.li2")])])
+    items = [{**_entry("div[1]/ol[1]/li[1]", "only item", 2), "items": []}]
+    layout = {"elements": {para: _entry("div[1]", "1) Provided:", 1)}, "lists": {para: items}}
+    joined = _join(root, {para: layout}, pages=(para,))
+    assert _find(joined, f"{para}.li2").location is None
