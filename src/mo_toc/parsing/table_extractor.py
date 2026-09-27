@@ -343,12 +343,55 @@ def _continues_previous(prev: TableRegion, next_region: TableRegion) -> bool:
     return not prev.has_bottom_border and prev_cols == next_cols and same_x_range
 
 
+def _filled_columns(row: Node) -> list[int]:
+    return [i for i, cell in enumerate(row.children) if cell.content.strip()]
+
+
+def _is_page_split_tail(last: Node, first: Node) -> bool:
+    """Whether a continuation page's first row is really the rest of the
+    previous page's last row, cut by the page break: one filled cell, not in
+    the first column, continuing a cell the last row filled - while the last
+    row also filled a column to its right that this one leaves empty (e.g.
+    wall W6i's ratings). A real new row under a spanning cell (B.9.38.1.1)
+    has one filled cell too, but nothing to its right in the row above."""
+    filled = _filled_columns(first)
+    if len(filled) != 1 or filled[0] == 0 or len(first.children) != len(last.children):
+        return False
+    last_filled = _filled_columns(last)
+    return filled[0] in last_filled and last_filled[-1] > filled[0]
+
+
+def _join_cell(cell: Node, tail: Node) -> None:
+    joined = StyledText.from_json(cell.content, cell.emphasis).join(
+        StyledText.from_json(tail.content, tail.emphasis)
+    )
+    cell.content = joined.text
+    cell.emphasis = list(joined.emphasis)
+    cell.end_page = tail.end_page
+
+
+def _rejoin_page_split_row(pending: TableRegion, region: TableRegion) -> list[Node]:
+    """The continuation page's rows, minus a first row that was only the
+    tail of the previous page's last row - folded back into that row."""
+    rows = region.table_node.children
+    if not (pending.table_node.children and rows):
+        return rows
+    last, first = pending.table_node.children[-1], rows[0]
+    if not _is_page_split_tail(last, first):
+        return rows
+    col = _filled_columns(first)[0]
+    _join_cell(last.children[col], first.children[col])
+    last.end_page = first.end_page
+    return rows[1:]
+
+
 def _merge_into(pending: TableRegion, region: TableRegion) -> None:
     table_citation = pending.table_node.citation
     start = len(pending.table_node.children)
-    for i, row in enumerate(region.table_node.children):
+    rows = _rejoin_page_split_row(pending, region)
+    for i, row in enumerate(rows):
         _renumber_row(table_citation, row, start + i)
-    pending.table_node.children.extend(region.table_node.children)
+    pending.table_node.children.extend(rows)
     pending.table_node.end_page = region.table_node.page
     pending.has_bottom_border = region.has_bottom_border
 

@@ -281,6 +281,109 @@ def test_stitch_continuations_merges_open_table_across_pages():
     assert table.end_page == 9
 
 
+def _stitch_two_pages(page1_rows, page2_rows):
+    page1 = _table_region(
+        "9.Spec1",
+        page=1247,
+        rows=page1_rows,
+        has_bottom_border=False,
+        outer_bbox=BBox(90, 400, 500, 700),
+    )
+    page2 = _table_region(
+        "9.Spec1",
+        page=1248,
+        rows=page2_rows,
+        has_bottom_border=True,
+        outer_bbox=BBox(90, 40, 500, 200),
+    )
+    [stitched] = stitch_continuations([[page1], [page2]])
+    return [[cell.content for cell in row.children] for row in stitched.table_node.children]
+
+
+def _cells(*texts):
+    return [_cell(f"Col{i + 1}", text) for i, text in enumerate(texts)]
+
+
+def test_a_row_split_by_the_page_break_is_rejoined_into_one_row():
+    """Wall W6i's description runs off the bottom of page 1247; the rest
+    ("• resilient metal channels ...") opens page 1248 as a row with only
+    that one cell filled, while W6i's own rating columns are left empty.
+    It's W6i's tail, not a new row - the site shows it as one cell - and as
+    a row of its own it shifted every later row's number."""
+    rows = _stitch_two_pages(
+        [_row("Row1", _cells("", "W6i", "W6 with • no absorptive material", "1.5 h", "2 h", "47"))],
+        [
+            _row("Row1", _cells("", "", "• resilient metal channels", "", "", "")),
+            _row("Row2", _cells("", "W6j", "W6 with • studs", "1 h", "1 h", "50")),
+        ],
+    )
+    assert rows == [
+        [
+            "",
+            "W6i",
+            "W6 with • no absorptive material • resilient metal channels",
+            "1.5 h",
+            "2 h",
+            "47",
+        ],
+        ["", "W6j", "W6 with • studs", "1 h", "1 h", "50"],
+    ]
+
+
+def test_a_rejoined_row_keeps_both_halves_emphasis():
+    first = _cell("Col2", "W6 with")
+    first.emphasis = [(0, 2, "b")]
+    tail = _cell("Col2", "Type X")
+    tail.emphasis = [(0, 6, "i")]
+    page1 = [_row("Row1", [_cell("Col1", "W6i"), first, _cell("Col3", "2 h")])]
+    page2 = [_row("Row1", [_cell("Col1", ""), tail, _cell("Col3", "")])]
+    page1_region = _table_region("t", 1, page1, False, BBox(90, 400, 500, 700))
+    page2_region = _table_region("t", 2, page2, True, BBox(90, 40, 500, 200))
+    [stitched] = stitch_continuations([[page1_region], [page2_region]])
+    merged = stitched.table_node.children[0].children[1]
+    assert merged.content == "W6 with Type X"
+    assert merged.emphasis == [(0, 2, "b"), (8, 14, "i")]
+
+
+def test_a_real_row_under_a_spanning_cell_is_not_rejoined():
+    """B.9.38.1.1: a new row whose provision cell is covered by a rowspan
+    from above has one filled cell too - but nothing to its right that the
+    previous row filled, so it stays a row of its own."""
+    rows = _stitch_two_pages(
+        [_row("Row1", _cells("9.3.1.1.(1)", "[F20-OP2.1]"))],
+        [_row("Row1", _cells("", "[F21-OP2.3]"))],
+    )
+    assert rows == [["9.3.1.1.(1)", "[F20-OP2.1]"], ["", "[F21-OP2.3]"]]
+
+
+def test_a_row_with_only_its_first_column_filled_is_not_rejoined():
+    rows = _stitch_two_pages(
+        [_row("Row1", _cells("9.3.1.1.(1)", "[F20]"))],
+        [_row("Row1", _cells("9.3.2. Heading", ""))],
+    )
+    assert rows == [["9.3.1.1.(1)", "[F20]"], ["9.3.2. Heading", ""]]
+
+
+def test_a_row_with_two_filled_cells_is_not_rejoined():
+    rows = _stitch_two_pages(
+        [_row("Row1", _cells("", "W9d", "W9 with", "1.5 h"))],
+        [_row("Row1", _cells("", "W10", "• two rows", ""))],
+    )
+    assert rows == [["", "W9d", "W9 with", "1.5 h"], ["", "W10", "• two rows", ""]]
+
+
+def test_a_single_filled_cell_under_an_empty_previous_cell_is_not_rejoined():
+    rows = _stitch_two_pages(
+        [_row("Row1", _cells("a", "", "x"))],
+        [_row("Row1", _cells("", "tail", ""))],
+    )
+    assert rows == [["a", "", "x"], ["", "tail", ""]]
+
+
+def test_stitching_two_row_less_regions_does_not_try_to_rejoin_a_row():
+    assert _stitch_two_pages([], []) == []
+
+
 def test_stitch_continuations_keeps_closed_table_separate_from_next_one():
     row1 = _row("Row1", [_cell("Col1", "a")])
     page1_region = _table_region(
