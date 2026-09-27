@@ -92,12 +92,14 @@ def _merge_boundaries(values: list[float]) -> list[float]:
 
 
 def _grid_boundaries(
-    rects: list[tuple[float, float, float, float]], below_y: float
+    rects: list[tuple[float, float, float, float]], below_y: float, above_y: float | None = None
 ) -> tuple[list[float], list[float]]:
     row_ys, col_xs = [], []
     for rect in rects:
         x0, y0, x1, y1 = rect
         if y0 < below_y - BOUNDARY_MERGE_TOLERANCE:
+            continue
+        if above_y is not None and y0 > above_y:
             continue
         kind = _classify_rect(rect)
         if kind == "horizontal":
@@ -279,9 +281,14 @@ def build_table_region(
     lines: list[PageLine],
     drawing_rects: list[tuple[float, float, float, float]],
     page_number: int,
+    above_y: float | None = None,
 ) -> TableRegion | None:
+    """`above_y`: where the next table's caption starts on this page - this
+    table's grid stops there, rather than taking every ruled line below its
+    own caption (which merged stacked tables and swallowed the text between
+    them, e.g. the Article 4.1.8.6. heading on page 543)."""
     caption_bottom = lines[anchor.caption_line_idx].bbox[3]
-    row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=caption_bottom)
+    row_ys, col_xs = _grid_boundaries(drawing_rects, below_y=caption_bottom, above_y=above_y)
     if len(row_ys) - 1 < MIN_ANCHOR_TABLE_ROWS or len(col_xs) - 1 < MIN_TABLE_COLS:
         return None
 
@@ -321,9 +328,11 @@ def detect_tables_on_page(
     lines: list[PageLine], drawing_rects: list[tuple[float, float, float, float]], page_number: int
 ) -> list[TableRegion]:
     anchors = find_table_anchors(lines, page_number - 1)
+    caption_tops = [lines[a.caption_line_idx].bbox[1] for a in anchors]
     regions = []
-    for anchor in anchors:
-        region = build_table_region(anchor, lines, drawing_rects, page_number)
+    for i, anchor in enumerate(anchors):
+        above_y = caption_tops[i + 1] if i + 1 < len(anchors) else None
+        region = build_table_region(anchor, lines, drawing_rects, page_number, above_y)
         if region is not None:
             regions.append(region)
     return regions
