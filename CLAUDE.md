@@ -156,7 +156,8 @@ Run these and fix everything they report before calling a task complete:
 Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker for the
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
-`src/build_web_toc.py`, `src/build_web_pages.py`, `src/shared/`, and `tests/` (including
+`src/build_web_toc.py`, `src/build_web_pages.py`, `src/comparison/`, `src/build_comparison.py`,
+`src/shared/`, and `tests/` (including
 `tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
 — not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
@@ -174,8 +175,11 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (745 tests — 727 by default plus 18 `slow` — `pytest -q`) now covers `src/mo_toc/`, `src/build_mo_toc.py`,
-  and `src/serve_mo_toc.py` — this is a git repo now too. The OLD exploratory scripts
+- A real test suite (921 tests — 903 by default plus 18 `slow`) covers `src/mo_toc/`,
+  `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
+  and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
+  `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
+  exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full
   run) rather than automated tests; they're now archived-equivalent in spirit even though
@@ -185,3 +189,18 @@ only if/when they're actually touched, not retroactively.
   anyway.
 - Prefer testing a small sample first for anything that processes the full 1685-page PDF or
   the full Workspace directory, before running it against the whole thing.
+- `output/` is shared by every session, so measure a change in a scratch directory instead:
+  symlink `bcbc_web.json`, `web_pages/`, `web_source/` and `web_images/` from `output/` into it,
+  run `src/build_mo_toc.py --output-dir <dir>` then `src/build_comparison.py --output-dir <dir>`
+  (a few minutes), and compare against a baseline built from `main` on the same inputs. Copy
+  the result into `output/` only after the PR merges. A web-side change re-measures a copy of
+  `web_pages/` offline (`src/build_web_pages.py --measure-only --output-dir <dir>`, ~20 s)
+  before `src/build_web_toc.py --output-dir <dir>`.
+- Compare builds per table (pass/fail counts), not per unified number: rows pair by content, so
+  when a table gains or loses rows its later rows renumber and a per-key diff shows false losses.
+- The PDF is the marked-up (MRK) edition: revised words are underlined with short horizontal
+  rules, so inside a table only a rule that runs column edge to column edge is a row boundary
+  (`_is_row_rule` in `table_extractor.py`).
+- Most comparison failures left are the website's own differences (reference wording, standard
+  designations, punctuation, bold/italic, the 3.9/3.10 swap, Table C-2), documented with counts
+  in `ai_docs/2026-09-27-site-discrepancies-report.md` - check there before chasing a failure.
