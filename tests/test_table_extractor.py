@@ -1461,3 +1461,53 @@ def test_a_rule_under_the_tail_with_no_columns_down_to_it_adds_no_row():
     tail = filled[1][0]
     assert len(tail.table_node.children) == 1
     assert 2 not in tail.consumed_line_indices
+
+
+def _narrow_columns_fixture():
+    """Table 3.2.3.1.-B: a heading spanning the value columns (no rules
+    through it), then a row whose values in two narrow columns arrive as
+    one line, "46 91"."""
+    heading = PageLine(
+        bbox=(100, 50, 250, 60),
+        text="Area of Unprotected Opening",
+        font=BODY_FONT,
+        runs=((0, 27, 100, 250),),
+    )
+    values = PageLine(
+        bbox=(155, 70, 215, 80),
+        text="46 91",
+        font=BODY_FONT,
+        emphasis=((3, 5, "b"),),
+        runs=((0, 5, 155, 215),),
+    )
+    lines = [
+        pline(200, 10, 300, 20, "Table 1.1.(1)", CAPTION_FONT),
+        heading,
+        pline(95, 70, 110, 80, "10"),
+        values,
+    ]
+    rects = [
+        (90.0, 45.0, 260.0, 45.4),
+        (90.0, 65.0, 260.0, 65.4),
+        (90.0, 89.6, 260.0, 90.0),
+        (90.0, 45.0, 90.4, 90.0),
+        (259.6, 45.0, 260.0, 90.0),
+        (149.8, 65.0, 150.2, 90.0),  # value column rules, below the heading
+        (199.8, 65.0, 200.2, 90.0),
+    ]
+    return lines, rects
+
+
+def test_a_line_crossing_a_ruled_column_boundary_is_split_at_it():
+    lines, rects = _narrow_columns_fixture()
+    [region] = detect_tables_on_page(lines, rects, page_number=1)
+    values_row = region.table_node.children[1]
+    assert [c.content for c in values_row.children] == ["10", "46", "91"]
+    assert values_row.children[2].emphasis == [(0, 2, "b")]
+
+
+def test_a_heading_spanning_columns_with_no_rule_through_it_stays_whole():
+    lines, rects = _narrow_columns_fixture()
+    [region] = detect_tables_on_page(lines, rects, page_number=1)
+    heading_row = region.table_node.children[0]
+    assert [c.content for c in heading_row.children] == ["Area of Unprotected Opening", "", ""]

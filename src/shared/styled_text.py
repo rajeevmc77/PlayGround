@@ -101,6 +101,9 @@ class StyledText:
     def slice(self, start: int) -> "StyledText":
         return StyledText(self.text[start:], _clip(self.emphasis, start, len(self.text)))
 
+    def between(self, start: int, end: int) -> "StyledText":
+        return StyledText(self.text[start:end], _clip(self.emphasis, start, end))
+
     def signature(self) -> list[tuple[str, str]]:
         """(character, style) for every non-whitespace character, curly
         quotes and dashes made plain; the style only counts on letters and

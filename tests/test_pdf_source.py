@@ -224,3 +224,18 @@ def test_page_lines_mark_a_line_centred_on_its_page(tmp_path, page_width):
 
 def test_a_line_read_without_its_page_width_is_not_centred():
     assert _line_from_span_dict(_line_dict(_span("word", "BookAntiqua"))).centred is False
+
+
+def test_a_line_records_where_each_of_its_spans_sits():
+    # Table 3.2.3.1.-B's "1.2", "1.5", ... each head a narrow column but
+    # arrive as one line; their spans say where each one is.
+    first = {**_span(" 1.2", "BookAntiqua"), "bbox": (186, 0, 197, 10)}
+    blank = {**_span(" ", "BookAntiqua"), "bbox": (197, 0, 199, 10)}
+    second = {**_span("1.5 ", "BookAntiqua"), "bbox": (206, 0, 216, 10)}
+    line = _line_from_span_dict(_line_dict(first, blank, second))
+    assert line.text == "1.21.5"
+    assert line.runs == ((0, 3, 186, 197), (3, 6, 206, 216))
+
+
+def test_a_line_whose_spans_have_no_boxes_records_no_runs():
+    assert _line_from_span_dict(_line_dict(_span("word", "BookAntiqua"))).runs == ()
