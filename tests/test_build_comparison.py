@@ -285,3 +285,22 @@ def test_main_parses_output_dir_and_threshold_percent_arguments(tmp_path, monkey
 
     result = json.loads((tmp_path / "comparison.json").read_text())
     assert result["threshold_percent"] == 50.0
+
+
+def test_each_failed_item_is_recorded_with_why_it_differs(tmp_path):
+    _write_fixtures(tmp_path, pdf_content="Class A roofing", web_content="Class B roofing")
+
+    run(str(tmp_path))
+
+    reasons = json.loads((tmp_path / "comparison.json").read_text())["reasons"]
+    assert reasons["V.P1"]["kind"] == "text"
+    assert reasons["V.P1"]["edits"][0]["pdf"][1] == "A"
+    assert "V" not in reasons  # a container's ✗ comes from the item inside it
+
+
+def test_a_comparison_where_everything_matches_records_no_reasons(tmp_path):
+    _write_fixtures(tmp_path)
+
+    run(str(tmp_path))
+
+    assert json.loads((tmp_path / "comparison.json").read_text())["reasons"] == {}

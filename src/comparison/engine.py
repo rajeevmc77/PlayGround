@@ -31,11 +31,11 @@ TextMatcher = Callable[[dict, dict], bool]
 ImageMatcher = Callable[[dict, dict], bool]
 
 
-def _index_nodes(node: dict, into: dict[str, dict]) -> None:
+def index_nodes(node: dict, into: dict[str, dict]) -> None:
     if node.get("unified_number"):
         into[node["unified_number"]] = node
     for child in node.get("children", []):
-        _index_nodes(child, into)
+        index_nodes(child, into)
 
 
 def _index_images(images: list[dict]) -> dict[str, dict]:
@@ -133,7 +133,7 @@ def table_counterparts_in(pdf_tree: dict, web_tree: dict | None) -> dict[str, st
     web_nodes: dict[str, dict] = {}
     web_scopes: dict[str, list[dict]] = {}
     if web_tree is not None:
-        _index_nodes(web_tree, web_nodes)
+        index_nodes(web_tree, web_nodes)
         web_scopes = _tables_by_scope(web_tree)
     pdf_scopes = _tables_by_scope(pdf_tree)
     counterparts: dict[str, str | None] = {}
@@ -175,7 +175,7 @@ def compare_trees(
 ) -> dict[str, bool]:
     web_nodes: dict[str, dict] = {}
     if web_tree is not None:
-        _index_nodes(web_tree, web_nodes)
+        index_nodes(web_tree, web_nodes)
     counterparts = counterparts or {}
     web_image_index = _index_images(web_images)
     pdf_images_by_owner = _images_by_owner(pdf_images)

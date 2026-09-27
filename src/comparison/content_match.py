@@ -43,6 +43,14 @@ def _without_own_heading(node: dict, styled: StyledText) -> StyledText:
     return styled.slice(len(heading)) if styled.text.startswith(heading) else styled
 
 
+def pdf_styled(pdf_node: dict) -> StyledText:
+    return _styled(pdf_node)
+
+
+def web_styled(web_node: dict) -> StyledText:
+    """The web node's text as it is compared: its own marker/heading dropped."""
+    return _without_own_heading(web_node, _without_own_marker(web_node, _styled(web_node)))
+
+
 def content_matches(pdf_node: dict, web_node: dict) -> bool:
-    web = _without_own_heading(web_node, _without_own_marker(web_node, _styled(web_node)))
-    return matches(_styled(pdf_node), web)
+    return matches(pdf_styled(pdf_node), web_styled(web_node))

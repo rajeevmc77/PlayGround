@@ -14,6 +14,7 @@ import {
   webLocationFor,
 } from "./both_view.mjs?v=7";
 import { filterIds, statusBadge } from "./compare_view.mjs?v=1";
+import { reasonView } from "./reason_view.mjs?v=1";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
@@ -27,6 +28,8 @@ let comparisonStatuses = new Map();
 // PDF table row/cell -> the web row/cell it was compared with, where that
 // differs from the same unified_number (rows are paired by content).
 let comparisonCounterparts = new Map();
+// Why each failed text item or image differs (see src/comparison/reasons.py).
+let comparisonReasons = new Map();
 
 function formatNodeLabel(node) {
   const text = node.title || node.content;
@@ -66,6 +69,53 @@ async function loadComparison() {
   const data = await res.json();
   comparisonStatuses = new Map(Object.entries(data.statuses || {}));
   comparisonCounterparts = new Map(Object.entries(data.counterparts || {}));
+  comparisonReasons = new Map(Object.entries(data.reasons || {}));
+}
+
+// One side of a differing stretch: its context around the changed text,
+// which is marked (an empty change shows where the other side has text).
+function reasonLine(sideLabel, [before, changed, after], markClass) {
+  const line = document.createElement("div");
+  line.className = "reason-line";
+  const label = document.createElement("span");
+  label.className = "reason-side";
+  label.textContent = sideLabel;
+  const mark = document.createElement("mark");
+  mark.className = changed ? markClass : `${markClass} reason-gap`;
+  mark.textContent = changed;
+  if (!changed) mark.title = "Nothing here on this side";
+  line.append(label, document.createTextNode(before), mark, document.createTextNode(after));
+  return line;
+}
+
+function reasonRow(row) {
+  const box = document.createElement("div");
+  box.className = "reason-row";
+  const label = document.createElement("div");
+  label.className = "reason-label";
+  label.textContent = row.label;
+  box.append(label, reasonLine("PDF", row.pdf, "reason-pdf"), reasonLine("Website", row.web, "reason-web"));
+  return box;
+}
+
+// The "Why it differs" box above the web page: hidden unless the selected
+// item is marked ✗.
+function showReason(reasonId, unifiedNumber, isContainer) {
+  const box = document.getElementById(reasonId);
+  const view = reasonView(comparisonStatuses.get(unifiedNumber), comparisonReasons.get(unifiedNumber), isContainer);
+  box.replaceChildren();
+  box.hidden = view === null;
+  if (view === null) return;
+  const title = document.createElement("div");
+  title.className = "reason-title";
+  title.textContent = `✗ ${view.title}`;
+  box.append(title, ...view.rows.map(reasonRow));
+  if (view.note) {
+    const note = document.createElement("div");
+    note.className = "reason-note";
+    note.textContent = view.note;
+    box.append(note);
+  }
 }
 
 function webLocation(unifiedNumber) {
@@ -299,8 +349,9 @@ function createSplitPanel(ids) {
     document.getElementById(ids.webPaneId).style.setProperty("--web-zoom", zoom);
   }
 
-  function select(pageNumber, bbox, unifiedNumber) {
+  function select(pageNumber, bbox, unifiedNumber, isContainer = false) {
     selection = { pageNumber, bbox, unifiedNumber };
+    showReason(ids.reasonId, unifiedNumber, isContainer);
     // A render superseded by a later click rejects (null) - that click's
     // own page load re-zooms, so this one just stays unzoomed.
     const pdfBodyPx = goToPdfLocation(ids, pageNumber, bbox).catch(() => null);
@@ -337,6 +388,7 @@ const bothPanel = createSplitPanel({
   webPaneId: "both-web-pane",
   webFrameId: "both-web-frame",
   webPlaceholderId: "both-web-placeholder",
+  reasonId: "both-reason",
 });
 
 const comparePanel = createSplitPanel({
@@ -347,6 +399,7 @@ const comparePanel = createSplitPanel({
   webPaneId: "compare-web-pane",
   webFrameId: "compare-web-frame",
   webPlaceholderId: "compare-web-placeholder",
+  reasonId: "compare-reason",
 });
 
 function appendStatusBadge(row, unifiedNumber) {
@@ -386,7 +439,7 @@ function renderTocNode(node, depth, filters, imagesKey, panel, showStatus) {
   childrenBox.className = "node-children";
 
   row.addEventListener("click", () => {
-    panel.select(node.page, node.bbox, node.unified_number);
+    panel.select(node.page, node.bbox, node.unified_number, node.children.length > 0);
     if (!hasChildren) return;
     childrenBox.classList.toggle("expanded");
     if (childrenBox.children.length > 0) return;

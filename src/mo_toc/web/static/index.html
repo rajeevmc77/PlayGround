@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>MO Package TOC Viewer</title>
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
   <div id="tabs">
@@ -31,6 +31,7 @@
       </div>
       <div id="both-web-col" class="both-content-col web-col">
         <h3>Web</h3>
+        <div id="both-reason" class="reason-box" hidden></div>
         <div id="both-web-pane" class="both-pane">
           <div id="both-web-placeholder" class="compare-placeholder">Click an item on the left to compare.</div>
           <iframe id="both-web-frame" class="web-frame" title="Matching web content" hidden></iframe>
@@ -59,6 +60,7 @@
       </div>
       <div id="compare-web-col" class="both-content-col web-col">
         <h3>Web</h3>
+        <div id="compare-reason" class="reason-box" hidden></div>
         <div id="compare-web-pane" class="both-pane">
           <div id="compare-web-placeholder" class="compare-placeholder">Click an item on the left to compare.</div>
           <iframe id="compare-web-frame" class="web-frame" title="Matching web content" hidden></iframe>
@@ -66,6 +68,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=28"></script>
+  <script type="module" src="/static/viewer.js?v=29"></script>
 </body>
 </html>
