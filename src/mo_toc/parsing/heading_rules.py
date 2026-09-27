@@ -25,6 +25,9 @@ RE_APPENDIX_ARTICLE = re.compile(r"^([A-Z])-(\d+\.\d+\.\d+)\.\s+(.*)$")
 RE_APPENDIX_SECTION = re.compile(r"^([A-Z])-(\d+\.\d+)\.\s+(.*)$")
 RE_BACK_MATTER_MARKER = re.compile(r"^PROVINCE OF BRITISH COLUMBIA$")
 RE_CAPTION = re.compile(r"^(Table|Figure)\s+(\S.*)$")
+# A caption line holding nothing but its identifier, e.g. "Table 9.36.6.3.-B"
+# or "Table A-9.11.1.4.-D" - never a body sentence that goes on past it.
+RE_BARE_CAPTION = re.compile(r"^(Table|Figure)\s+([A-Z]-)?\d+(\.\d+)*\.?(-[A-Z])?$")
 
 # (type, pattern, required substring somewhere in the line's font name)
 HEADING_PATTERNS = [
@@ -76,7 +79,21 @@ def is_caption_font(font: str) -> bool:
     return "Bold" in font and "Black" not in font and "Narrow" not in font
 
 
-def classify_caption_line(text: str, font: str) -> re.Match | None:
-    if not is_caption_font(font):
+def _is_plain_font_caption(text: str, font: str, centred: bool) -> bool:
+    """Some real captions are set in the plain body font, not bold (e.g.
+    "Table 9.8.4.2." on page 746, in ArialMT); alone on a centred line, one
+    can't be a body-text reference, which starts at the left margin. Narrow
+    fonts stay excluded: they are a table's own cells."""
+    return centred and "Narrow" not in font and bool(RE_BARE_CAPTION.match(text))
+
+
+def classify_caption_line(text: str, font: str, centred: bool = False) -> re.Match | None:
+    if not (is_caption_font(font) or _is_plain_font_caption(text, font, centred)):
         return None
     return RE_CAPTION.match(text)
+
+
+def is_caption_title_font(font: str, caption_font: str) -> bool:
+    """A caption's title lines are in the caption font - or, under a caption
+    set in the plain body font, in that same plain font."""
+    return is_caption_font(font) or font == caption_font
