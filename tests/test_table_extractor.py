@@ -1254,3 +1254,55 @@ def test_a_caption_at_a_pages_foot_with_no_grid_on_the_next_page_makes_no_table(
     )
 
     assert filled[1] == []
+
+
+def _header_only_pending(cols, x_range=(90.0, 260.0)):
+    """A table whose caption page fit only its bold header row (Table
+    9.23.13.7.-A, page 892: 5 header columns over a 12-column body)."""
+    pending = _pending_region(cols=cols, x_range=x_range, has_bottom_border=True)
+    for cell in pending.table_node.children[0].children:
+        cell.emphasis = [(0, len(cell.content), "b")]
+    return pending
+
+
+def test_build_continuation_region_accepts_another_column_count_after_a_header_only_page():
+    pending = _header_only_pending(cols=3)
+    lines, rects = _continuation_grid_fixture()  # 2 columns, same x-range
+    region = build_continuation_region(lines, rects, page_number=8, pending=pending)
+    assert region is not None
+    assert [c.content for c in region.table_node.children[0].children] == [
+        "continued row 1 col a",
+        "continued row 1 col b",
+    ]
+
+
+def test_a_header_only_page_still_needs_the_same_x_range():
+    pending = _header_only_pending(cols=3, x_range=(300.0, 470.0))
+    lines, rects = _continuation_grid_fixture()
+    assert build_continuation_region(lines, rects, page_number=8, pending=pending) is None
+
+
+def test_stitching_joins_a_differently_shaped_continuation_to_a_header_only_page():
+    pending = _header_only_pending(cols=3)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines], all_drawing_rects=[[], rects], regions_by_page=[[pending], []]
+    )
+    [stitched] = stitch_continuations(filled)
+    assert [len(row.children) for row in stitched.table_node.children] == [3, 2]
+
+
+def test_a_continuation_after_the_body_began_is_matched_against_the_body_not_the_header():
+    # Page 894 carries on 9.23.13.7.-A's 12-column body after page 893 - it
+    # must be measured against the body's columns, not page 892's 5-column
+    # header, or it is left as a second table with the same caption.
+    pending = _header_only_pending(cols=3)
+    lines, rects = _continuation_grid_fixture(closing=True)
+    more_lines, more_rects = _continuation_grid_fixture(closing=True)
+    filled = fill_continuation_gaps(
+        all_lines=[[], lines, more_lines],
+        all_drawing_rects=[[], rects, more_rects],
+        regions_by_page=[[pending], [], []],
+    )
+    [stitched] = stitch_continuations(filled)
+    assert [len(row.children) for row in stitched.table_node.children] == [3, 2, 2]
