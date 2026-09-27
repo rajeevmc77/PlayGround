@@ -13,9 +13,16 @@ text too (concatenated), while the PDF pipeline's holds only that node's
 own immediate text - comparing them would spuriously fail almost every
 container. Only a true leaf (no children on the PDF side) gets a real text
 comparison; a container's own text is trivially ok once matched, and
-rollup from its children (and any images it owns) covers the rest."""
+rollup from its children (and any images it owns) covers the rest.
+
+Table rows/cells are the one exception to the unified_number join: rows are
+numbered by position, so a row present on only one side would shift every
+row below it. table_counterparts_in pairs them by content instead (see
+row_alignment.py), and compare_trees looks each one up through that map."""
 
 from collections.abc import Callable
+
+from comparison.row_alignment import table_counterparts
 
 # (pdf node, web node) -> whether they show the same content.
 TextMatcher = Callable[[dict, dict], bool]
@@ -42,6 +49,33 @@ def _images_by_owner(images: list[dict]) -> dict[str, list[dict]]:
     return by_owner
 
 
+def _tables(node: dict):
+    if node.get("type") == "Table" and node.get("unified_number"):
+        yield node
+    for child in node.get("children", []):
+        yield from _tables(child)
+
+
+def table_counterparts_in(pdf_tree: dict, web_tree: dict | None) -> dict[str, str | None]:
+    """Row/cell counterparts for every table present on both sides."""
+    web_nodes: dict[str, dict] = {}
+    if web_tree is not None:
+        _index_nodes(web_tree, web_nodes)
+    counterparts: dict[str, str | None] = {}
+    for pdf_table in _tables(pdf_tree):
+        web_table = web_nodes.get(pdf_table["unified_number"])
+        if web_table is not None:
+            counterparts.update(table_counterparts(pdf_table, web_table))
+    return counterparts
+
+
+def _web_node_for(unified_number: str, web_nodes: dict, counterparts: dict) -> dict | None:
+    if not unified_number:
+        return None
+    web_number = counterparts.get(unified_number, unified_number)
+    return web_nodes.get(web_number) if web_number else None
+
+
 def compare_trees(
     pdf_tree: dict,
     pdf_images: list[dict],
@@ -49,10 +83,12 @@ def compare_trees(
     web_images: list[dict],
     text_matches: TextMatcher,
     images_match: ImageMatcher,
+    counterparts: dict[str, str | None] | None = None,
 ) -> dict[str, bool]:
     web_nodes: dict[str, dict] = {}
     if web_tree is not None:
         _index_nodes(web_tree, web_nodes)
+    counterparts = counterparts or {}
     web_image_index = _index_images(web_images)
     pdf_images_by_owner = _images_by_owner(pdf_images)
     statuses: dict[str, bool] = {}
@@ -73,7 +109,7 @@ def compare_trees(
 
     def node_status(pdf_node: dict) -> bool:
         unified_number = pdf_node.get("unified_number", "")
-        web_node = web_nodes.get(unified_number) if unified_number else None
+        web_node = _web_node_for(unified_number, web_nodes, counterparts)
         own_ok = own_text_ok(pdf_node, web_node, unified_number)
         # Eagerly evaluated as lists, not passed straight to all(...) as
         # generators - all() short-circuits on the first False, which would

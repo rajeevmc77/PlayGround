@@ -11,7 +11,8 @@ import {
   renderedContentBox,
   textMatchScale,
   visibleBothChildren,
-} from "./both_view.mjs?v=6";
+  webLocationFor,
+} from "./both_view.mjs?v=7";
 import { filterIds, statusBadge } from "./compare_view.mjs?v=1";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -23,6 +24,9 @@ let allImages = null;
 let webImages = [];
 let unifiedLocations = new Map();
 let comparisonStatuses = new Map();
+// PDF table row/cell -> the web row/cell it was compared with, where that
+// differs from the same unified_number (rows are paired by content).
+let comparisonCounterparts = new Map();
 
 function formatNodeLabel(node) {
   const text = node.title || node.content;
@@ -61,6 +65,11 @@ async function loadComparison() {
   if (!res.ok) return;
   const data = await res.json();
   comparisonStatuses = new Map(Object.entries(data.statuses || {}));
+  comparisonCounterparts = new Map(Object.entries(data.counterparts || {}));
+}
+
+function webLocation(unifiedNumber) {
+  return webLocationFor(unifiedNumber, unifiedLocations, comparisonCounterparts);
 }
 
 function buildCitationMap(node, map) {
@@ -295,7 +304,7 @@ function createSplitPanel(ids) {
     // A render superseded by a later click rejects (null) - that click's
     // own page load re-zooms, so this one just stays unzoomed.
     const pdfBodyPx = goToPdfLocation(ids, pageNumber, bbox).catch(() => null);
-    showWebLocation(ids, unifiedLocations.get(unifiedNumber) || null, async (doc) => {
+    showWebLocation(ids, webLocation(unifiedNumber), async (doc) => {
       webBodyPx = webBodyTextPx(doc);
       matchTextSize(await pdfBodyPx);
     });
@@ -310,7 +319,7 @@ function createSplitPanel(ids) {
     const { pageNumber, bbox, unifiedNumber } = selection;
     // Superseded by a later render (null) - that one re-fits instead.
     const pdfBodyPx = await goToPdfLocation(ids, pageNumber, bbox).catch(() => null);
-    const location = unifiedLocations.get(unifiedNumber);
+    const location = webLocation(unifiedNumber);
     const doc = document.getElementById(ids.webFrameId).contentDocument;
     if (pdfBodyPx === null || !location || !doc?.body) return;
     matchTextSize(pdfBodyPx);

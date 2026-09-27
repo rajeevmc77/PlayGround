@@ -29,6 +29,15 @@ export function collectUnifiedLocations(tree, images) {
   return map;
 }
 
+// Table rows/cells are paired PDF-to-web by content, not number (see
+// src/comparison/row_alignment.py); comparison.json's `counterparts` lists
+// the pairings that differ from the same number - null for a PDF row with
+// no web counterpart - so the highlight follows what the ✓/✗ compared.
+export function webLocationFor(unifiedNumber, locations, counterparts) {
+  const target = counterparts.has(unifiedNumber) ? counterparts.get(unifiedNumber) : unifiedNumber;
+  return (target && locations.get(target)) || null;
+}
+
 // location.page_file is "web_pages/<citation>.html"; the server serves the
 // same saved page at /web-page/<citation>.
 export function pageFileRoute(pageFile) {

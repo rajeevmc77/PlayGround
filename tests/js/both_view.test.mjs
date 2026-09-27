@@ -15,6 +15,7 @@ import {
   renderedContentBox,
   textMatchScale,
   visibleBothChildren,
+  webLocationFor,
 } from "../../src/mo_toc/web/static/both_view.mjs";
 
 test("classifyImage: a captioned Figure is 'figure' even if it happens to be decorative-shaped", () => {
@@ -283,4 +284,26 @@ test("renderedContentBox: null when nothing is rendered, so the caller keeps the
 
 test("renderedContentBox: null when everything drawn lies outside the element's own box", () => {
   assert.equal(renderedContentBox(PANEL, NO_SCROLL, OWN, [rect(132, 300, 740, 330)]), null);
+});
+
+const LOCS = new Map([
+  ["T.Row2", { xpath: "/r2" }],
+  ["T.Row3", { xpath: "/r3" }],
+]);
+
+test("webLocationFor: with no recorded counterpart, the same unified_number's location", () => {
+  assert.deepEqual(webLocationFor("T.Row2", LOCS, new Map()), { xpath: "/r2" });
+});
+
+test("webLocationFor: follows a table row's recorded counterpart (rows paired by content)", () => {
+  assert.deepEqual(webLocationFor("T.Row2", LOCS, new Map([["T.Row2", "T.Row3"]])), { xpath: "/r3" });
+});
+
+test("webLocationFor: a row recorded with no counterpart has no web location, not its namesake's", () => {
+  assert.equal(webLocationFor("T.Row2", LOCS, new Map([["T.Row2", null]])), null);
+});
+
+test("webLocationFor: null when the resolved number has no location", () => {
+  assert.equal(webLocationFor("T.Row9", LOCS, new Map()), null);
+  assert.equal(webLocationFor("T.Row2", LOCS, new Map([["T.Row2", "T.Row9"]])), null);
 });

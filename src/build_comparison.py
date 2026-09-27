@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from comparison.asset_loader import load_pdf_image_bytes, load_web_image_bytes
 from comparison.content_match import content_matches
-from comparison.engine import compare_trees
+from comparison.engine import compare_trees, table_counterparts_in
 from comparison.image_similarity import (
     DEFAULT_THRESHOLD_PERCENT,
     EQUATION_THRESHOLD_PERCENT,
@@ -46,24 +46,33 @@ def _image_matcher(output_dir: Path, threshold_percent: float):
     return _match
 
 
+def _changed(counterparts: dict[str, str | None]) -> dict[str, str | None]:
+    """Only the pairings the viewer can't infer: a different number, or none."""
+    return {pdf: web for pdf, web in counterparts.items() if web != pdf}
+
+
 def run(output_dir: str, threshold_percent: float = DEFAULT_THRESHOLD_PERCENT) -> None:
     out = Path(output_dir)
     pdf_payload = json.loads((out / "bcbc_pdf.json").read_text())
     web_json = out / "bcbc_web.json"
     web_payload = json.loads(web_json.read_text()) if web_json.exists() else None
+    web_tree = web_payload["tree"] if web_payload else None
+    counterparts = table_counterparts_in(pdf_payload["volume"], web_tree)
 
     statuses = compare_trees(
         pdf_payload["volume"],
         pdf_payload["images"],
-        web_payload["tree"] if web_payload else None,
+        web_tree,
         web_payload["images"] if web_payload else [],
         content_matches,
         _image_matcher(out, threshold_percent),
+        counterparts=counterparts,
     )
     payload = {
         "threshold_percent": threshold_percent,
         "equation_threshold_percent": EQUATION_THRESHOLD_PERCENT,
         "statuses": statuses,
+        "counterparts": _changed(counterparts),
     }
     (out / "comparison.json").write_text(json.dumps(payload, indent=2))
 

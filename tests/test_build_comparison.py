@@ -195,6 +195,67 @@ def test_an_equation_still_fails_below_70_percent(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "comparison.json").read_text())["statuses"]["V.P1.Eq1"] is False
 
 
+def _table_payload(rows, root_key):
+    def row(r, cells):
+        return {
+            "unified_number": f"V.Tbl1.Row{r + 1}",
+            "citation": f"t-r{r + 1}",
+            "type": "Row",
+            "content": "",
+            "children": [
+                {
+                    "unified_number": f"V.Tbl1.Row{r + 1}.Col{c + 1}",
+                    "citation": f"t-r{r + 1}-c{c + 1}",
+                    "type": "Cell",
+                    "content": text,
+                    "children": [],
+                }
+                for c, text in enumerate(cells)
+            ],
+        }
+
+    table = {
+        "unified_number": "V.Tbl1",
+        "citation": "t",
+        "type": "Table",
+        "content": "",
+        "children": [row(r, cells) for r, cells in enumerate(rows)],
+    }
+    tree = {"unified_number": "V", "citation": "volume", "content": "", "children": [table]}
+    return {root_key: tree, "images": []}
+
+
+def test_table_rows_pair_by_content_and_the_pairing_is_recorded(tmp_path):
+    """The web has a row the PDF lacks; the PDF's second row pairs with the
+    web's third, passes, and comparison.json records that counterpart (only
+    pairings that differ from the same number are written) so the viewer can
+    follow it."""
+    (tmp_path / "bcbc_pdf.json").write_text(json.dumps(_table_payload([["x"], ["z"]], "volume")))
+    web = _table_payload([["x"], ["y"], ["z"]], "tree")
+    (tmp_path / "bcbc_web.json").write_text(json.dumps(web))
+
+    run(str(tmp_path))
+
+    result = json.loads((tmp_path / "comparison.json").read_text())
+    assert result["statuses"]["V.Tbl1.Row2.Col1"] is True
+    assert result["counterparts"] == {
+        "V.Tbl1.Row2": "V.Tbl1.Row3",
+        "V.Tbl1.Row2.Col1": "V.Tbl1.Row3.Col1",
+    }
+
+
+def test_an_unpaired_pdf_row_is_recorded_with_no_counterpart(tmp_path):
+    pdf = _table_payload([["x"], ["extra"], ["z"]], "volume")
+    (tmp_path / "bcbc_pdf.json").write_text(json.dumps(pdf))
+    (tmp_path / "bcbc_web.json").write_text(json.dumps(_table_payload([["x"], ["z"]], "tree")))
+
+    run(str(tmp_path))
+
+    counterparts = json.loads((tmp_path / "comparison.json").read_text())["counterparts"]
+    assert counterparts["V.Tbl1.Row2"] is None
+    assert counterparts["V.Tbl1.Row3"] == "V.Tbl1.Row2"
+
+
 def test_the_equation_threshold_is_recorded(tmp_path):
     _write_fixtures(tmp_path)
     run(str(tmp_path))
