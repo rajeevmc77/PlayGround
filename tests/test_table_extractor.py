@@ -94,6 +94,62 @@ def test_a_line_inside_one_cell_stays_in_that_cell_however_it_is_aligned():
     assert [c.content for c in data.children] == ["1", "right"]
 
 
+def _rowspan_fixture():
+    """Col1's cell spans body rows 2-3: the rule between them runs across
+    Col2 only, and Col1's text is centred low in the merged cell."""
+    lines = [
+        pline(200, 10, 300, 20, "Table 1.1.(1)", CAPTION_FONT),
+        pline(90, 50, 110, 60, "T", CAPTION_FONT),
+        pline(120, 50, 250, 60, "Depth", CAPTION_FONT),
+        pline(92, 88, 112, 98, "140"),  # centred in rows 2-3 -> falls in row 3's band
+        pline(120, 72, 250, 82, "190"),
+        pline(120, 92, 250, 102, "240"),
+    ]
+    rects = [
+        (90.0, 45.0, 260.0, 45.4),  # top border
+        (90.0, 45.0, 90.4, 110.0),  # left border
+        (259.6, 45.0, 260.0, 110.0),  # right border
+        (114.6, 45.0, 115.0, 110.0),  # column divider
+        (90.0, 65.0, 260.0, 65.4),  # header/body rule, both columns
+        (115.0, 86.0, 260.0, 86.4),  # rows 2/3 rule: Col2 only
+        (90.0, 109.6, 260.0, 110.0),  # bottom border
+    ]
+    return lines, rects
+
+
+def test_a_cell_spanning_rows_keeps_its_text_in_its_first_row():
+    # Real case: Spec Table 2 (lintels) - the PDF centres a spanning cell's
+    # "140" in the middle of its rows, so it landed in a lower row; the site
+    # puts it in the first row, the rows below empty. Every such cell failed
+    # twice: an empty PDF cell against "140", and "140" against an empty one.
+    lines, rects = _rowspan_fixture()
+
+    [region] = detect_tables_on_page(lines, rects, page_number=7)
+
+    rows = [[c.content for c in row.children] for row in region.table_node.children]
+    assert rows == [["T", "Depth"], ["140", "190"], ["", "240"]]
+
+
+def test_a_continuation_pages_spanning_cell_keeps_its_text_in_its_first_row():
+    lines, rects = _rowspan_fixture()
+    pending = _pending_region(cols=2, x_range=(90.0, 260.0))
+
+    region = build_continuation_region(lines[1:], rects, page_number=8, pending=pending)
+
+    rows = [[c.content for c in row.children] for row in region.table_node.children]
+    assert rows == [["T", "Depth"], ["140", "190"], ["", "240"]]
+
+
+def test_cells_with_a_rule_between_them_in_their_column_stay_apart():
+    lines, rects = _rowspan_fixture()
+    rects[5] = (90.0, 86.0, 260.0, 86.4)  # rows 2/3 rule across both columns
+
+    [region] = detect_tables_on_page(lines, rects, page_number=7)
+
+    rows = [[c.content for c in row.children] for row in region.table_node.children]
+    assert rows == [["T", "Depth"], ["", "190"], ["140", "240"]]
+
+
 def _two_tables_with_a_heading_between():
     lines, rects = _minimal_grid_fixture()  # Table 1.1.(1): caption y10, grid y45-90
     heading_idx = len(lines)
