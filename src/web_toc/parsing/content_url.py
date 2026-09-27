@@ -38,7 +38,8 @@ def _format_division_appendix(base: str, m: re.Match) -> str:
 
 
 def _format_spectables(base: str, m: re.Match) -> str:
-    return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/spectables/{m['num']}.json"
+    # Hyphenated, as the site's own span-table page requests it.
+    return f"{base}/{_div_slug(m['div'])}/part-{m['part']}/spectables-{m['num']}.json"
 
 
 _DISPATCH: dict[str, tuple[re.Pattern, Callable[[str, re.Match], str]]] = {
