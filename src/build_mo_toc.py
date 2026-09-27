@@ -20,7 +20,7 @@ from mo_toc.output.json_writer import write_json
 from mo_toc.parsing.image_extractor import RawImage
 from mo_toc.parsing.image_matcher import match_images
 from mo_toc.parsing.notes_nesting import nest_notes_under_parts
-from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES
+from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES, mo_toc_position
 from mo_toc.parsing.parallel_extraction import extract_all_pages
 from mo_toc.parsing.table_extractor import (
     TableRegion,
@@ -149,7 +149,9 @@ def run(pdf_path: str, output_dir: str) -> None:
     volume, captions, table_regions_by_page = build_document(
         all_lines, table_regions_by_page, all_drawing_rects
     )
-    scope_by_citation = assign_unified_numbers([volume], MO_TOC_RULES, MO_TOC_SCOPE_TYPES)
+    scope_by_citation = assign_unified_numbers(
+        [volume], MO_TOC_RULES, MO_TOC_SCOPE_TYPES, position=mo_toc_position
+    )
     raw_images = drop_images_over_tables(raw_images, table_regions_by_page)
     images = write_images(raw_images, str(Path(output_dir) / "images"))
     images = match_images(images, captions, volume)

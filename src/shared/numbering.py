@@ -54,6 +54,10 @@ class _Walk:
     counters: dict[tuple[str, str], int] = field(default_factory=dict)
     seen: dict[str, int] = field(default_factory=dict)
     scope_by_citation: dict[str, str] = field(default_factory=dict)
+    # Scoped-ordinal nodes by (scope key, type), in walk order.
+    members: dict[tuple[str, str], list] = field(default_factory=dict)
+    # id(node) -> its ordinal, when set by position rather than walk order.
+    order: dict[int, int] = field(default_factory=dict)
 
 
 def normalize_identifier(identifier: str) -> str:
@@ -87,7 +91,10 @@ def _ordinal(node, rule: Rule, ctx: _Context, walk: _Walk) -> str:
     base = ctx.scope_key if rule.scoped else ctx.parent_key
     counter = (base, node.type)
     walk.counters[counter] = walk.counters.get(counter, 0) + 1
-    return _join(base, f"{rule.prefix}{walk.counters[counter]}")
+    if rule.scoped:
+        walk.members.setdefault(counter, []).append(node)
+    n = walk.order.get(id(node), walk.counters[counter])
+    return _join(base, f"{rule.prefix}{n}")
 
 
 def _key_for(node, rule: Rule, ctx: _Context, walk: _Walk) -> str:
@@ -121,13 +128,35 @@ def _number(nodes: list, ctx: _Context, walk: _Walk) -> None:
         _number(node.children, child_ctx, walk)
 
 
+def _position_order(members: dict[tuple[str, str], list], position: Callable) -> dict[int, int]:
+    order = {}
+    for nodes in members.values():
+        # sorted() is stable: nodes at the same position keep their walk order.
+        ranked = sorted(nodes, key=position)
+        order.update({id(node): n for n, node in enumerate(ranked, start=1)})
+    return order
+
+
 def assign_unified_numbers(
-    nodes: list, rules: dict[str, Rule], scope_types: frozenset[str] = frozenset()
+    nodes: list,
+    rules: dict[str, Rule],
+    scope_types: frozenset[str] = frozenset(),
+    position: Callable[[object], tuple] | None = None,
 ) -> dict[str, str]:
     """Numbers `nodes` and all descendants in place. Returns citation -> key of
     that node's nearest enclosing scope node (itself included), which
-    number_images uses to key an image by its owner."""
+    number_images uses to key an image by its owner.
+
+    `position`: when given, scoped ordinals (a Table within its Article) are
+    numbered in that order rather than the tree's - a table placed deep under
+    a clause is otherwise counted before tables appended to the sentence
+    around it, though it comes after them on the page."""
     walk = _Walk(rules=rules, scope_types=scope_types)
+    _number(nodes, _Context(), walk)
+    if position is None:
+        return walk.scope_by_citation
+    order = _position_order(walk.members, position)
+    walk = _Walk(rules=rules, scope_types=scope_types, order=order)
     _number(nodes, _Context(), walk)
     return walk.scope_by_citation
 
