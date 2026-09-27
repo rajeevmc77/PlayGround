@@ -16,6 +16,10 @@ WEB_TOC_RULES: dict[str, Rule] = {
     "section": _ABSOLUTE,
     "subsection": _ABSOLUTE,
     "article": _ABSOLUTE,
+    # Appendix D's own levels (appendix_extractor.py): "AppD.D-1.1.1".
+    "appendix_section": _ABSOLUTE,
+    "appendix_subsection": _ABSOLUTE,
+    "appendix_article": _ABSOLUTE,
     "Note": _ABSOLUTE,
     "Sentence": Rule("child"),
     "Clause": Rule("suffix"),

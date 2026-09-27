@@ -371,3 +371,81 @@ def test_attach_notes_puts_part10_note_under_its_part_appendix():
     assert [c.citation for c in appendix.children] == ["nbc.divB.part10.appendix.appnote1"]
     assert [c.type for c in part.children] == ["part_appendix"]
     assert "nbc.divB.part10.appendix.appnote1" in widened
+
+
+APPENDIX_D = "nbc.divB.appendixD"
+APPENDIX_D_ARTICLE = f"{APPENDIX_D}.appsect1.subsect1.article2"
+_APPENDIX_D_NAV = {
+    "tree": [
+        {
+            "id": "nbc.divB",
+            "type": "division",
+            "title": "Division B - Acceptable Solutions",
+            "children": [
+                {
+                    "id": APPENDIX_D,
+                    "type": "division_appendix",
+                    "number": "D",
+                    "title": "Appendix D - Fire-Performance Ratings",
+                }
+            ],
+        }
+    ]
+}
+_APPENDIX_D_ARTICLE_CONTENT = {
+    "id": APPENDIX_D_ARTICLE,
+    "type": "appendix_article",
+    "title": "Referenced Documents",
+    "content": [
+        {"type": "paragraph", "id": f"{APPENDIX_D_ARTICLE}.para1", "content": "1) Listed."},
+        {
+            "type": "table",
+            "id": f"{APPENDIX_D_ARTICLE}.table1",
+            "structure": {"body_rows": [{"cells": [_cell("CSA")]}]},
+        },
+    ],
+}
+_APPENDIX_D_CONTENT = {
+    "id": APPENDIX_D,
+    "type": "appendix",
+    "letter": "D",
+    "sections": [
+        {
+            "id": f"{APPENDIX_D}.appsect1",
+            "type": "appendix_section",
+            "title": "General",
+            "subsections": [
+                {
+                    "id": f"{APPENDIX_D}.appsect1.subsect1",
+                    "type": "appendix_subsection",
+                    "title": "Introduction",
+                    "articles": [_APPENDIX_D_ARTICLE_CONTENT],
+                }
+            ],
+        }
+    ],
+}
+
+
+@pytest.fixture
+def appendix_d_dir(tmp_path):
+    source = tmp_path / "web_source"
+    (source / "content").mkdir(parents=True)
+    (source / "navigation.json").write_text(json.dumps(_APPENDIX_D_NAV))
+    (source / "snapshot.json").write_text(json.dumps({"version": "2024", "date": "2024-03-08"}))
+    (source / "content" / f"{APPENDIX_D}.json").write_text(json.dumps(_APPENDIX_D_CONTENT))
+    (tmp_path / "web_pages").mkdir()
+    (tmp_path / "web_images").mkdir()
+    return tmp_path
+
+
+def test_run_builds_appendix_ds_own_articles_and_keeps_its_tables_at_the_appendix(
+    appendix_d_dir,
+):
+    tree = _built(appendix_d_dir)["tree"]
+    article = _find(tree, APPENDIX_D_ARTICLE)
+    assert article["unified_number"] == "AppD.D-1.1.2"
+    assert [c["unified_number"] for c in article["children"]] == ["AppD.D-1.1.2.(1)"]
+    appendix = _find(tree, APPENDIX_D)
+    tables = [c for c in appendix["children"] if c["type"] == "Table"]
+    assert [t["unified_number"] for t in tables] == ["AppD.Tbl1"]

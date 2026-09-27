@@ -70,6 +70,18 @@ def test_the_webs_own_heading_is_dropped_from_a_note():
     assert content_matches(pdf, web)
 
 
+def test_the_webs_own_heading_is_dropped_from_an_appendix_article():
+    pdf = _node("The ratings shown apply.", type_="AppendixArticle")
+    web = _node(
+        "D-1.1.3. Applicability of Ratings The ratings shown apply.",
+        [[0, 33, "b"]],
+        "appendix_article",
+        "D-1.1.3",
+    )
+    web["title"] = "Applicability of Ratings"
+    assert content_matches(pdf, web)
+
+
 def test_a_note_whose_web_text_does_not_start_with_its_own_heading_is_kept_whole():
     pdf = _node("The footing sizes", type_="Note")
     web = _node("Footing Sizes The footing sizes", type_="Note", identifier="A-9.15.3.4.(2)")

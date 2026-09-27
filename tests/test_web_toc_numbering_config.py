@@ -38,6 +38,9 @@ def test_rule_table_covers_exactly_the_expected_node_types():
         "section",
         "subsection",
         "article",
+        "appendix_section",
+        "appendix_subsection",
+        "appendix_article",
         "Note",
         "Sentence",
         "Clause",
@@ -74,3 +77,11 @@ def test_scope_types_are_exactly_the_expected_set():
 
 def test_scope_types():
     assert {"article", "Note", "part_appendix", "spectables"} <= WEB_TOC_SCOPE_TYPES
+
+
+def test_appendix_levels_are_absolute_but_count_no_tables_of_their_own():
+    # The PDF numbers "D-1.1.1." under the appendix ("AppD.D-1.1.1") and
+    # counts Appendix D's tables at the appendix itself ("AppD.Tbl3").
+    for level in ("appendix_section", "appendix_subsection", "appendix_article"):
+        assert WEB_TOC_RULES[level] == Rule("absolute")
+        assert level not in WEB_TOC_SCOPE_TYPES
