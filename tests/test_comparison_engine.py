@@ -5,7 +5,7 @@ text_matches/images_match are injected so these tests stay pure and fast -
 see test_comparison_content_match.py / test_comparison_image_similarity.py
 for the real implementations these fakes stand in for."""
 
-from comparison.engine import compare_trees
+from comparison.engine import compare_trees, table_counterparts_in
 
 
 def _node(unified_number, citation, content="", children=None):
@@ -208,3 +208,68 @@ def test_a_node_with_no_unified_number_is_not_recorded_but_its_children_still_ar
 
     assert "" not in statuses
     assert statuses["P1"] is True
+
+
+def _table_node(number, citation, rows):
+    def cell(r, c, text):
+        return {
+            "unified_number": f"{number}.Row{r + 1}.Col{c + 1}",
+            "citation": f"{citation}-r{r + 1}-c{c + 1}",
+            "type": "Cell",
+            "content": text,
+            "children": [],
+        }
+
+    def row(r, cells):
+        return {
+            "unified_number": f"{number}.Row{r + 1}",
+            "citation": f"{citation}-r{r + 1}",
+            "type": "Row",
+            "content": "",
+            "children": [cell(r, c, text) for c, text in enumerate(cells)],
+        }
+
+    return {
+        "unified_number": number,
+        "citation": citation,
+        "type": "Table",
+        "content": "",
+        "children": [row(r, cells) for r, cells in enumerate(rows)],
+    }
+
+
+def test_table_counterparts_in_pairs_rows_of_every_table_on_both_sides():
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["x"], ["z"]])])
+    web = _node("A", "a", "", [_table_node("A.Tbl1", "wt", [["x"], ["y"], ["z"]])])
+    counterparts = table_counterparts_in(pdf, web)
+    assert counterparts["A.Tbl1.Row2"] == "A.Tbl1.Row3"
+    assert counterparts["A.Tbl1.Row2.Col1"] == "A.Tbl1.Row3.Col1"
+
+
+def test_table_counterparts_in_skips_a_table_the_web_lacks_and_a_missing_web_tree():
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["x"]])])
+    assert table_counterparts_in(pdf, _node("A", "a", "")) == {}
+    assert table_counterparts_in(pdf, None) == {}
+
+
+def test_rows_compare_against_their_counterparts_not_the_same_numbered_row():
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["x"], ["z"]])])
+    web = _node("A", "a", "", [_table_node("A.Tbl1", "wt", [["x"], ["y"], ["z"]])])
+
+    def same_text(p, w):
+        return p["content"] == w["content"]
+
+    counterparts = table_counterparts_in(pdf, web)
+    statuses = compare_trees(pdf, [], web, [], same_text, NEVER_MATCH, counterparts=counterparts)
+
+    assert statuses["A.Tbl1.Row2.Col1"] is True
+    assert statuses["A.Tbl1"] is True
+
+
+def test_an_unpaired_pdf_row_fails():
+    pdf = _node("A", "a", "", [_table_node("A.Tbl1", "pt", [["x"], ["extra"], ["z"]])])
+    web = _node("A", "a", "", [_table_node("A.Tbl1", "wt", [["x"], ["z"]])])
+    counterparts = table_counterparts_in(pdf, web)
+    statuses = compare_trees(pdf, [], web, [], ALWAYS_MATCH, NEVER_MATCH, counterparts=counterparts)
+    assert statuses["A.Tbl1.Row2"] is False
+    assert statuses["A.Tbl1.Row3"] is True
