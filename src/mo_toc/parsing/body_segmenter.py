@@ -18,7 +18,7 @@ import re
 import statistics
 
 from mo_toc.domain.models import BBox, Node
-from mo_toc.parsing.marker_rules import RE_MARKER, classify_marker, to_roman
+from mo_toc.parsing.marker_rules import classify_marker, match_marker, to_roman
 from mo_toc.parsing.pdf_source import PageLine
 from shared.styled_text import StyledText
 
@@ -28,7 +28,7 @@ BodyLine = tuple[int, PageLine]
 def _split_into_sentence_groups(body_lines: list[BodyLine]) -> list[list[BodyLine]]:
     groups: list[list[BodyLine]] = []
     for page_index, pline in body_lines:
-        match = RE_MARKER.match(pline.text)
+        match = match_marker(pline.text, pline.runs)
         starts_sentence = match and classify_marker(match.group(1)) == "sentence"
         if starts_sentence:
             groups.append([(page_index, pline)])
@@ -40,7 +40,7 @@ def _split_into_sentence_groups(body_lines: list[BodyLine]) -> list[list[BodyLin
 def _clause_subclause_x0s(group: list[BodyLine]) -> tuple[list[float], list[float]]:
     clause_x, subclause_x = [], []
     for _page_index, pline in group[1:]:
-        match = RE_MARKER.match(pline.text)
+        match = match_marker(pline.text, pline.runs)
         if not match:
             continue
         kind = classify_marker(match.group(1))
@@ -75,7 +75,7 @@ def _following_tokens(group: list[BodyLine]) -> list[str | None]:
     following, upcoming = [], None
     for _page_index, pline in reversed(group[1:]):
         following.append(upcoming)
-        match = RE_MARKER.match(pline.text)
+        match = match_marker(pline.text, pline.runs)
         upcoming = match.group(1).lower() if match else upcoming
     return following[::-1]
 
@@ -200,7 +200,7 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
     current_owner, current_owner_page = sentence, sentence.page - 1
 
     for (page_index, pline), following in zip(group[1:], _following_tokens(group), strict=True):
-        match = RE_MARKER.match(pline.text)
+        match = match_marker(pline.text, pline.runs)
         if not match:
             current_owner, current_owner_page = _continuation_owner(
                 pline, group[0][1], sentence, (current_owner, current_owner_page)
@@ -227,7 +227,7 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
 
 def _build_sentence(group: list[BodyLine], article_citation: str, end_page: int) -> Node:
     first_page_index, first_line = group[0]
-    match = RE_MARKER.match(first_line.text)
+    match = match_marker(first_line.text, first_line.runs)
     token, tail = match.group(1), _marker_tail(first_line, match)
     sentence = Node(
         type="Sentence",

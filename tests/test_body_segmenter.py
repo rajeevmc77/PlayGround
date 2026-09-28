@@ -381,3 +381,41 @@ def test_clause_i_after_hs_subclauses_is_still_a_clause():
         "B-3.8.3.17.(1)(j)",
     ]
     assert [len(c.children) for c in clauses] == [2, 2, 0]
+
+
+def glued_line(page_index, y0, marker, text):
+    """A line whose marker the PDF set as its own span, the space after it a
+    whitespace-only span the PDF source drops: "3)For the purpose ..." -
+    pages 45, 127 and 1044."""
+    runs = ((0, len(marker), 109.0, 117.0), (len(marker), len(marker) + len(text), 126.0, 500.0))
+    pline = PageLine(
+        bbox=(109, y0, 500, y0 + 10), text=marker + text, font="BookAntiqua", runs=runs
+    )
+    return (page_index, pline)
+
+
+def test_a_marker_set_as_its_own_span_with_no_space_after_it_is_still_a_marker():
+    body = [
+        line(5, 100, 50, "2) The first sentence."),
+        glued_line(5, 112, "3)", "For the purpose of this Subsection, taking into account"),
+        glued_line(5, 124, "a)", "thermal transmittance, and"),
+        glued_line(5, 136, "b)", "air leakage."),
+    ]
+    sentences = segment_article_body(body, "B-9.36.6.2.", article_end_page=7)
+    assert [s.citation for s in sentences] == ["B-9.36.6.2.(2)", "B-9.36.6.2.(3)"]
+    assert sentences[1].content == "For the purpose of this Subsection, taking into account"
+    assert [c.content for c in sentences[1].children] == [
+        "thermal transmittance, and",
+        "air leakage.",
+    ]
+
+
+def test_text_glued_to_a_bracket_in_one_span_is_no_marker():
+    body = [
+        line(5, 100, 50, "1) The loads on the"),
+        (5, PageLine(bbox=(50, 112, 300, 122), text="b)ottom chord", font="BookAntiqua")),
+        glued_line(5, 124, "side)", "(2)(3)"),
+    ]
+    [sentence] = segment_article_body(body, "B-9.9.9.9.", article_end_page=7)
+    assert sentence.children == []
+    assert sentence.content == "The loads on the b)ottom chord side)(2)(3)"
