@@ -40,8 +40,10 @@ _PLAIN_CHARACTERS = str.maketrans(
 )
 
 # A bulleted list's bullet: the PDF prints it as text, the site renders the
-# list as <ul> items whose bullets are not text.
-_LIST_BULLETS = frozenset("•")
+# list as <ul> items whose bullets are not text. The PDF prints a unit's
+# multiplication dot with the same "•" ("kWh/(m²•year)") where the site
+# writes "·" or "⋅", so no dot glyph counts.
+_DOTS = frozenset("•·⋅")
 
 # How the site types a dash the PDF typesets: "---" for an em dash, "--" for
 # an en dash. Each run reads as the one dash it stands for.
@@ -51,12 +53,12 @@ Range = tuple[int, int, str]
 
 
 def _is_compared(char: str) -> bool:
-    return not char.isspace() and char not in _LIST_BULLETS
+    return not char.isspace() and char not in _DOTS
 
 
 def compared_positions(text: str) -> list[int]:
     """Where the characters that count in the comparison sit in `text`:
-    not whitespace, not a list bullet, and a typed dash's first hyphen only."""
+    not whitespace, not a bullet or dot, and a typed dash's first hyphen only."""
     typed_tails = {i for m in _TYPED_DASH.finditer(text) for i in range(m.start() + 1, m.end())}
     return [i for i, char in enumerate(text) if _is_compared(char) and i not in typed_tails]
 
