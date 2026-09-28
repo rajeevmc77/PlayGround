@@ -6,12 +6,14 @@ comparison checks. Both pipelines record a node's `content` together with
 `matches` is the comparison rule: the two texts must be identical once all
 whitespace is dropped (the PDF breaks lines inside words and citations -
 "fire- resistance", "A- 1.1.1.1." - where the web doesn't), and the "•" the
-PDF prints before list items with it, and every letter and digit must carry
+PDF prints before list items with it, the site's typed "---"/"--" read as the
+dash they stand for, and every letter and digit must carry
 the same bold/italic on both sides. Punctuation's own styling is ignored:
 whether the comma after an italic term is italic too isn't visible enough to
 matter. Pure: no PDF, browser or file I/O.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -41,13 +43,22 @@ _PLAIN_CHARACTERS = str.maketrans(
 # list as <ul> items whose bullets are not text.
 _LIST_BULLETS = frozenset("•")
 
+# How the site types a dash the PDF typesets: "---" for an em dash, "--" for
+# an en dash. Each run reads as the one dash it stands for.
+_TYPED_DASH = re.compile(r"-{2,3}")
+
 Range = tuple[int, int, str]
 
 
-def is_compared(char: str) -> bool:
-    """Whether a character counts in the comparison: whitespace and list
-    bullets don't."""
+def _is_compared(char: str) -> bool:
     return not char.isspace() and char not in _LIST_BULLETS
+
+
+def compared_positions(text: str) -> list[int]:
+    """Where the characters that count in the comparison sit in `text`:
+    not whitespace, not a list bullet, and a typed dash's first hyphen only."""
+    typed_tails = {i for m in _TYPED_DASH.finditer(text) for i in range(m.start() + 1, m.end())}
+    return [i for i, char in enumerate(text) if _is_compared(char) and i not in typed_tails]
 
 
 def style_of(bold: bool, italic: bool) -> str:
@@ -117,15 +128,15 @@ class StyledText:
 
     def signature(self) -> list[tuple[str, str]]:
         """(character, style) for every compared character (see
-        is_compared), curly quotes and dashes made plain; the style only
-        counts on letters and digits."""
+        compared_positions), curly quotes and dashes made plain; the style
+        only counts on letters and digits."""
         styles = [""] * len(self.text)
         for start, end, style in _clip(self.emphasis, 0, len(self.text)):
             styles[start:end] = [style] * (end - start)
+        plain = self.text.translate(_PLAIN_CHARACTERS)
         return [
-            (char, style if char.isalnum() else "")
-            for char, style in zip(self.text.translate(_PLAIN_CHARACTERS), styles, strict=True)
-            if is_compared(char)
+            (plain[i], styles[i] if plain[i].isalnum() else "")
+            for i in compared_positions(self.text)
         ]
 
 

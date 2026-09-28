@@ -28,7 +28,7 @@ independent tools live here:
    show or hide those rows — headings always stay, and an image whose row is hidden moves up
    to the nearest row still shown) and "Compare" (PDF vs web images).
    The tree's ✓/✗ comes from `src/build_comparison.py`: a leaf's text must match the web's
-   exactly apart from whitespace and the "•" list bullets the PDF prints as text, and the only formatting checked is bold/italic (each
+   exactly apart from whitespace and the "•" list bullets the PDF prints as text (the site's typed "---"/"--" read as the dash they stand for), and the only formatting checked is bold/italic (each
    node's `emphasis` ranges) - see `ai_docs/2026-09-26-compare-emphasis-design.md`.
    A Note's content is its body after the run-in title; the web's note heading
    (identifier + title) is dropped before comparing, like a sentence's own "1)" marker.
@@ -179,7 +179,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (945 tests — 927 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (948 tests — 930 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
