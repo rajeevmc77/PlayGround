@@ -94,3 +94,11 @@ def test_a_change_after_a_bullet_is_mapped_back_to_the_original_text():
     assert edit["pdf"][1] == "moss"
     assert edit["web"][1] == "gravel"
     assert edit["pdf"][0].endswith("clay, • ")
+
+
+def test_a_change_after_a_typed_dash_is_mapped_back_to_the_original_text():
+    reason = _describe("Code Documents—the moss", "Code Documents---the gravel")
+    [edit] = reason["edits"]
+    assert edit["pdf"][1] == "moss"
+    assert edit["web"][1] == "gravel"
+    assert edit["web"][0].endswith("Documents---the ")

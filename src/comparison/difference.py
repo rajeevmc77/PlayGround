@@ -4,14 +4,15 @@ with a little context either side and the kind of difference it is, or - when
 the words are the same - which words' bold/italic differ.
 
 Texts are compared the way the match rule compares them (StyledText.signature:
-whitespace and list bullets dropped, curly quotes and dashes made plain), and each differing
-stretch is mapped back to the original text so it reads normally. Pure: no
+whitespace and list bullets dropped, typed dashes read as one, curly quotes
+and dashes made plain), and each differing stretch is mapped back to the
+original text so it reads normally. Pure: no
 file or browser I/O."""
 
 import difflib
 import re
 
-from shared.styled_text import StyledText, is_compared
+from shared.styled_text import StyledText, compared_positions
 
 CONTEXT = 30  # characters of unchanged text shown either side of a change
 MAX_EDITS = 3
@@ -51,11 +52,6 @@ def _category(pdf_part: str, web_part: str) -> str:
     return _one_sided_category(pdf_part or web_part)
 
 
-def _positions(text: str) -> list[int]:
-    """Where each signature character sits in the original text."""
-    return [i for i, char in enumerate(text) if is_compared(char)]
-
-
 def _text_span(positions: list[int], text: str, start: int, end: int) -> tuple[int, int]:
     """Signature characters [start, end) as a stretch of the original text; an
     empty stretch sits just after the character before it."""
@@ -74,8 +70,8 @@ def _sides(text: str, start: int, end: int) -> list[str]:
 
 def _edit(pdf: str, web: str, opcode, signatures: tuple[str, str]) -> dict:
     _tag, i1, i2, j1, j2 = opcode
-    pdf_span = _text_span(_positions(pdf), pdf, i1, i2)
-    web_span = _text_span(_positions(web), web, j1, j2)
+    pdf_span = _text_span(compared_positions(pdf), pdf, i1, i2)
+    web_span = _text_span(compared_positions(web), web, j1, j2)
     return {
         "category": _category(signatures[0][i1:i2], signatures[1][j1:j2]),
         "pdf": _sides(pdf, *pdf_span),
@@ -119,8 +115,8 @@ def _style_runs(pdf_sig: list, web_sig: list) -> list[tuple[int, int, str, str]]
 def _style_edit(pdf: str, web: str, run: tuple[int, int, str, str]) -> dict:
     start, end, pdf_style, web_style = run
     return {
-        "pdf": _sides(pdf, *_text_span(_positions(pdf), pdf, start, end)),
-        "web": _sides(web, *_text_span(_positions(web), web, start, end)),
+        "pdf": _sides(pdf, *_text_span(compared_positions(pdf), pdf, start, end)),
+        "web": _sides(web, *_text_span(compared_positions(web), web, start, end)),
         "pdf_style": _STYLE_NAMES[pdf_style],
         "web_style": _STYLE_NAMES[web_style],
     }

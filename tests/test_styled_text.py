@@ -162,3 +162,17 @@ def test_matches_ignores_the_bullets_the_pdf_prints_before_list_items():
 
 def test_a_bullet_does_not_hide_a_real_difference():
     assert not matches(StyledText("• soil, • clay"), StyledText("soil, sand"))
+
+
+def test_matches_reads_the_sites_typed_dashes_as_one_dash():
+    """The site types an em dash as "---" and an en dash as "--" (Documents---the,
+    Equipment and Systems -- Maximum), where the PDF typesets — and –."""
+    assert matches(StyledText("—"), StyledText("---"))
+    assert matches(StyledText("Code Documents—the"), StyledText("Code Documents---the"))
+    assert matches(StyledText("Systems – Maximum"), StyledText("Systems -- Maximum"))
+
+
+def test_separate_typed_dashes_stay_separate():
+    assert matches(StyledText("— —"), StyledText("--- ---"))
+    assert not matches(StyledText("—"), StyledText("--- ---"))
+    assert not matches(StyledText("a-b"), StyledText("a--b--c"))
