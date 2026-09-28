@@ -50,8 +50,13 @@ _PLAIN_CHARACTERS = str.maketrans(
 # writes "·" or "⋅", so no dot glyph counts.
 _DOTS = frozenset("•·⋅")
 
-# A cited number: "3.2.4.8", "9.38", or lettered - "D-6", "A-9.36.2.4".
-_CITED_NUMBER = r"(?:(?<![A-Za-z])[A-Z]-\d+(?:\.\d+)*|\d+(?:\.\d+)+)"
+# A cited number: "3.2.4.8", "9.38", or lettered - "D-6", "A-9.36.2.4" - with
+# any Sentence/Clause brackets after it: "D-2.3.9.(2)", "3.2.4.1.(2)(a)" - the
+# site sometimes spaced apart: "A-2.2.7.2.(1) (b)".
+_CITED_NUMBER = (
+    r"(?:(?<![A-Za-z])[A-Z]-\d+(?:\.\d+)*|\d+(?:\.\d+)+)"
+    r"(?:\.?\([0-9a-z]+\)(?:\s*\([0-9a-z]+\))*)?"
+)
 
 # Characters the site leaves out or types differently, each pattern's group 1
 # the characters that don't count:
@@ -68,7 +73,8 @@ _UNCOUNTED = (
     # A cited number's final period, which the site drops or prints apart
     # after its cross-reference link: "3.2.4.8, 3.2.4.9", "(3.8.3.2)",
     # "Subsection 9.10.9 . 2 h" where the PDF has "3.2.4.8.", "(3.8.3.2.)",
-    # "9.10.9. 2 h" - and "Section D-6. of" where the PDF has "D-6 of" - but
+    # "9.10.9. 2 h" - and "Section D-6. of", "Sentence D-2.3.9.(2). by way"
+    # where the PDF has "D-6 of", "D-2.3.9.(2) by way" - but
     # not the period right before a Sentence's "(1)", nor one followed by a
     # digit, where the PDF breaks a line inside the number ("3.2 .4.9.").
     re.compile(_CITED_NUMBER + r"(\.)(?![\d(])"),
