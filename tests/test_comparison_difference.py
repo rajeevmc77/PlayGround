@@ -86,3 +86,11 @@ def test_an_italic_word_only_on_the_site_is_named():
 def test_an_empty_side_is_its_own_kind():
     assert _describe("", "Single storey building configuration")["kind"] == "pdf_empty"
     assert _describe("Concrete, mm", "")["kind"] == "web_empty"
+
+
+def test_a_change_after_a_bullet_is_mapped_back_to_the_original_text():
+    reason = _describe("contains: • quick clay, • moss", "contains:quick clay,gravel")
+    [edit] = reason["edits"]
+    assert edit["pdf"][1] == "moss"
+    assert edit["web"][1] == "gravel"
+    assert edit["pdf"][0].endswith("clay, • ")

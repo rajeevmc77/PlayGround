@@ -147,3 +147,18 @@ def test_between_keeps_a_middle_stretch_and_clips_its_ranges():
     styled = StyledText("ab cd ef", ((1, 4, "b"), (6, 8, "i")))
     assert styled.between(3, 5) == StyledText("cd", ((0, 1, "b"),))
     assert styled.between(6, 8) == StyledText("ef", ((0, 2, "i"),))
+
+
+def test_matches_ignores_the_bullets_the_pdf_prints_before_list_items():
+    """The PDF prints a bulleted list's "•" as text; the site renders the
+    same list as <ul> items, whose bullets are not text - like a sentence's
+    own "1)" marker, the bullet is the list's, not the item's content."""
+    assert matches(
+        StyledText("the following characteristics: • plasticity index, • moisture content"),
+        StyledText("the following characteristics:plasticity index,moisture content"),
+    )
+    assert matches(StyledText("•"), StyledText(""))
+
+
+def test_a_bullet_does_not_hide_a_real_difference():
+    assert not matches(StyledText("• soil, • clay"), StyledText("soil, sand"))

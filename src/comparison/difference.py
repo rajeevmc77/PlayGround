@@ -4,14 +4,14 @@ with a little context either side and the kind of difference it is, or - when
 the words are the same - which words' bold/italic differ.
 
 Texts are compared the way the match rule compares them (StyledText.signature:
-whitespace dropped, curly quotes and dashes made plain), and each differing
+whitespace and list bullets dropped, curly quotes and dashes made plain), and each differing
 stretch is mapped back to the original text so it reads normally. Pure: no
 file or browser I/O."""
 
 import difflib
 import re
 
-from shared.styled_text import StyledText
+from shared.styled_text import StyledText, is_compared
 
 CONTEXT = 30  # characters of unchanged text shown either side of a change
 MAX_EDITS = 3
@@ -53,7 +53,7 @@ def _category(pdf_part: str, web_part: str) -> str:
 
 def _positions(text: str) -> list[int]:
     """Where each signature character sits in the original text."""
-    return [i for i, char in enumerate(text) if not char.isspace()]
+    return [i for i, char in enumerate(text) if is_compared(char)]
 
 
 def _text_span(positions: list[int], text: str, start: int, end: int) -> tuple[int, int]:

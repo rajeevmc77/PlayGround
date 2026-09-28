@@ -5,10 +5,11 @@ comparison checks. Both pipelines record a node's `content` together with
 
 `matches` is the comparison rule: the two texts must be identical once all
 whitespace is dropped (the PDF breaks lines inside words and citations -
-"fire- resistance", "A- 1.1.1.1." - where the web doesn't), and every letter
-and digit must carry the same bold/italic on both sides. Punctuation's own
-styling is ignored: whether the comma after an italic term is italic too
-isn't visible enough to matter. Pure: no PDF, browser or file I/O.
+"fire- resistance", "A- 1.1.1.1." - where the web doesn't), and the "•" the
+PDF prints before list items with it, and every letter and digit must carry
+the same bold/italic on both sides. Punctuation's own styling is ignored:
+whether the comma after an italic term is italic too isn't visible enough to
+matter. Pure: no PDF, browser or file I/O.
 """
 
 from collections.abc import Iterable
@@ -36,7 +37,17 @@ _PLAIN_CHARACTERS = str.maketrans(
     }
 )
 
+# A bulleted list's bullet: the PDF prints it as text, the site renders the
+# list as <ul> items whose bullets are not text.
+_LIST_BULLETS = frozenset("•")
+
 Range = tuple[int, int, str]
+
+
+def is_compared(char: str) -> bool:
+    """Whether a character counts in the comparison: whitespace and list
+    bullets don't."""
+    return not char.isspace() and char not in _LIST_BULLETS
 
 
 def style_of(bold: bool, italic: bool) -> str:
@@ -105,16 +116,16 @@ class StyledText:
         return StyledText(self.text[start:end], _clip(self.emphasis, start, end))
 
     def signature(self) -> list[tuple[str, str]]:
-        """(character, style) for every non-whitespace character, curly
-        quotes and dashes made plain; the style only counts on letters and
-        digits."""
+        """(character, style) for every compared character (see
+        is_compared), curly quotes and dashes made plain; the style only
+        counts on letters and digits."""
         styles = [""] * len(self.text)
         for start, end, style in _clip(self.emphasis, 0, len(self.text)):
             styles[start:end] = [style] * (end - start)
         return [
             (char, style if char.isalnum() else "")
             for char, style in zip(self.text.translate(_PLAIN_CHARACTERS), styles, strict=True)
-            if not char.isspace()
+            if is_compared(char)
         ]
 
 
