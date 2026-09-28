@@ -176,3 +176,11 @@ def test_separate_typed_dashes_stay_separate():
     assert matches(StyledText("— —"), StyledText("--- ---"))
     assert not matches(StyledText("—"), StyledText("--- ---"))
     assert not matches(StyledText("a-b"), StyledText("a--b--c"))
+
+
+def test_matches_reads_every_dot_glyph_as_the_bullet_it_shares():
+    """The PDF prints a unit's multiplication dot with the same "•" glyph as
+    its bullets ("kWh/(m²•year)") where the site writes "·" - so, like the
+    bullet, no dot glyph counts."""
+    assert matches(StyledText("≤ 30 kWh/(m²•year)"), StyledText("≤ 30 kWh/(m²·year)"))
+    assert matches(StyledText("W/m2·K"), StyledText("W/m2⋅K"))
