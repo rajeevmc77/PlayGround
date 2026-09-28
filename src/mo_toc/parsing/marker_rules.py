@@ -9,6 +9,7 @@ import re
 
 ROMAN_CHARS = set("ivxlcdm")
 RE_MARKER = re.compile(r"^([A-Za-z0-9]{1,4})\)\s+(.*)$")
+_RE_GLUED_MARKER = re.compile(r"^([A-Za-z0-9]{1,4})\)(\S.*)$")
 
 
 _ROMAN_VALUES = [
@@ -51,3 +52,17 @@ def classify_marker(token: str) -> str:
     if len(lowered) == 1:
         return "ambiguous" if lowered in ROMAN_CHARS else "clause"
     return "subclause" if lowered in VALID_ROMANS else "noise"
+
+
+def match_marker(text: str, runs: tuple = ()) -> re.Match | None:
+    """A line's leading "1)"/"a)"/"iv)" marker. Where the PDF set the marker
+    as its own span, the space after it can be a whitespace-only span the
+    text leaves out ("3)For the purpose ..."): the marker's own span ending
+    at its ")" still makes it one - `runs` are the line's (start, end, x0, x1)
+    per span - if it is a marker's shape."""
+    match = RE_MARKER.match(text)
+    if match or not runs:
+        return match
+    glued = _RE_GLUED_MARKER.match(text)
+    own_span = glued is not None and runs[0][1] == glued.end(1) + 1
+    return glued if own_span and classify_marker(glued.group(1)) != "noise" else None

@@ -30,7 +30,7 @@ from mo_toc.parsing.heading_rules import (
     is_caption_title_font,
     is_table_notes_heading,
 )
-from mo_toc.parsing.marker_rules import RE_MARKER
+from mo_toc.parsing.marker_rules import match_marker
 from mo_toc.parsing.pdf_source import PageLine, PdfSource
 from shared.styled_text import StyledText
 
@@ -428,7 +428,7 @@ def _table_notes_after(block_family: str, pline: PageLine) -> str | None:
     family = font_family(pline.font)
     if block_family == "" and family != BODY_FONT_FAMILY:
         block_family = family
-    if family == block_family and not RE_MARKER.match(pline.text):
+    if family == block_family and not match_marker(pline.text, pline.runs):
         return block_family
     return None
 
