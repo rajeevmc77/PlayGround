@@ -36,6 +36,10 @@ class PageLine:
 class PageImageInfo:
     bbox: tuple[float, float, float, float]
     xref: int
+    # Whether the page draws the image mirrored left-right / upside down
+    # relative to how it is stored (a negative scale in its transform).
+    flipped_x: bool = False
+    flipped_y: bool = False
 
 
 @dataclass(frozen=True)
@@ -161,7 +165,15 @@ class PyMuPdfSource(PdfSource):
 
     def page_images(self, page_index: int) -> list[PageImageInfo]:
         infos = self._doc[page_index].get_image_info(xrefs=True)
-        return [PageImageInfo(bbox=tuple(i["bbox"]), xref=i["xref"]) for i in infos]
+        return [
+            PageImageInfo(
+                bbox=tuple(i["bbox"]),
+                xref=i["xref"],
+                flipped_x=i["transform"][0] < 0,
+                flipped_y=i["transform"][3] < 0,
+            )
+            for i in infos
+        ]
 
     def extract_image(self, xref: int) -> ExtractedImage:
         info = self._doc.extract_image(xref)
