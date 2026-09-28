@@ -23,7 +23,7 @@ _ROMAN_NUMERALS = (
 )
 
 
-def _lower_roman(number: int) -> str:
+def lower_roman(number: int) -> str:
     result = []
     for value, numeral in _ROMAN_NUMERALS:
         count, number = divmod(number, value)
@@ -32,7 +32,7 @@ def _lower_roman(number: int) -> str:
 
 
 def _subclause_node(subclause: dict) -> WebNode:
-    identifier = f"({_lower_roman(subclause.get('number', 0))})"
+    identifier = f"({lower_roman(subclause.get('number', 0))})"
     return WebNode(
         type="Subclause",
         identifier=identifier,

@@ -8,17 +8,21 @@ article3" -> "D-1.1.3"), the way the PDF prints them; a paragraph opening
 with "1)" is a Sentence, as in the PDF, and one with no number is none
 (the PDF's body segmenter keeps no unnumbered text either). A Sentence's
 lettered list items are its Clauses (a), (b), ...; they have no ids, so
-each is cited by its position, "<paragraph id>.li2"."""
+each is cited by its position, "<paragraph id>.li2" - and a clause's own
+nested items are its Subclauses, "<paragraph id>.li2.li1"."""
 
 import re
+from collections.abc import Iterator
 
 from web_toc.domain.models import WebNode
+from web_toc.parsing.body_extractor import lower_roman
 
 _ORDINAL = re.compile(r"(\d+)$")
 _PARAGRAPH_NUMBER = re.compile(r"^(\d+)\)\s")
 # The list types the site renders as a lettered <ol> - a sentence's clauses;
 # a "variable" list ("where t = ...") is a <dl>.
 _LETTERED_LISTS = frozenset({"bulleted", "alphabetic"})
+_LIST_PLACEHOLDER = re.compile(r"\[LIST:\w+\]")
 
 
 def _ordinal(item: dict) -> str:
@@ -38,23 +42,53 @@ def _node(item: dict, type_: str, identifier: str, heading: str, children) -> We
     )
 
 
-def _clause(paragraph: dict, position: int, item: dict) -> WebNode:
+def _list_item_node(type_: str, identifier: str, citation: str, item: dict, children):
     return WebNode(
-        type="Clause",
-        identifier=f"({chr(ord('a') + position)})",
-        citation=f"{paragraph['id']}.li{position + 1}",
+        type=type_,
+        identifier=f"({identifier})",
+        citation=citation,
         title="",
         path="",
         content=item.get("content", ""),
+        children=children,
     )
+
+
+def _lettered_items(content, lists: Iterator[dict]) -> list[tuple[dict, list]]:
+    """The lettered list items `content`'s "[LIST:...]" placeholders stand
+    for, each with its own nested items. The JSON flattens nested lists: a
+    paragraph's `lists` holds, in document order, the list each placeholder -
+    its own, then those inside its items - stands for."""
+    items = []
+    for _placeholder in _LIST_PLACEHOLDER.findall(content if isinstance(content, str) else ""):
+        lst = next(lists, {})
+        nested = [
+            (item, _lettered_items(item.get("content"), lists)) for item in lst.get("items", [])
+        ]
+        items.extend(nested if lst.get("type") in _LETTERED_LISTS else [])
+    return items
+
+
+def _subclauses(clause_citation: str, items: list[tuple[dict, list]]) -> list[WebNode]:
+    return [
+        _list_item_node("Subclause", lower_roman(i + 1), f"{clause_citation}.li{i + 1}", item, [])
+        for i, (item, _nested) in enumerate(items)
+    ]
 
 
 def _clauses(paragraph: dict) -> list[WebNode]:
     """The paragraph's lettered list items, cited by their position the way
-    the layout lists them (layout_join._list_item_entry)."""
-    lists = [lst for lst in paragraph.get("lists", []) if lst.get("type") in _LETTERED_LISTS]
-    items = [item for lst in lists for item in lst.get("items", [])]
-    return [_clause(paragraph, i, item) for i, item in enumerate(items)]
+    the layout lists them (layout_join._list_item_entry) - "<para>.li2", and
+    a clause's own nested items "<para>.li2.li1" are its subclauses."""
+    items = _lettered_items(paragraph.get("content"), iter(paragraph.get("lists", [])))
+    clauses = []
+    for i, (item, nested) in enumerate(items):
+        citation = f"{paragraph['id']}.li{i + 1}"
+        letter = chr(ord("a") + i)
+        clauses.append(
+            _list_item_node("Clause", letter, citation, item, _subclauses(citation, nested))
+        )
+    return clauses
 
 
 def _sentence(paragraph: dict) -> WebNode | None:

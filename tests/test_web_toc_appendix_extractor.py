@@ -157,3 +157,50 @@ def test_a_variable_list_is_no_clause_and_takes_no_list_position():
     assert [(c.identifier, c.citation) for c in sentence.children] == [
         ("(a)", f"{ARTICLE}.para1.li1")
     ]
+
+
+def test_a_clauses_nested_list_items_are_its_subclauses_not_more_clauses():
+    # The JSON flattens nested lists: a paragraph's `lists` holds its clause
+    # list and then, in order, the list each "[LIST:...]" inside an item
+    # stands for. The layout names a nested item by its path, "<para>.li2.li1".
+    paragraph = _paragraph(4, "4) Provided:[LIST:bulleted]")
+    paragraph["lists"] = [
+        {
+            "type": "bulleted",
+            "items": [
+                {"content": "the insulation is preformed,"},
+                {"content": "the membrane is attached to[LIST:bulleted]"},
+                {"content": "a channel is installed."},
+            ],
+        },
+        {"type": "bulleted", "items": [{"content": "wood trusses, or"}, {"content": "joists."}]},
+    ]
+    [sentence] = _article_with(paragraph).children
+    para = f"{ARTICLE}.para4"
+    assert [(c.identifier, c.citation) for c in sentence.children] == [
+        ("(a)", f"{para}.li1"),
+        ("(b)", f"{para}.li2"),
+        ("(c)", f"{para}.li3"),
+    ]
+    subclauses = sentence.children[1].children
+    assert [(s.type, s.identifier, s.citation, s.content) for s in subclauses] == [
+        ("Subclause", "(i)", f"{para}.li2.li1", "wood trusses, or"),
+        ("Subclause", "(ii)", f"{para}.li2.li2", "joists."),
+    ]
+
+
+def test_each_nested_list_goes_to_the_item_whose_placeholder_comes_first():
+    paragraph = _paragraph(1, "1) Either:[LIST:bulleted]")
+    paragraph["lists"] = [
+        {
+            "type": "bulleted",
+            "items": [{"content": "a[LIST:bulleted]"}, {"content": "b[LIST:bulleted]"}],
+        },
+        {"type": "bulleted", "items": [{"content": "a-one"}]},
+        {"type": "bulleted", "items": [{"content": "b-one"}, {"content": "b-two"}]},
+    ]
+    [sentence] = _article_with(paragraph).children
+    assert [[s.content for s in c.children] for c in sentence.children] == [
+        ["a-one"],
+        ["b-one", "b-two"],
+    ]
