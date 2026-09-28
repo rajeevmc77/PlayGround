@@ -36,9 +36,22 @@ from comparison.image_similarity import (
     threshold_for,
 )
 from comparison.reasons import failure_reasons
+from image_compare.analysis.ink_correlation import ink_correlation
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
+
+
+# Two figures whose ink correlates this closely at 24x24 are the same drawing:
+# on the labelled pairs, the same drawings the hashes missed scored 0.86-0.90
+# and no pair of different drawings scored above 0.79.
+FIGURE_INK_CORRELATION = 0.83
+
+
+def _ink_lines_up(pdf_bytes: bytes, web_bytes: bytes) -> bool:
+    """A figure its hashes miss - 9.23.13.7.'s ~40px framed house diagrams -
+    still matches when its ink lines up (image_compare/analysis/ink_correlation.py)."""
+    return ink_correlation(pdf_bytes, web_bytes) >= FIGURE_INK_CORRELATION
 
 
 def _equation_matches(pixels_match: bool, pdf_bytes: bytes, web_image: dict) -> bool:
@@ -63,7 +76,7 @@ def _image_matcher(output_dir: Path, threshold_percent: float):
         result = compare_images(unified_number, pdf_bytes, web_bytes)
         pixels_match = images_match(result, threshold_for(unified_number, threshold_percent))
         if not is_equation(unified_number):
-            return pixels_match
+            return pixels_match or _ink_lines_up(pdf_bytes, web_bytes)
         return _equation_matches(pixels_match, pdf_bytes, web_image)
 
     return _match
