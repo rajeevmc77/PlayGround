@@ -165,3 +165,55 @@ def test_figure_without_id_is_skipped_not_crashed():
     assert len(images) == 1
     assert images[0].src == "good"
     assert images[0].owner_citation == "nbc.divA.part1.sect1"
+
+
+def test_a_figure_without_an_id_is_named_after_the_row_that_holds_it():
+    # Spec Table 1's wall-assembly drawings have no id of their own; the row
+    # holding each one does ("...table1.row3"). They were all left out.
+    row = "nbc.divBV2.part9.spectables1.table1.row3"
+    content = {
+        "id": "nbc.divBV2.part9.spectables1",
+        "content": [
+            {
+                "type": "table",
+                "id": "nbc.divBV2.part9.spectables1.table1",
+                "rows": [
+                    {
+                        "id": row,
+                        "cells": [
+                            {
+                                "content": [
+                                    {"type": "figure", "graphic": {"src": "gg1", "alt_text": "W1"}}
+                                ]
+                            },
+                            {
+                                "content": [
+                                    {"type": "figure", "graphic": {"src": "gg2", "alt_text": "W2"}}
+                                ]
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    citations = {"nbc.divBV2.part9.spectables1", "nbc.divBV2.part9.spectables1.table1"}
+    images = extract_images(content, citations, fallback_citation="nbc.divBV2.part9.spectables1")
+    assert [(i.id, i.src) for i in images] == [(f"{row}.figure1", "gg1"), (f"{row}.figure2", "gg2")]
+    assert {i.owner_citation for i in images} == {"nbc.divBV2.part9.spectables1.table1"}
+
+
+def test_figures_with_and_without_ids_keep_their_document_order():
+    content = {
+        "id": "s",
+        "content": [
+            {"type": "figure", "id": "s.figure1", "graphic": {"src": "a"}},
+            {
+                "id": "s.table1.row1",
+                "cells": [{"content": [{"type": "figure", "graphic": {"src": "b"}}]}],
+            },
+            {"type": "figure", "id": "s.figure2", "graphic": {"src": "c"}},
+        ],
+    }
+    images = extract_images(content, {"s"}, fallback_citation="s")
+    assert [i.src for i in images] == ["a", "b", "c"]

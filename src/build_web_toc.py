@@ -30,7 +30,7 @@ from web_toc.parsing.appendix_extractor import extract_appendix
 from web_toc.parsing.body_extractor import attach_body, extract_body
 from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
 from web_toc.parsing.image_extractor import extract_images
-from web_toc.parsing.layout_join import equation_images, join_layout, location_report
+from web_toc.parsing.layout_join import PAGES_DIR, equation_images, join_layout, location_report
 from web_toc.parsing.local_source import LocalWebSource
 from web_toc.parsing.note_extractor import extract_notes
 from web_toc.parsing.numbering_config import WEB_TOC_RULES, WEB_TOC_SCOPE_TYPES
@@ -90,11 +90,19 @@ def _local_file(image: WebImage) -> str:
     return f"{IMAGES_DIR}/{image.id}.jpg"
 
 
+def _page_asset(image: WebImage) -> str:
+    """The saved page's own copy of a figure (build_web_pages.py mirrors
+    every image a page shows under web_pages/assets/)."""
+    return f"{PAGES_DIR}/assets/{image.src}.jpg"
+
+
 def _set_local_paths(images: list[WebImage], out: Path) -> None:
+    """Each image's downloaded file - or, for a figure the download step
+    missed, the saved page's own copy of it."""
     for image in images:
-        relative = _local_file(image)
-        if (out / relative).is_file():
-            image.local_path = relative
+        page_copy = [] if image.kind == "equation" else [_page_asset(image)]
+        candidates = [_local_file(image), *page_copy]
+        image.local_path = next((path for path in candidates if (out / path).is_file()), "")
 
 
 def _load_layouts(pages_dir: Path, page_citations: list[str]) -> dict[str, dict]:
