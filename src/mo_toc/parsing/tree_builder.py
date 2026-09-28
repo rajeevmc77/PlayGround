@@ -23,6 +23,7 @@ from mo_toc.parsing.heading_rules import (
     ARTICLE_TYPES,
     BODY_FONT_FAMILY,
     RANK,
+    RE_ARTICLE,
     classify_caption_line,
     classify_heading_line,
     font_family,
@@ -316,11 +317,32 @@ def _open_caption(
     return next_idx
 
 
+def _next_article_number(article: Node) -> str:
+    """ "9.4.2.1." -> "9.4.2.2." """
+    head, _, last = article.identifier.rstrip(".").rpartition(".")
+    return f"{head}.{int(last) + 1}."
+
+
+def _misset_article_heading(pline: PageLine, state: _BuildState):
+    """Three Articles' headings (9.4.2.2., 9.10.9.19., 9.10.16.3.) are set in
+    the body font, indented like body text, not Arial-Black. A body line
+    holding only the next Article's number and a title can't be a citation
+    in running text - which goes on past the number - so it is that heading."""
+    open_node = state.stack[-1][1]
+    match = RE_ARTICLE.match(pline.text)
+    if open_node.type != "Article" or match is None:
+        return None
+    title = match.group(2).strip()
+    if not title[:1].isupper() or title.endswith("."):
+        return None
+    return ("Article", match) if f"{match.group(1)}." == _next_article_number(open_node) else None
+
+
 def _classify_heading(pline: PageLine, state: _BuildState):
     heading = classify_heading_line(pline.text, pline.font)
     if heading and heading[0] == "BackMatter" and not state.seen_structure:
         return None
-    return heading
+    return heading or _misset_article_heading(pline, state)
 
 
 def _try_open_note(pline: PageLine, page_index: int, state: _BuildState) -> bool:

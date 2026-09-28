@@ -726,3 +726,48 @@ def test_an_appendix_article_with_numbered_sentences_keeps_them_and_no_text_of_i
     article = _appendix_d(line(130, 40, "1) This information is presented.", BODY))
     assert [s.content for s in article.children] == ["This information is presented."]
     assert article.content == ""
+
+
+def _snow_loads_pages(*body):
+    return [
+        [line(50, 40, "Division B", BLACK)],
+        [
+            line(50, 40, "Part 9", BLACK),
+            line(70, 40, "Section 9.4. Structural Requirements", BLACK),
+            line(90, 40, "9.4.2. Specified Loads", BLACK),
+            line(110, 40, "9.4.2.1. Application", BLACK),
+            line(130, 40, "1) The specified loads shall be those listed.", BODY),
+            *body,
+        ],
+    ]
+
+
+def _snow_load_articles(pages):
+    root, _captions = build_tree(FakePdfSource(pages))
+    return root.children[1].children[0].children[0].children[0].children
+
+
+def test_the_next_articles_heading_set_in_the_body_font_still_opens_it():
+    """Three Articles' headings (9.4.2.2., 9.10.9.19., 9.10.16.3.) are set in
+    the body font, indented like body text, not Arial-Black. The line holding
+    only the next Article's number and a title is that Article's heading."""
+    articles = _snow_load_articles(
+        _snow_loads_pages(
+            line(150, 60, "9.4.2.2. Specified Snow Loads", BODY),
+            line(170, 60, "1) The specified snow load shall be calculated.", BODY),
+        )
+    )
+    assert [a.citation for a in articles] == ["B-9.4.2.1.", "B-9.4.2.2."]
+    assert articles[1].title == "Specified Snow Loads"
+    assert articles[0].children[0].content == "The specified loads shall be those listed."
+    assert articles[1].children[0].content == "The specified snow load shall be calculated."
+
+
+def test_a_body_line_citing_another_article_is_no_heading():
+    articles = _snow_load_articles(
+        _snow_loads_pages(
+            line(150, 60, "9.4.2.5. Specified Loads", BODY),
+            line(170, 60, "9.4.2.2. applies to roofs.", BODY),
+        )
+    )
+    assert [a.citation for a in articles] == ["B-9.4.2.1."]
