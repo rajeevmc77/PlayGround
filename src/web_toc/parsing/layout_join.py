@@ -13,7 +13,7 @@ page (subsections/articles are cut from their section's page). Match rules:
   JSON rows/cells line up 1:1 with the rendered tr/td|th;
 - part/section/subsection/article by their heading number against the
   page's h1-h6 text (headings have no ids);
-- images by `src` on their owner's page.
+- images by `src` on their owner's page - the n-th with a src at its n-th place.
 Equations have no counterpart in the tree to match: each one the layout
 measured becomes its own "equation" WebImage (equation_images).
 Pure: no file or browser I/O.
@@ -158,11 +158,15 @@ def _place_node(node: WebNode, page: str, layout: dict) -> list[str]:
     return _place_grid(node, page, layout) if node.type == "Table" else []
 
 
-def _place_image(image: WebImage, page: str, layout: dict) -> None:
+def _place_image(image: WebImage, page: str, layout: dict, copies: Counter) -> None:
+    """The n-th image with a src on a page takes the n-th place it is drawn:
+    9.23.13.7.'s tables show one house diagram in many rows."""
     src = f"{ASSET_PREFIX}/{image.src}.jpg"
-    entry = next((img for img in layout.get("images", []) if img["src"] == src), None)
-    if entry is not None:
-        image.location = _location(page, entry)
+    places = [img for img in layout.get("images", []) if img["src"] == src]
+    copy = copies[(page, src)]
+    copies[(page, src)] += 1
+    if copy < len(places):
+        image.location = _location(page, places[copy])
 
 
 def _place_nodes(
@@ -187,10 +191,11 @@ def join_layout(
     """Returns the table rows ("<table citation> row N") whose cells could
     not be paired with the rendered ones and were left unlocated."""
     page_of, misaligned = _place_nodes(root, layouts, page_citations)
+    copies: Counter = Counter()
     for image in images:
         page = page_of.get(image.owner_citation)
         if page is not None:
-            _place_image(image, page, layouts[page])
+            _place_image(image, page, layouts[page], copies)
     return misaligned
 
 
