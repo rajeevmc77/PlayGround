@@ -1,0 +1,2036 @@
+<title>Comparison Engine Specification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #f6f7f6;
+  --surface: #ffffff;
+  --ink: #1d2422;
+  --muted: #5b6662;
+  --rule: #d9dedb;
+  --accent: #1f6f66;
+  --accent-soft: #e2efed;
+  --code-bg: #eef1ef;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141a19;
+    --surface: #1c2322;
+    --ink: #e4ebe8;
+    --muted: #9aa8a3;
+    --rule: #2f3a38;
+    --accent: #6cc1b5;
+    --accent-soft: #1f3431;
+    --code-bg: #222b2a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141a19;
+  --surface: #1c2322;
+  --ink: #e4ebe8;
+  --muted: #9aa8a3;
+  --rule: #2f3a38;
+  --accent: #6cc1b5;
+  --accent-soft: #1f3431;
+  --code-bg: #222b2a;
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 16px; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  padding-inline: 16px;
+  padding-block: 32px 64px;
+}
+.layout { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; align-items: start; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); max-height: calc(100vh - 48px); overflow-y: auto; font-size: 0.86rem; display: grid; gap: 8px; }
+.side ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.side a { display: block; color: var(--muted); text-decoration: none; padding: 3px 8px; border-left: 2px solid transparent; line-height: 1.35; }
+.side a:hover, .side a:focus-visible { color: var(--ink); border-left-color: var(--accent); background: var(--accent-soft); outline: none; }
+.page { min-width: 0; max-width: 880px; display: grid; gap: 44px; }
+h1, h2, h3, h4 { text-wrap: balance; line-height: 1.25; margin: 0; }
+h1 { font-size: 2.1rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.45rem; font-weight: 700; padding-top: 8px; border-top: 2px solid var(--ink); }
+h3 { font-size: 1.1rem; font-weight: 600; margin-top: 8px; }
+p { margin: 0; max-width: 70ch; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 0.85em; background: var(--code-bg); padding: 0 3px; border-radius: 3px; overflow-wrap: anywhere; }
+.eyebrow { font-size: 0.76rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0; }
+header { display: grid; gap: 16px; }
+.intro { display: grid; gap: 12px; color: var(--ink); }
+.intro ul { color: var(--muted); font-size: 0.94rem; }
+section { display: grid; gap: 14px; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 28px; font-variant-numeric: tabular-nums; padding: 16px 20px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.stats div { display: grid; }
+.stats b { font-size: 1.35rem; font-weight: 700; }
+.stats span { color: var(--muted); font-size: 0.85rem; }
+.scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; font-variant-numeric: tabular-nums; background: var(--surface); }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 0.74rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; white-space: nowrap; }
+td.n { text-align: right; white-space: nowrap; }
+.code { overflow-x: auto; background: var(--code-bg); border-radius: 4px; }
+.code pre { margin: 0; padding: 12px 14px; }
+.code code { background: none; padding: 0; font-size: 0.82rem; line-height: 1.55; overflow-wrap: normal; white-space: pre; }
+pre.mermaid { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; margin: 0; overflow-x: auto; }
+ul, ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; max-width: 70ch; }
+li > ul, li > ol { margin-top: 6px; }
+li.check { list-style: none; position: relative; }
+li.check::before { content: ""; position: absolute; left: -1.3em; top: 0.35em; width: 0.8em; height: 0.8em; border: 1.5px solid var(--accent); border-radius: 2px; }
+strong { font-weight: 600; }
+hr { display: none; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .side { position: static; max-height: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 12px; }
+  .side ol { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  h1 { font-size: 1.7rem; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+</style>
+<div class="layout">
+<nav class="side" aria-label="Sections">
+<p class="eyebrow">Sections</p>
+<ol>
+<li><a href="#1-what-the-engine-does">1. What the engine does</a></li>
+<li><a href="#2-principles-that-made-it-reliable">2. Principles that made it reliable</a></li>
+<li><a href="#3-architecture-and-data-flow">3. Architecture and data flow</a></li>
+<li><a href="#4-the-shared-key-unified-numbering">4. The shared key: unified numbering</a></li>
+<li><a href="#5-pdf-extraction">5. PDF extraction</a></li>
+<li><a href="#6-web-acquisition-with-playwright">6. Web acquisition with Playwright</a></li>
+<li><a href="#7-web-index-built-offline">7. Web index, built offline</a></li>
+<li><a href="#8-text-and-emphasis-comparison">8. Text and emphasis comparison</a></li>
+<li><a href="#9-table-row-and-cell-pairing">9. Table, row and cell pairing</a></li>
+<li><a href="#10-image-comparison">10. Image comparison</a></li>
+<li><a href="#11-failure-reasons">11. Failure reasons</a></li>
+<li><a href="#12-output-contract-comparisonjson">12. Output contract: comparison.json</a></li>
+<li><a href="#13-the-viewer">13. The viewer</a></li>
+<li><a href="#14-how-a-rule-change-is-judged">14. How a rule change is judged</a></li>
+<li><a href="#15-results-and-what-is-left">15. Results and what is left</a></li>
+<li><a href="#16-carrying-the-engine-into-an-existing-application">16. Carrying the engine into an existing application</a></li>
+<li><a href="#appendix-a-every-threshold-and-constant">Appendix A: every threshold and constant</a></li>
+<li><a href="#appendix-b-change-history-by-effect">Appendix B: change history by effect</a></li>
+</ol>
+</nav>
+<main class="page">
+<header>
+<p class="eyebrow">BCBC · PDF vs website</p>
+<h1>Comparison Engine Specification</h1>
+<div class="stats">
+<div><b>83,548</b><span>of 94,166 items match</span></div>
+<div><b>88.7%</b><span>match rate</span></div>
+<div><b>448</b><span>of 588 images match</span></div>
+<div><b>1,685</b><span>PDF pages</span></div>
+<div><b>136</b><span>site pages rendered</span></div>
+</div>
+<div class="intro"><p>This spec covers how this repository compares the signed MO Package PDF with the BC Building
+Code website:</p>
+<ul>
+<li>turning each into a matching index;</li>
+<li>comparing the two item by item: text, bold/italic, tables, figures and equations.</li>
+</ul>
+<p>It is written so the engine can be carried into an existing application and made its core.</p>
+<ul>
+<li><strong>Status:</strong> as built on <code>main</code> at PR #100, 2026-09-28.</li>
+<li><strong>Result:</strong> 83,548 of 94,166 compared items match (88.7%).<ul>
+<li>Almost every remaining failure is a real difference on the website, not an extraction error.</li>
+<li>These differences are catalogued with counts in <code>2026-09-27-site-discrepancies-report.md</code>.</li>
+</ul>
+</li>
+<li><strong>Related designs:</strong><ul>
+<li><code>2026-09-20-mo-toc-viewer-design.md</code> (the PDF index and viewer)</li>
+<li><code>2026-09-25-web-toc-local-scrape-design.md</code> (the Playwright snapshot)</li>
+<li><code>2026-09-25-cross-source-unified-numbering-design.md</code> (the shared keys)</li>
+<li><code>2026-09-26-compare-emphasis-design.md</code> (the text and bold/italic rule)</li>
+</ul>
+</li>
+</ul>
+<p>Paths are relative to the repository root. <code>file:function</code> references point at the code that
+implements each rule, so every statement can be checked against the source.</p></div>
+</header>
+<section><h2 id="1-what-the-engine-does">1. What the engine does</h2>
+<p>It has two inputs:</p>
+<ul>
+<li><strong>The reference.</strong> The signed PDF, <code>data/MO Package BCBC MRK signed.pdf</code>.<ul>
+<li>It has 1,685 pages.</li>
+<li>It is the marked-up (MRK) edition: revised words are underlined and some figures are framed
+    in green.</li>
+</ul>
+</li>
+<li><strong>The subject.</strong> The website <code>https://dev.buildingcode.gov.bc.ca</code>, version <code>2024</code>, content as of
+    <code>2024-03-08</code>.<ul>
+<li>It is a Next.js app that renders in the browser from content JSON.</li>
+<li>Its tables lazy-load, and its equations are MathJax.</li>
+</ul>
+</li>
+</ul>
+<p>It produces three JSON files and a viewer:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Producer</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>output/bcbc_pdf.json</code> (+ <code>output/images/</code>)</td>
+<td><code>src/build_mo_toc.py</code></td>
+<td>The PDF's full hierarchy: Volume down to Subclause, plus Tables, Rows, Cells, Notes and Appendices. Each node has its text and bold/italic, page and bounding box. Also every caption and all 626 images.</td>
+</tr>
+<tr>
+<td><code>output/bcbc_web.json</code> (+ <code>output/web_pages/</code>, <code>output/web_images/</code>)</td>
+<td><code>src/build_web_pages.py</code> (network), then <code>src/build_web_toc.py</code> (offline)</td>
+<td>The same hierarchy as the site renders it. Each node has its rendered text, bold/italic, and a <code>location: {page_file, xpath, bbox}</code> in a locally saved copy of the site page.</td>
+</tr>
+<tr>
+<td><code>output/comparison.json</code></td>
+<td><code>src/build_comparison.py</code></td>
+<td>A pass/fail for every numbered PDF node and image, the pairings where the two sides don't line up by number, and a reason for every failure.</td>
+</tr>
+<tr>
+<td>Viewer at <code>http://127.0.0.1:8001</code></td>
+<td><code>src/serve_mo_toc.py</code></td>
+<td>The PDF page and the saved web page side by side, with the clicked item highlighted on both, ✓/✗ on every row, and a "Why it differs" box.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Only the website snapshot touches the network. Everything else is deterministic, offline and
+re-runnable.</p>
+</section>
+<section><h2 id="2-principles-that-made-it-reliable">2. Principles that made it reliable</h2>
+<p>Each principle below was learnt from a real failure (Appendix B), and together they are why the
+result can be trusted. Carry them into the new application as rules, not suggestions.</p>
+<ol>
+<li><strong>The PDF is the reference and is never corrected.</strong><ul>
+<li>When the PDF misprints something, the index keeps it as printed. Examples: two Clauses
+      lettered <code>h)</code>, Article 10.1.1.1. printed twice, <code>iii)</code> repeated.</li>
+<li>The duplicate gets a <code>~2</code> key.</li>
+<li>The comparison must never "fix" the reference to make the site match.</li>
+</ul>
+</li>
+<li><strong>Every tolerance applies to both sides alike.</strong><ul>
+<li>An accepted difference is written as characters that don't count, on either side
+      (<code>src/shared/styled_text.py:_UNCOUNTED</code>). Examples: "a typed <code>---</code> is one dash", "a cited
+      number's final period doesn't count".</li>
+<li>It is never a rewrite of one side into the other, so a rule can only ignore, never invent.</li>
+</ul>
+</li>
+<li><strong>Compare exactly, then accept named conventions one at a time.</strong><ul>
+<li>The base rule is that text must be identical apart from whitespace, and bold/italic must be
+      identical on every letter and digit.</li>
+<li>Each tolerance was added only after its instances were listed, eyeballed and approved.
+      The tolerances are: dashes, quotes, dot glyphs, typed dashes, punctuation at closing quotes,
+      cited-number periods, bracketed-citation periods and superscript digits.</li>
+<li>There is no fuzzy "95% similar" text rule, because it would hide real wording changes.</li>
+</ul>
+</li>
+<li><strong>Pair structurally, never by look-alike.</strong><ul>
+<li>Items pair by their code number.</li>
+<li>Where the two sides number differently, items pair by title, content or position within the
+      same provision. This covers tables in an article, rows, cells and Fig vs Eq labels.</li>
+<li>Items never pair across provisions, and never because two images happen to look alike.</li>
+<li>Similarity was once used to choose image partners. It paired look-alike house diagrams from
+      different table rows, so it was removed.</li>
+</ul>
+</li>
+<li><strong>Measure the site as it renders, not as its JSON says.</strong><ul>
+<li>Cross-references (<code>[REF:…]</code>), CSS-generated brackets, revision dates and lazy-loaded rows only
+      resolve in a browser.</li>
+<li>The web text that is compared is the text a reader sees.</li>
+</ul>
+</li>
+<li><strong>Freeze the web source, then build offline.</strong><ul>
+<li>One networked step snapshots everything: navigation, content JSON, rendered pages, assets,
+      figures and equation screenshots.</li>
+<li>Every later step reads only that snapshot, so builds are reproducible and quick to iterate.
+      Re-measuring takes about 20 s and a rebuild a few minutes.</li>
+</ul>
+</li>
+<li><strong>Fail loudly on incomplete input.</strong><ul>
+<li>A table that stays short after lazy-load scrolling makes the scrape exit non-zero.</li>
+<li>A table whose rendered row count differs from its JSON stops the build (<code>GridMismatch</code>).</li>
+<li>Silent truncation is how the first scrape kept only 121 of 5,949 rows.</li>
+</ul>
+</li>
+<li><strong>Every failure explains itself.</strong><ul>
+<li>A failed item carries the differing stretch, with 30 characters of context either side.</li>
+<li>It also carries its kind: wording, reference wording, standard designation, punctuation,
+      letter case, bold/italic, or missing. A reviewer never has to hunt.</li>
+</ul>
+</li>
+<li><strong>Judge each rule change on a labelled set and a full rebuild.</strong><ul>
+<li>A change is accepted only if it adds true matches without adding any on the
+      known-different set.</li>
+<li>The full per-table comparison must also show no losses (section 14).</li>
+</ul>
+</li>
+</ol>
+</section>
+<section><h2 id="3-architecture-and-data-flow">3. Architecture and data flow</h2>
+<pre class="mermaid">flowchart LR
+  PDF[MO Package PDF] -->|PyMuPDF, process pool| MO[build_mo_toc.py]
+  MO --> PJ[bcbc_pdf.json + images/]
+  SITE[(BC Building Code site)] -->|httpx + Playwright| WP[build_web_pages.py]
+  WP --> SNAP[web_source/ + web_pages/ + web_images/]
+  SNAP -->|offline| WT[build_web_toc.py]
+  WT --> WJ[bcbc_web.json]
+  PJ --> CMP[build_comparison.py]
+  WJ --> CMP
+  SNAP --> CMP
+  CMP --> CJ[comparison.json]
+  PJ --> V[serve_mo_toc.py viewer]
+  WJ --> V
+  CJ --> V
+  SNAP --> V
+</pre>
+<h3 id="packages">Packages</h3>
+<ul>
+<li>The code follows Clean Architecture: each library is split into <code>domain/</code>, <code>parsing/</code> and
+    <code>output/</code>.</li>
+<li>PDF-library, HTTP and browser details sit behind small interfaces, so the rules can be
+    unit-tested with fakes.</li>
+</ul>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/mo_toc/</code></td>
+<td>The PDF index. <code>pdf_source.py</code> wraps PyMuPDF (<code>PdfSource</code> interface). <code>tree_builder.py</code>, <code>heading_rules.py</code>, <code>body_segmenter.py</code>, <code>marker_rules.py</code>, <code>table_extractor.py</code>, <code>image_extractor.py</code>, <code>vector_cluster.py</code>, <code>image_matcher.py</code> and <code>notes_nesting.py</code> build the tree. <code>web/</code> holds the viewer.</td>
+</tr>
+<tr>
+<td><code>src/web_toc/</code></td>
+<td>The web index. <code>site_source.py</code> uses httpx and <code>page_source.py</code> uses Playwright. <code>page_html.py</code>, <code>layout_script.py</code> and <code>equation_script.py</code> hold the JS run in the page. Then <code>layout_join.py</code>, and extractors for tables, body, Appendix D, notes and images.</td>
+</tr>
+<tr>
+<td><code>src/shared/</code></td>
+<td>Pure helpers used by both sides. <code>numbering.py</code> builds the unified keys. <code>styled_text.py</code> holds text plus bold/italic ranges, and the comparison signature.</td>
+</tr>
+<tr>
+<td><code>src/comparison/</code></td>
+<td>The engine. <code>engine.py</code> walks the tree and pairs tables. Also <code>row_alignment.py</code>, <code>content_match.py</code>, <code>image_pairing.py</code>, <code>image_similarity.py</code>, <code>equation_text.py</code>, <code>formula_ocr.py</code>, <code>difference.py</code>, <code>reasons.py</code> and <code>asset_loader.py</code>.</td>
+</tr>
+<tr>
+<td><code>src/image_compare/</code></td>
+<td>Image metrics: <code>phash.py</code>, <code>autocrop.py</code>, <code>ink_hash.py</code>, <code>similarity.py</code> and <code>ink_correlation.py</code>.</td>
+</tr>
+<tr>
+<td><code>src/equation_export/</code></td>
+<td>A standalone LaTeX/MathJax renderer for the site's equation map. It is not on the comparison path.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="runtime-dependencies">Runtime dependencies</h3>
+<ul>
+<li><code>pymupdf</code>, <code>Pillow</code>, <code>imagehash</code>, <code>numpy</code>, <code>httpx</code></li>
+<li><code>playwright</code> (Chromium)</li>
+<li><code>fastapi</code> and <code>uvicorn</code>, for the viewer</li>
+<li>Tesseract is optional (<code>brew install tesseract</code>). Without it, equations are compared by pixels
+    alone.</li>
+</ul>
+<h3 id="build-commands">Build commands</h3>
+<p>Snapshot the site. This needs the network, takes minutes, and exits 1 if a table stays short:</p>
+<div class="code"><pre><code class="language-bash">python src/build_web_pages.py
+</code></pre></div>
+<p>Re-measure the saved pages, offline (about 20 s):</p>
+<div class="code"><pre><code class="language-bash">python src/build_web_pages.py --measure-only
+</code></pre></div>
+<p>Build <code>bcbc_web.json</code>, offline:</p>
+<div class="code"><pre><code class="language-bash">python src/build_web_toc.py
+</code></pre></div>
+<p>Build <code>bcbc_pdf.json</code> and <code>images/</code> (process pool, about 1–2 min):</p>
+<div class="code"><pre><code class="language-bash">python src/build_mo_toc.py
+</code></pre></div>
+<p>Build <code>comparison.json</code> (a few minutes):</p>
+<div class="code"><pre><code class="language-bash">python src/build_comparison.py
+</code></pre></div>
+<p>Start the viewer on 127.0.0.1:8001:</p>
+<div class="code"><pre><code class="language-bash">python src/serve_mo_toc.py
+</code></pre></div>
+<p>Every script accepts <code>--output-dir</code>. That is how a change is measured in a scratch directory
+against a baseline, without touching the shared <code>output/</code> (section 14).</p>
+</section>
+<section><h2 id="4-the-shared-key-unified-numbering">4. The shared key: unified numbering</h2>
+<ul>
+<li>Both indexes give a node the same <code>unified_number</code> when it is the same provision, and the
+    comparison joins on that key.</li>
+<li>Getting the key identical on both sides is the foundation. Most early failures were key
+    mismatches, not content differences.</li>
+</ul>
+<h3 id="algorithm-srcsharednumberingpyassign_unified_numbers">Algorithm (<code>src/shared/numbering.py:assign_unified_numbers</code>)</h3>
+<p>Each node type has a rule of one of these kinds:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Key built as</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fixed</code></td>
+<td>a literal prefix</td>
+<td><code>V1</code>, <code>FM</code>, <code>BM</code></td>
+</tr>
+<tr>
+<td><code>root</code></td>
+<td>prefix + identifier; restarts the chain</td>
+<td><code>B</code>, <code>AppD</code></td>
+</tr>
+<tr>
+<td><code>absolute</code></td>
+<td>nearest root key + <code>.</code> + identifier</td>
+<td><code>B.9.23.13.7</code>, <code>A.A-1.1.1.1.(3)</code>, <code>AppD.D-1.1.1</code></td>
+</tr>
+<tr>
+<td><code>child</code></td>
+<td>parent key + <code>.</code> + identifier</td>
+<td><code>B.9.23.13.7.(1)</code></td>
+</tr>
+<tr>
+<td><code>suffix</code></td>
+<td>parent key + identifier, no dot</td>
+<td><code>B.9.23.13.7.(1)(a)(i)</code></td>
+</tr>
+<tr>
+<td><code>literal</code></td>
+<td>parent key + <code>.</code> + prefix</td>
+<td><code>A.1.Notes</code></td>
+</tr>
+<tr>
+<td><code>ordinal</code></td>
+<td>scope or parent key + <code>.</code> + prefix + n</td>
+<td><code>B.9.Spec1</code>, <code>…Tbl4</code>, <code>…Tbl1.Row3.Col2</code>, <code>…Fig2</code>, <code>…Eq1</code></td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>Identifiers</strong> are normalised: whitespace is collapsed and the trailing <code>.</code> dropped. So Article
+    <code>9.23.13.7.</code> becomes <code>B.9.23.13.7</code>.</li>
+<li><strong>Scopes.</strong> Tables, figures and equations are counted per scope. The scopes are Part, Section,
+    Subsection, Article, Notes, Note and TableGroup. So a table inside a Clause is still
+    <code>&lt;Article&gt;.TblN</code>.</li>
+<li><strong>Page order.</strong> On the PDF side, scoped ordinals are numbered in page order
+    (<code>position = (page, y0)</code>), not tree-walk order. Otherwise tables placed under a clause were
+    counted ahead of their siblings.</li>
+<li><strong>Duplicates.</strong> A repeated key gets <code>~2</code>, <code>~3</code> and so on.<ul>
+<li><code>fixed</code> and <code>root</code> keys are exempt.</li>
+<li>This is because the site splits Division B across two volumes, and both halves must stay <code>B</code>.</li>
+</ul>
+</li>
+<li><strong>Two rule sets.</strong><ul>
+<li><code>src/mo_toc/parsing/numbering_config.py</code> (PDF) and <code>src/web_toc/parsing/numbering_config.py</code>
+    (web) map each side's node types onto the same kinds.</li>
+<li>For example, PDF <code>Article</code> and web <code>article</code> are both <code>absolute</code>. <code>NotesContainer</code> and
+    <code>part_appendix</code> are both <code>literal "Notes"</code>.</li>
+<li>The Volume never enters a key, so the site's Volume 2 Part 9 still yields <code>B.9…</code>.</li>
+</ul>
+</li>
+<li><strong>Labels, not citations.</strong><ul>
+<li>Appendix D's list items have no ids on the site, so they are <em>cited</em> by position:
+    <code>&lt;para&gt;.li2</code>, <code>&lt;para&gt;.li2.li1</code>.</li>
+<li>They are given identifiers <code>(b)</code> and <code>(i)</code>, so their <em>keys</em> are <code>…(1)(b)(i)</code>, exactly as in
+    the PDF.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Lesson:</strong> key on the code's own official numbering, never on position in the tree.</p>
+<ul>
+<li>Position numbering broke whenever either side had an extra wrapper or a missing level.</li>
+<li>The earlier positional design (<code>2026-09-21-unified-numbering-design.md</code>) was replaced for that
+    reason.</li>
+</ul>
+</section>
+<section><h2 id="5-pdf-extraction">5. PDF extraction</h2>
+<h3 id="51-reading-pages-srcmo_tocparsingpdf_sourcepy-parallel_extractionpy">5.1 Reading pages (<code>src/mo_toc/parsing/pdf_source.py</code>, <code>parallel_extraction.py</code>)</h3>
+<ul>
+<li><strong>Library:</strong> PyMuPDF only, behind the <code>PdfSource</code> interface.</li>
+<li><strong>Text:</strong><ul>
+<li>Read with <code>page.get_text("dict")</code> as blocks, lines and spans.</li>
+<li>Whitespace-only spans are dropped, and lines are sorted by <code>(y0, x0)</code>.</li>
+<li>Each <code>PageLine</code> keeps:<ul>
+<li>its <code>bbox</code>, <code>text</code> and font name(s);</li>
+<li>its <code>emphasis</code> ranges;</li>
+<li><code>centred</code>: the line's midpoint is within 20 pt of the page centre;</li>
+<li>per-span <code>runs</code> <code>(start, end, x0, x1)</code>, used to split a line at column rules and to detect
+    glued markers.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>Emphasis</strong> is taken per span (<code>_span_style</code>), as style <code>b</code>, <code>i</code> or <code>bi</code>:<ul>
+<li>bold: flag 16, or a font name containing Bold, Black, Heavy, Semibold or Demi;</li>
+<li>italic: flag 2, or a font name containing Italic or Oblique.</li>
+</ul>
+</li>
+<li><strong>Drawings:</strong><ul>
+<li><code>page_drawing_rects</code> returns every colour and is used for vector figures.</li>
+<li><code>page_rule_rects</code> returns neutral colours only (RGB spread ≤ 0.05) and is used for table rules.
+    This is because blue cross-reference underlines had created bogus table rows.</li>
+</ul>
+</li>
+<li><strong>Images:</strong> read with <code>get_image_info(xrefs=True)</code>. The transform gives <code>flipped_x</code>/<code>flipped_y</code>
+    (negative a or d).</li>
+<li><strong>Parallelism:</strong><ul>
+<li>A <code>ProcessPoolExecutor</code> runs one worker per CPU.</li>
+<li>Each worker opens the PDF once, in its initializer, because reopening per page costs about
+    45 ms.</li>
+<li>The job is CPU-bound, so threads don't help.</li>
+<li>Each page returns its lines, raster and vector images, table regions and rule rects.</li>
+<li>Tree assembly then runs sequentially in the main process.</li>
+</ul>
+</li>
+</ul>
+<h3 id="52-building-the-tree-tree_builderpy-heading_rulespy">5.2 Building the tree (<code>tree_builder.py</code>, <code>heading_rules.py</code>)</h3>
+<p><strong>Headings</strong> are recognised by a regex plus a required font:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Pattern (abridged)</th>
+<th>Font</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Division</td>
+<td><code>^Division\s+([A-Z])$</code></td>
+<td>Arial-Black</td>
+</tr>
+<tr>
+<td>Part</td>
+<td><code>^Part\s+(\d+)$</code></td>
+<td>Black</td>
+</tr>
+<tr>
+<td>NotesContainer</td>
+<td><code>^Notes to Part\s+(\d+)$</code></td>
+<td>Black</td>
+</tr>
+<tr>
+<td>Section</td>
+<td><code>^Section\s+(\d+\.\d+)\.\s*(.*)$</code></td>
+<td>Black</td>
+</tr>
+<tr>
+<td>Article</td>
+<td><code>^(\d+\.\d+\.\d+\.\d+)\.\s*(.*)$</code> (<code>\s*</code> because "3.2.2.64.Group D" has no space)</td>
+<td>Black</td>
+</tr>
+<tr>
+<td>Subsection</td>
+<td><code>^(\d+\.\d+\.\d+)\.\s+(.*)$</code></td>
+<td>Black</td>
+</tr>
+<tr>
+<td>Appendix, AppendixPart/Section/Article</td>
+<td><code>^Appendix\s+([A-Z])$</code>, <code>^Section\s+([A-Z])-(\d+)…</code>, <code>^([A-Z])-(\d+\.\d+(\.\d+)?)\.…</code></td>
+<td>Black</td>
+</tr>
+<tr>
+<td>TableGroup</td>
+<td><code>^[A-Z][A-Za-z ]*\bTables$</code></td>
+<td>Black</td>
+</tr>
+<tr>
+<td>BackMatter</td>
+<td><code>^PROVINCE OF BRITISH COLUMBIA$</code>, only after structure has been seen</td>
+<td>Bold</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Nesting.</strong> A rank stack works like implicit closing tags: a new node closes every open node of
+rank ≥ its own.</p>
+<p><strong>Titles.</strong></p>
+<ul>
+<li>A heading's title folds in the following Black-font lines, because "Part 1" and "Compliance" are
+    separate blocks.</li>
+<li>A title ending in "and" or "or" still folds in a heading-shaped line.</li>
+</ul>
+<p><strong>Per-line order</strong> (<code>_process_page</code>):</p>
+<ol>
+<li>Skip lines consumed by a table.</li>
+<li>Skip the page's trailing page number: a bare <code>^\d+$</code> last line, which otherwise lands
+      mid-sentence.</li>
+<li>Caption.</li>
+<li>Heading.</li>
+<li>Note line, inside Notes.</li>
+<li>Body line, skipping table-notes blocks.</li>
+</ol>
+<p><strong>Misset Article headings</strong> (<code>_misset_article_heading</code>):</p>
+<ul>
+<li>Three Articles print their heading in the body font: 9.4.2.2., 9.10.9.19. and 9.10.16.3.</li>
+<li>A body line matching the Article pattern is taken as the next Article only when all three hold:<ul>
+<li>its number is exactly the open Article's number + 1;</li>
+<li>its title starts with an uppercase letter;</li>
+<li>its title does not end in ".".</li>
+</ul>
+</li>
+</ul>
+<h3 id="53-sentences-clauses-and-subclauses-body_segmenterpy-marker_rulespy">5.3 Sentences, clauses and subclauses (<code>body_segmenter.py</code>, <code>marker_rules.py</code>)</h3>
+<p><strong>Markers</strong> match <code>^([A-Za-z0-9]{1,4})\)\s+(.*)$</code>:</p>
+<ul>
+<li>digits → a Sentence;</li>
+<li>a letter → a Clause;</li>
+<li>a roman numeral from 1 to 60 → a Subclause;</li>
+<li>the single letters i, v, x, l, c, d and m are ambiguous.</li>
+</ul>
+<p><strong>Glued markers.</strong> These are lines like "3)For the purpose…", where the space was a dropped
+whitespace span.</p>
+<ul>
+<li>They are accepted only when the line's first span ends exactly at the <code>)</code>.</li>
+<li>That rule rejects things like "side)" in table cells (<code>match_marker</code>).</li>
+</ul>
+<p><strong>Ambiguous letters</strong> are resolved by the first rule that applies (<code>_resolve_kind</code>):</p>
+<ol>
+<li><strong>Roman run:</strong> the token is the current clause's next subclause numeral, <em>and</em> the next marker
+      is the numeral after it. This means a subclause, and handles "h) … i) … ii) …".</li>
+<li><strong>Next clause letter:</strong> the token is the next expected clause letter, so a clause.</li>
+<li><strong>Next subclause numeral:</strong> the token is the next subclause numeral, so a subclause.</li>
+<li><strong>Indent:</strong> whether the marker is left or right of the midpoint between this sentence's median
+      clause-marker x0 and median subclause-marker x0.</li>
+<li><strong>Proximity:</strong> more than 8 pt right of the previous clause means a subclause.</li>
+</ol>
+<p><strong>The "(See …)" tail.</strong> A line starting <code>(See</code> at the sentence's indent goes to the Sentence, not
+its last clause. This fixed 245 items.</p>
+<p><strong>Also:</strong></p>
+<ul>
+<li>Text before <code>1)</code> is discarded.</li>
+<li>An Appendix article with no numbered paragraph keeps its whole body as <code>content</code>.</li>
+<li>A node's bbox is its first line plus its continuation lines on the same page.</li>
+</ul>
+<h3 id="54-notes-to-part">5.4 Notes to Part</h3>
+<p><strong>Opening a Note.</strong> Inside a NotesContainer, a line opens a Note when it matches the note-number
+shape. The pattern handles:</p>
+<ul>
+<li>"A-3.8.2.3.(5) and (6) and 3.8.3.22.(1)";</li>
+<li>"A-3.1.6.4.(3) to (6)";</li>
+<li>"A-Table 4.1.8.5.-A";</li>
+<li>a title glued on with no space.</li>
+</ul>
+<p><strong>The identifier</strong> is read by its shape, not "up to the first space".</p>
+<p><strong>The content</strong> is the body <em>after</em> the run-in title (which ends at <code>\.(?=\s|[A-Z]|$)</code>), because
+the site shows the heading separately.</p>
+<p><strong>Figure captions.</strong> A Figure caption met inside a Note is kept in the Note's text, because the site
+keeps it inline.</p>
+<p><strong>Placement.</strong> <code>nest_notes_under_parts</code> moves each NotesContainer under its Part, as the Part's last
+child.</p>
+<h3 id="55-tables-table_extractorpy-the-largest-module">5.5 Tables (<code>table_extractor.py</code>, the largest module)</h3>
+<p>A table is found from its caption, never by scanning for grids, because a blind scan finds every
+box on the page. Each heuristic below fixed a measured failure:</p>
+<ol>
+<li><strong>Anchor.</strong> Detection starts from a bold "Table …" caption, or from a centred plain-font caption
+      that is only the identifier (20 of these).</li>
+<li><strong>Rules.</strong> Horizontal and vertical rects ≤ 2 pt thick, in a neutral colour only. Boundaries
+      within 2 pt are merged.</li>
+<li><strong>MRK underlines are not row rules</strong> (<code>_is_row_rule</code>).<ul>
+<li>A horizontal rule is a row boundary only if both ends reach a column rule or the grid edge.</li>
+<li>Revision underlines start and stop inside a cell.</li>
+</ul>
+</li>
+<li><strong>Grid band.</strong> The grid runs from below the caption to the next Table caption on the page.
+      Before this rule, stacked tables swallowed each other.</li>
+<li><strong>Lines to cells.</strong><ul>
+<li>The row is chosen by the line's vertical centre.</li>
+<li>The column is chosen by where the line <em>starts</em>, because spanning headings belong to their
+      first column.</li>
+</ul>
+</li>
+<li><strong>Split at column rules.</strong><ul>
+<li>A line crossed at mid-height by an inner vertical rule is split at that rule.</li>
+<li>Word positions are interpolated across each span's characters (e.g. "46 91",
+      "1.2 1.5 2.0").</li>
+</ul>
+</li>
+<li><strong>Row spans.</strong><ul>
+<li>Where the row rules at a boundary cover less than half a column, the text moves to the span's
+      first row and the other rows are left empty.</li>
+<li>This matches how the site lists a spanning cell.</li>
+</ul>
+</li>
+<li><strong>Title and "Forming part of".</strong> Read from up to 3 caption-font lines, and consumed so they never
+      become body text.</li>
+<li><strong>Header-only page.</strong> A caption page that fits only the header still starts the table (a minimum
+      of 1 row).</li>
+<li><strong>Orphaned caption.</strong> A caption at the foot of a page takes the grid at the top of the next page
+        (16 tables).</li>
+<li><strong>Continuation without a caption.</strong>
+        - The next page's grid continues the pending table when both hold:
+            - its x-range matches within 2 pt;
+            - its columns carry on: the same count, or only a bold header so far, or every previous
+                column rule reappearing as a full-height rule.
+        - It is refused when any of these holds:
+            - a "Forming part of" line sits above the grid;
+            - a caption-font title block sits above the grid;
+            - the previous page left a caption unfilled.
+        - "Has a bottom border" is ignored, because the PDF redraws a closed box on every page.</li>
+<li><strong>Tail above the next caption.</strong> On a page with its own caption, the rows above that caption are
+        tried as the previous table's continuation (about 300 rows).</li>
+<li><strong>Row split by a page break.</strong>
+        - A continuation's first row is joined back into the previous row when it has exactly one filled
+            cell, not the first, in a column the previous row also filled.
+        - This applied to 52 rows, and 47 were confirmed against the site.</li>
+<li><strong>Owner.</strong> Tried in order:
+        1. <code>&lt;division&gt;-&lt;table id&gt;</code> as a citation;
+        2. the "Forming part of" reference;
+        3. position.</li>
+<li><strong>Vector crops over tables are dropped, raster images kept.</strong> Dropping the rasters too lost 154
+        real images.</li>
+</ol>
+<h3 id="56-images-image_extractorpy-vector_clusterpy-image_matcherpy">5.6 Images (<code>image_extractor.py</code>, <code>vector_cluster.py</code>, <code>image_matcher.py</code>)</h3>
+<ul>
+<li><strong>Rasters.</strong><ul>
+<li>Every embedded image is kept, with no size filter.</li>
+<li>An image drawn flipped is flipped back (<code>_as_drawn</code>, which also converts CMYK to RGB), so it is
+    saved and hashed as a reader sees it. This affects the six A-9.32.3.4 figures.</li>
+</ul>
+</li>
+<li><strong>Vector figures.</strong><ul>
+<li>Drawing rects within 5 pt of each other are clustered.</li>
+<li>A cluster is dropped if any of these holds:<ul>
+<li>it covers less than 400 pt²;</li>
+<li>it overlaps a raster or a table;</li>
+<li>its rects form a grid.</li>
+</ul>
+</li>
+<li>Each surviving cluster is rendered at zoom 3 to PNG.</li>
+</ul>
+</li>
+<li><strong>Owner.</strong> The deepest node whose <code>(page, y0)</code> precedes the image. Tables, Rows and Cells are never
+    owners.</li>
+<li><strong>Caption.</strong><ul>
+<li>It must be on the same page, within 50 pt.</li>
+<li>Only images at least 40 pt on their short side get a caption.</li>
+<li>Figure captions win over Table captions, then the nearest caption wins.</li>
+</ul>
+</li>
+<li><strong>Decorative.</strong> Aspect ratio ≤ 2 and area &lt; 1,600 pt². Decorative images are not numbered.</li>
+<li><strong>Equation or figure</strong> (<code>image_classification.py</code>). An image is an equation when all hold:<ul>
+<li>it has no caption and is not decorative;</li>
+<li>it is not over a table;</li>
+<li>width &gt; height, height ≤ 70 pt, and aspect ratio ≥ 2.</li>
+</ul>
+</li>
+<li><strong>Why 70 pt.</strong> The tallest formula is 60 pt and the shortest wide diagram is 72 pt.</li>
+<li><strong>Numbering.</strong> Equations are numbered <code>EqN</code> and figures <code>FigN</code>, counted separately per scope.</li>
+</ul>
+<h3 id="57-pdf-node-shape">5.7 PDF node shape</h3>
+<div class="code"><pre><code class="language-json">{&quot;type&quot;: &quot;Clause&quot;, &quot;identifier&quot;: &quot;(a)&quot;, &quot;citation&quot;: &quot;A-1.1.1.1.(1)(a)&quot;,
+ &quot;page&quot;: 7, &quot;end_page&quot;: 12,
+ &quot;bbox&quot;: {&quot;x0&quot;: 108.6, &quot;y0&quot;: 227.59, &quot;x1&quot;: 324.09, &quot;y1&quot;: 241.06},
+ &quot;unified_number&quot;: &quot;A.1.1.1.1.(1)(a)&quot;,
+ &quot;content&quot;: &quot;the design and construction of a new building,&quot;,
+ &quot;emphasis&quot;: [[37, 45, &quot;i&quot;]], &quot;children&quot;: []}
+</code></pre></div>
+<ul>
+<li><code>bbox</code> is in PDF points, from the page's top-left corner.</li>
+<li>Only Sentence, Clause, Subclause, Cell, Note and AppendixArticle carry <code>content</code>/<code>emphasis</code>. A
+    container's text is its children's.</li>
+<li>Heading nodes carry <code>heading</code>, the literal words, e.g. <code>Part 1</code>, <code>9.23.13.7.</code>.</li>
+<li>An image entry looks like this:</li>
+</ul>
+<div class="code"><pre><code class="language-json">{&quot;page&quot;: 513, &quot;bbox&quot;: {…}, &quot;width&quot;: 377, &quot;height&quot;: 393,
+ &quot;phash&quot;: &quot;edc934cc922a4bb6&quot;, &quot;image_path&quot;: &quot;images/img_100.png&quot;,
+ &quot;owner_citation&quot;: &quot;B-4.1.7.4.(2)&quot;, &quot;caption_kind&quot;: null, &quot;title&quot;: &quot;&quot;,
+ &quot;decorative&quot;: false, &quot;unified_number&quot;: &quot;B.4.1.7.4.Fig1&quot;}
+</code></pre></div>
+</section>
+<section><h2 id="6-web-acquisition-with-playwright">6. Web acquisition with Playwright</h2>
+<p><code>src/build_web_pages.py</code> is the only networked step. It runs these stages in order:</p>
+<ol>
+<li>Navigation tree.</li>
+<li>Snapshot record.</li>
+<li>Content JSON cache.</li>
+<li>Revision resolution.</li>
+<li>Page rendering.</li>
+<li>Saving pages.</li>
+<li>Asset mirror.</li>
+<li>Figure download.</li>
+<li>Navigation CSS.</li>
+<li><code>pages.json</code>.</li>
+<li>Equation capture.</li>
+<li>Layout measurement.</li>
+</ol>
+<h3 id="61-site-data-web_tocparsingsite_sourcepy-content_urlpy-outputsource_cachepy">6.1 Site data (<code>web_toc/parsing/site_source.py</code>, <code>content_url.py</code>, <code>output/source_cache.py</code>)</h3>
+<ul>
+<li><strong>Client:</strong> one shared <code>httpx.AsyncClient(timeout=30)</code>.</li>
+<li><strong>Navigation:</strong> <code>GET /data/2024/navigation-tree.json</code>.</li>
+<li><strong>Content JSON:</strong> one file per section, part appendix, division appendix, spec table or
+    front-matter article:<ul>
+<li><code>/data/2024/content/&lt;div-slug&gt;/part-N/section-M.json</code></li>
+<li><code>…/part-N/appendix.json</code></li>
+<li><code>…/appendix-&lt;l&gt;.json</code></li>
+<li><code>…/part-N/spectables-K.json</code><ul>
+<li>This form is hyphenated. The slash form isn't served, and all 21 spanned tables were missing
+    until this was found.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>Pitfall:</strong> unknown <code>/data/…</code> paths return <strong>HTTP 200 with an HTML page</strong>. A response counts as
+    valid only if its body starts with <code>{</code>.</li>
+<li><strong>Cache:</strong><ul>
+<li>Contents are cached 8 at a time, to <code>output/web_source/content/&lt;citation&gt;.json</code>.</li>
+<li><code>snapshot.json</code> records <code>{"version": "2024", "date": "2024-03-08"}</code>.</li>
+</ul>
+</li>
+<li><strong>Revisions:</strong><ul>
+<li>The content JSON carries dated <code>revisions</code>.</li>
+<li><code>revisions.py:resolve_revisions</code> keeps, for each revised item, the latest entry on or before the
+    snapshot date.</li>
+<li>It drops the item when that entry is <code>deleted</code>, when nothing is in effect yet, or when the entry
+    is an empty "original" placeholder.</li>
+<li>The page render uses the same date, so the JSON and the page agree.</li>
+</ul>
+</li>
+</ul>
+<h3 id="62-rendering-web_tocparsingpage_sourcepyplaywrightpagesource">6.2 Rendering (<code>web_toc/parsing/page_source.py:PlaywrightPageSource</code>)</h3>
+<p><strong>Browser.</strong></p>
+<ul>
+<li>Headless Chromium, with one context and a 1500×950 viewport (the desktop layout).</li>
+<li>6 tabs at a time (<code>PAGE_FETCH_CONCURRENCY</code>). Each tab runs the site's full JS, so more tabs don't
+    help.</li>
+</ul>
+<p><strong>Which pages</strong> (<code>page_targets.py</code>): about 136 in all.</p>
+<ul>
+<li>Rendered: parts, sections, part and division appendices, spec tables, index, conversions and
+    front-matter articles.</li>
+<li>Subsection and article views are <em>not</em> scraped. On the site they are the section page cut down,
+    so the viewer derives them from the section page.</li>
+<li>Volume and division URLs render the homepage or return 403.</li>
+</ul>
+<p><strong>URL:</strong> <code>{base}{path}?version=2024&amp;date=2024-03-08</code>.</p>
+<p><strong>Ready:</strong> <code>goto(wait_until="networkidle")</code>, then wait for
+<code>main.ui-ContentPanel .reading-view__content, main.ui-ContentPanel .partRenderer</code>.</p>
+<p><strong>Lazy-loaded tables.</strong> The site renders long tables 120 rows at a time. Table 9.38.1.1.(1) has
+5,949 rows, and the first scrape silently kept 121.</p>
+<ul>
+<li>The expected count per table comes from the revision-resolved JSON: header rows plus body rows.</li>
+<li>The page's count comes from <code>GRID_ROWS_JS</code>:<ul>
+<li>it counts a wide table's split header and body tables as one grid;</li>
+<li>it skips the pinned-column copy.</li>
+</ul>
+</li>
+<li>The loop:<ol>
+<li>Scroll row <code>len-10</code> into view, then the last row. Jumping back makes the last row re-enter the
+      viewport, which triggers the next batch.</li>
+<li>Wait with <code>wait_for_function(grew, 10 s)</code>.</li>
+<li>Stop after three consecutive stalls.</li>
+<li>Retry an incomplete page once, in a fresh tab.</li>
+</ol>
+</li>
+<li><code>main()</code> prints <code>INCOMPLETE &lt;citation&gt;: {table: [rendered, expected]}</code> and exits 1.</li>
+</ul>
+<p><strong>Capture:</strong> the <code>main.ui-ContentPanel</code> outerHTML, the page title, stylesheet hrefs and inline
+styles.</p>
+<h3 id="63-saving-a-self-contained-page-page_htmlpy-page_writerpy-site_csspy">6.3 Saving a self-contained page (<code>page_html.py</code>, <code>page_writer.py</code>, <code>site_css.py</code>)</h3>
+<p><strong>Cleaning</strong> is pure regex:</p>
+<ul>
+<li>drop the PDF-download header and the <code>react-aria</code> ids;</li>
+<li>re-point root-relative <code>src="/…"</code> to <code>/web-assets/…</code>;</li>
+<li>de-duplicate the info-icon SVG (repeated 1,000+ times) into one <code>&lt;symbol&gt;</code> plus a <code>&lt;use&gt;</code> in each
+    place.</li>
+</ul>
+<p><strong>Shell.</strong></p>
+<ul>
+<li>The panel is wrapped as
+    <code>&lt;html&gt;&lt;head&gt;…&lt;/head&gt;&lt;body&gt;&lt;main&gt;&lt;div class="MainLayout…"&gt;{panel}&lt;/div&gt;&lt;/main&gt;&lt;/body&gt;</code>.</li>
+<li>This fixes the panel's xpath at <code>/html/body/main/div/main</code>.</li>
+<li>The only CSS override is <code>:root{--header-height-full:0px}</code>, because the saved page has no site
+    header.</li>
+</ul>
+<p><strong>Assets</strong> are mirrored into <code>web_pages/assets/&lt;site path&gt;</code>:</p>
+<ol>
+<li>stylesheets, panel images and inline-style <code>url()</code>s;</li>
+<li>whatever those stylesheets reference (fonts).</li>
+</ol>
+<p><code>site-nav.css</code> is extracted from the CSSOM: the nav-tree and breadcrumb rules, plus <code>:root</code> and
+<code>@font-face</code>.</p>
+<p><strong>Figures</strong> download to <code>web_images/&lt;figure id&gt;.jpg</code>.</p>
+<h3 id="64-equations-equation_scriptpy">6.4 Equations (<code>equation_script.py</code>)</h3>
+<p>MathJax draws glyphs as CSS <code>::before</code> content. Reading the text therefore doubles every formula,
+and the glyphs can't be compared as text. Each equation is turned into an image instead:</p>
+<ul>
+<li><strong>Serving.</strong> The saved pages are served from a local <code>ThreadingHTTPServer</code> on an ephemeral port
+    (<code>local_page_server.py</code>), at 2× device scale, after <code>document.fonts.ready</code>.</li>
+<li><strong>Keys.</strong><ul>
+<li>Each <code>.equation-block</code> gets the key <code>&lt;nearest ancestor id&gt;.&lt;data-node-id&gt;</code>, with <code>-n</code> added on
+    repeats.</li>
+<li>The owner is needed because the site reuses one node id for the same formula in several places.</li>
+<li>Pinned-column copies reuse their original's key.</li>
+</ul>
+</li>
+<li><strong>Screenshots.</strong> <code>mjx-math</code> is screenshotted once per key, to both
+    <code>web_images/equations/&lt;key&gt;.png</code> and <code>web_pages/assets/equations/&lt;key&gt;.png</code>.</li>
+<li><strong>Swap.</strong><ul>
+<li>Each <code>mjx-container</code> is replaced with an <code>&lt;img class="equation-image"&gt;</code> of the same box.</li>
+<li>Its <code>alt</code> is the MathJax <code>aria-label</code>, i.e. the site's formula text.</li>
+<li>The page is then saved again.</li>
+</ul>
+</li>
+<li><strong>Result:</strong> 133 of 133 captured.</li>
+</ul>
+<h3 id="65-layout-measurement-layout_scriptpylayout_js">6.5 Layout measurement (<code>layout_script.py:LAYOUT_JS</code>)</h3>
+<p>This runs on each saved page, after <code>document.fonts.ready</code>. Measured in the fallback font, text
+wraps differently and every bbox below drifts.</p>
+<p><strong>Root:</strong> <code>/html/body/main/div/main</code>, which must resolve to exactly one <code>main.ui-ContentPanel</code>.</p>
+<p><strong><code>xpath</code>:</strong> absolute and positional (<code>tag[n]</code> per level), from the root.</p>
+<p><strong><code>bbox</code>:</strong></p>
+<ul>
+<li>in CSS px from the panel's top-left, rounded to 0.01;</li>
+<li>every ancestor's scroll offset is added back, because the panel is the scroll container.</li>
+</ul>
+<p><strong><code>text</code> + <code>emphasis</code></strong> come from a custom DOM walk, not <code>innerText</code>:</p>
+<ul>
+<li>it includes <code>::before</code>/<code>::after</code> content (the site draws <code>[ … ]</code> around compound references that
+    way);</li>
+<li>it pads block boxes with spaces;</li>
+<li>it skips <code>display:none</code> and SVG;</li>
+<li>it collapses whitespace;</li>
+<li>bold means computed weight ≥ 600, italic means a non-normal style.</li>
+</ul>
+<p><strong>Output:</strong> <code>web_pages/&lt;citation&gt;.layout.json</code>, with:</p>
+<ul>
+<li><code>elements</code>: every <code>[id]</code>;</li>
+<li><code>lists</code>: the un-id'd <code>ol &gt; li</code> items (Appendix D clauses), recursively;</li>
+<li><code>tables</code>: rows and cells in grid order;</li>
+<li><code>images</code>;</li>
+<li><code>equations</code>;</li>
+<li><code>headings</code>: h1–h6 (headings have no ids).</li>
+</ul>
+<p><code>--measure-only</code> re-runs just this step, offline, over the saved pages (about 20 s).</p>
+</section>
+<section><h2 id="7-web-index-built-offline">7. Web index, built offline</h2>
+<p><code>src/build_web_toc.py</code> reads only <code>web_source/</code> and <code>web_pages/</code> (<code>local_source.py</code>). If files are
+missing, the build stops with a message to run the scrape first.</p>
+<h3 id="71-structure">7.1 Structure</h3>
+<p><strong>Tree.</strong> Built from the navigation.</p>
+<ul>
+<li>Division identifiers come from "Division X".</li>
+<li><code>heading</code> holds the literal leading heading words.</li>
+</ul>
+<p><strong>Order of attachment:</strong></p>
+<ol>
+<li>Notes, so a note's tables and figures resolve to the Note.</li>
+<li>Appendix D's structure.</li>
+<li>Images, tables and sentences. Each is owned by stripping trailing dot-segments of its id until a
+      citation matches (<code>owner_resolution.py</code>).</li>
+<li>Unified numbers.</li>
+</ol>
+<p><strong>Tables</strong> (<code>table_extractor.py</code>):</p>
+<ul>
+<li>The JSON lists only the cells that start in a row, so later cells shift left.</li>
+<li>Empty placeholder cells are therefore inserted at every position a colspan or rowspan covers.<ul>
+<li>197 of 200 spanned tables become rectangular.</li>
+<li>This added 7,578 matches.</li>
+</ul>
+</li>
+<li>A table's row count = header rows + body rows.</li>
+</ul>
+<p><strong>Clauses</strong> (<code>body_extractor.py</code>):</p>
+<ul>
+<li>Clauses are lettered <code>(a), (b)…</code> by their position in the JSON, <strong>not</strong> by the JSON's <code>letter</code>.</li>
+<li>The JSON letter goes stale when BC amendments insert clauses. B.3.8.3.16.(1) reads h, a, i, b …,
+    and 45 sentences are affected.</li>
+<li>Subclause numbers are kept as given, because their gaps also exist in the PDF.</li>
+</ul>
+<p><strong>Appendix D</strong> (<code>appendix_extractor.py</code>):</p>
+<ul>
+<li>The site's navigation stops at Appendix D, so its sections, subsections and articles come from
+    the content JSON.</li>
+<li>They are numbered from the digits in their ids (<code>D-1.1.3</code>).</li>
+<li>Paragraphs matching <code>^\d+\)</code> become Sentences.</li>
+<li>Each <code>[LIST:…]</code> placeholder consumes the next list, recursively:<ul>
+<li>its items become Clauses (<code>&lt;para&gt;.liN</code>);</li>
+<li>their nested items become Subclauses (<code>&lt;para&gt;.liN.liM</code>).</li>
+</ul>
+</li>
+<li><code>variable</code> lists render as <code>&lt;dl&gt;</code> and give no clauses.</li>
+</ul>
+<p><strong>Notes</strong> (<code>note_extractor.py</code>) are built from <code>application_note</code> entries, with identifier
+<code>A-&lt;number&gt;</code>.</p>
+<h3 id="72-joining-the-layout-layout_joinpyjoin_layout">7.2 Joining the layout (<code>layout_join.py:join_layout</code>)</h3>
+<p>A node's page is its nearest ancestor-or-self that was scraped. That is how subsection and article
+views get locations on the section page.</p>
+<p><strong>Finding the layout entry</strong>, in order:</p>
+<ol>
+<li><code>elements[citation]</code>.</li>
+<li>A list-item path <code>&lt;id&gt;(.liN)+</code>.</li>
+<li>A heading match <code>^(?:Section\s+)?{heading}(?!\d|\.\d)</code>. The guard stops <code>1.1</code> matching <code>1.10</code>.</li>
+</ol>
+<p><strong>Rendered text.</strong> For Cells, Sentences, Clauses, Subclauses, Notes and Appendix articles, the
+rendered <code>text</code> and <code>emphasis</code> <strong>replace</strong> the JSON content. This resolves <code>[REF:…]</code> tokens into
+what a reader sees.</p>
+<p><strong>Tables</strong> (<code>_place_grid</code>):</p>
+<ul>
+<li>The rendered row count must equal the JSON's, or the build fails.</li>
+<li>Cells pair by position.</li>
+<li>If the cell counts differ, empty JSON cells are skipped, but only when every non-empty cell still
+    pairs.</li>
+</ul>
+<p><strong>Images</strong> (<code>_place_image</code>):</p>
+<ul>
+<li>Placed by <code>src</code> on the owner's page.</li>
+<li>The n-th image with a given <code>src</code> takes the n-th place that <code>src</code> is drawn. Otherwise
+    9.23.13.7.'s 90 repeated house diagrams all sat on the first copy.</li>
+</ul>
+<p><strong>Figures with no id</strong> (<code>image_extractor.py</code>):</p>
+<ul>
+<li>Named <code>&lt;nearest holder id&gt;.figureN</code>, in document order.</li>
+<li>137 figures: Spec Table 1 wall drawings, Appendix D, and Part 9 notes.</li>
+</ul>
+<p><strong>Local files:</strong> the downloaded file, else the mirrored asset copy (<code>web_pages/assets/&lt;src&gt;.jpg</code>).</p>
+<p><strong>Equations</strong> become images:</p>
+<ul>
+<li>with <code>kind: "equation"</code>;</li>
+<li>numbered <code>…EqN</code>, separately from figures;</li>
+<li>with <code>alt_text</code> holding the site's formula text.</li>
+</ul>
+<p><strong>Coverage.</strong> <code>location_report</code> prints located and unlocated counts per type. Last full run:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Located</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rows, tables, figures, notes, clauses, subclauses</td>
+<td class="n">100%</td>
+</tr>
+<tr>
+<td>Cells</td>
+<td>49,158 of 49,225</td>
+</tr>
+<tr>
+<td>Sentences</td>
+<td>5,057 of 5,058</td>
+</tr>
+<tr>
+<td>Equations</td>
+<td>133 of 133</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="73-web-node-shape">7.3 Web node shape</h3>
+<div class="code"><pre><code class="language-json">{&quot;type&quot;: &quot;Clause&quot;, &quot;identifier&quot;: &quot;(a)&quot;,
+ &quot;citation&quot;: &quot;nbc.divA.part1.sect1.subsect1.art1.sent1.clause1&quot;,
+ &quot;title&quot;: &quot;&quot;, &quot;path&quot;: &quot;&quot;, &quot;children&quot;: [],
+ &quot;unified_number&quot;: &quot;A.1.1.1.1.(1)(a)&quot;,
+ &quot;content&quot;: &quot;a) the design and construction of a new building,&quot;,
+ &quot;emphasis&quot;: [[40, 48, &quot;i&quot;]],
+ &quot;location&quot;: {&quot;page_file&quot;: &quot;web_pages/nbc.divA.part1.sect1.html&quot;,
+   &quot;xpath&quot;: &quot;/html/body/main/div/main/div[1]/…/div[2]/div[1]&quot;,
+   &quot;bbox&quot;: {&quot;x0&quot;: 80, &quot;y0&quot;: 256.23, &quot;x1&quot;: 1444, &quot;y1&quot;: 291.25}}}
+</code></pre></div>
+<p>Web images are <code>{id, src, alt_text, owner_citation, local_path, unified_number, location, kind}</code>.</p>
+</section>
+<section><h2 id="8-text-and-emphasis-comparison">8. Text and emphasis comparison</h2>
+<h3 id="81-what-is-compared-comparisonenginepycompare_trees">8.1 What is compared (<code>comparison/engine.py:compare_trees</code>)</h3>
+<p><strong>Join.</strong></p>
+<ul>
+<li>Web nodes are indexed by <code>unified_number</code>.</li>
+<li>A PDF node looks up <code>counterparts.get(n, n)</code>: its re-paired partner if there is one (section 9),
+    otherwise the same number.</li>
+<li>A <code>null</code> counterpart means "no partner" and fails.</li>
+</ul>
+<p><strong>Leaves only.</strong> Only PDF <strong>leaves</strong> are text-compared: Cells, Sentences, Clauses, Subclauses, Notes
+and Appendix articles. Container text is never compared, because:</p>
+<ul>
+<li>a container's web <code>content</code> concatenates its descendants;</li>
+<li>the PDF's holds only its own words.</li>
+</ul>
+<p><strong>Roll-up.</strong></p>
+<ul>
+<li>A node passes when all three hold: its own text passes (leaves only), all its owned images pass,
+    and all its children pass.</li>
+<li>Children are evaluated eagerly, so every item gets its own status.</li>
+</ul>
+<p><strong>Stripped from the web side before comparing:</strong></p>
+<ul>
+<li>a Sentence's, Clause's or Subclause's own leading marker (<code>1)</code>, <code>a)</code>, <code>ii)</code>), only when it equals
+    the node's identifier;</li>
+<li>a Note's heading (<code>identifier title</code>);</li>
+<li>an Appendix article's heading (<code>identifier. title</code>).</li>
+</ul>
+<p>The PDF pipeline already separates these, so nothing is stripped on the PDF side.</p>
+<h3 id="82-the-signature-srcsharedstyled_textpy">8.2 The signature (<code>src/shared/styled_text.py</code>)</h3>
+<p>Two texts match when their <strong>signatures</strong> are equal. A signature is the list of
+<code>(character, style)</code> over the compared positions. It is built by five rules.</p>
+<p><strong>1. Whitespace never counts.</strong> It is removed, not collapsed. This absorbs the PDF's line breaks
+inside words and citations ("fire- resistance", "A- 1.1.1.1.").</p>
+<p><strong>2. Dot glyphs never count</strong> (<code>_DOTS = "•·⋅"</code>):</p>
+<ul>
+<li>the PDF prints list bullets as text;</li>
+<li>it prints "kWh/(m²•year)" where the site has "·".</li>
+</ul>
+<p><strong>3. Characters read as their plain form</strong> (<code>_PLAIN_CHARACTERS</code>):</p>
+<ul>
+<li><code>“ ” „</code> → <code>"</code></li>
+<li><code>‘ ’ ‚</code> → <code>'</code></li>
+<li><code>‐ ‑ ‒ – — −</code> → <code>-</code></li>
+<li><code>¹ ² ³</code> → <code>1 2 3</code></li>
+</ul>
+<p><strong>4. Uncounted characters</strong> (<code>_UNCOUNTED</code>). Each pattern's <strong>group 1</strong> is dropped. The rest of the
+match is context that still counts. The patterns run on both texts:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Convention</th>
+<th>Pattern</th>
+<th>Drops</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Typed dash</td>
+<td><code>-(-{1,2})</code></td>
+<td>the extra hyphens of <code>--</code>/<code>---</code>, so they read as one dash</td>
+</tr>
+<tr>
+<td>Comma/period before a closing quote</td>
+<td><code>(?&lt;=[^\s“"])([.,])(?=\s*”|")</code></td>
+<td>the <code>,</code>/<code>.</code> in <code>“preservation,”</code></td>
+</tr>
+<tr>
+<td>Comma/period after a closing quote</td>
+<td><code>(?:”|(?&lt;=\S)")([.,])</code></td>
+<td>the <code>.</code> in <code>Systems".</code></td>
+</tr>
+<tr>
+<td>A cited number's final period</td>
+<td><code>CITED(\.)(?![\d(])</code></td>
+<td>the last <code>.</code> of <code>3.2.4.8.</code></td>
+</tr>
+<tr>
+<td>A detached final period</td>
+<td><code>CITED\s+(\.)(?!\d)</code></td>
+<td>the <code>.</code> in <code>Subsection 9.10.9 . 2 h</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>CITED</code> is <code>_CITED_NUMBER</code>:</p>
+<div class="code"><pre><code>(?:(?&lt;![A-Za-z])[A-Z]-\d+(?:\.\d+)*|\d+(?:\.\d+)+)(?:\.?\([0-9a-z]+\)(?:\s*\([0-9a-z]+\))*)?
+</code></pre></div>
+<ul>
+<li>It matches dotted numbers ("3.2.4.8") and lettered numbers ("D-6", "A-9.36.2.4").</li>
+<li>Either can have optional bracket groups, even spaced apart ("D-2.3.9.(2)", "A-2.2.7.2.(1) (b)").</li>
+<li>The guards <code>(?![\d(])</code> and <code>(?!\d)</code> keep a period that sits <em>inside</em> a number because of the
+    PDF's line breaks ("3.2 .4.9."), or before a Sentence's "(".</li>
+<li>A bare "(2)" with no number is not a citation, so its period still counts.</li>
+</ul>
+<p><strong>5. Style counts only on letters and digits.</strong></p>
+<ul>
+<li>Each compared alphanumeric character carries its style: <code>""</code>, <code>b</code>, <code>i</code> or <code>bi</code>.</li>
+<li>Punctuation carries none.</li>
+<li>So bold/italic must agree on every letter and digit. No other formatting is compared (font, size,
+    colour, layout).</li>
+</ul>
+<p><strong>A known consequence.</strong> The rule is symmetric, so a period after a citation that ends a sentence
+("…Article 3.2.4.8.") is uncounted on both sides. If the site dropped that period, it would go
+undetected. This was accepted when the rule was approved.</p>
+<h3 id="83-emphasis-capture-on-each-side">8.3 Emphasis capture on each side</h3>
+<ul>
+<li><strong>PDF:</strong> the font name or PyMuPDF flags, per span (§5.1).</li>
+<li><strong>Web:</strong> computed <code>font-weight ≥ 600</code> and <code>font-style</code>, per text node, including generated content
+    (§6.5).</li>
+<li><strong>Storage:</strong> both sides store <code>[[start, end, "b"|"i"|"bi"], …]</code> ranges into <code>content</code>. Unstyled
+    text has no range.</li>
+<li><strong>Alignment:</strong> <code>StyledText</code> keeps text and ranges together through join, slice and strip, so
+    dropping a marker never misaligns the styles.</li>
+</ul>
+</section>
+<section><h2 id="9-table-row-and-cell-pairing">9. Table, row and cell pairing</h2>
+<p>Numbering pairs most items, but tables break it: the two sides order and split tables, rows and
+cells differently. All of this lives in <code>comparison/engine.py</code> and <code>row_alignment.py</code>, and the
+results go into <code>counterparts</code>.</p>
+<h3 id="1-tables-within-their-article-or-note-by-title-table_pairs">1. Tables within their article or note, by title (<code>table_pairs</code>)</h3>
+<ul>
+<li><strong>Title key:</strong> drop "Forming part of …" and footnote markers, keep only word characters, and
+    lowercase.</li>
+<li><strong>Alignment</strong> uses <code>SequenceMatcher(autojunk=False)</code> on the keys:<ul>
+<li><code>equal</code> blocks pair;</li>
+<li><code>replace</code> blocks pair by position;</li>
+<li>inserts and deletes stay unpaired.</li>
+</ul>
+</li>
+<li>An untitled table never pairs by title.</li>
+<li>A PDF table left unpaired maps itself and all its descendants to <code>null</code>. That way it can't be
+    compared by accident with a same-numbered stranger.</li>
+</ul>
+<h3 id="2-leftovers-across-articles-_leftovers_by_title">2. Leftovers across articles (<code>_leftovers_by_title</code>)</h3>
+<ul>
+<li>A table still unpaired pairs with a leftover anywhere whose title key no other leftover shares.</li>
+<li>This covers the Section 3.9/3.10 swap and A-Table 9.23.3.5.-C (+6,260).</li>
+</ul>
+<h3 id="3-rows-by-content-_row_pairs">3. Rows by content (<code>_row_pairs</code>)</h3>
+<ul>
+<li>Each row's key is the <code>|</code>-joined signature of its cells, and rows are aligned with
+    <code>SequenceMatcher</code>.</li>
+<li>In a <code>replace</code> block:<ul>
+<li><strong>Equal counts:</strong> rows pair by position. Similarity pairing there cost 49 cells in Table
+    3.1.8.17.</li>
+<li><strong>Unequal counts:</strong> a dynamic program over Jaccard word-set similarity maximises the total
+    similarity, in order.<ul>
+<li>It pairs only rows with similarity ≥ 0.5.</li>
+<li>The rows between those anchors pair by position.</li>
+<li>The threshold barely matters: anything from 0.4 to 0.7 moved results by about 50 out of
+    66,000.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-cells-by-content-_cell_counterparts">4. Cells by content (<code>_cell_counterparts</code>)</h3>
+<ul>
+<li>The same alignment is used within a paired row.</li>
+<li>An empty cell gets a unique key, so two empties never "match" and drag the row out of line.</li>
+<li>This handles two site behaviours:<ul>
+<li>it lists only the cells a row <em>starts</em>;</li>
+<li>colspan text can sit in a different column on each side.</li>
+</ul>
+</li>
+</ul>
+<h3 id="5-an-empty-pdf-cell-with-no-web-partner-in-a-paired-row-passes-_span_covered">5. An empty PDF cell with no web partner, in a paired row, passes (<code>_span_covered</code>)</h3>
+<ul>
+<li>The site covers that position with a span, and the PDF shows nothing there either.</li>
+</ul>
+</section>
+<section><h2 id="10-image-comparison">10. Image comparison</h2>
+<h3 id="101-which-images-pair">10.1 Which images pair</h3>
+<p><strong>Default: by <code>unified_number</code>.</strong> A PDF <code>…Fig2</code> compares with the web <code>…Fig2</code> of the same provision,
+or with its <code>counterparts</code> partner.</p>
+<p><strong>Re-pairing within a provision</strong> (<code>comparison/image_pairing.py:image_counterparts</code>).</p>
+<ul>
+<li>When both of these hold, a provision's non-table images pair in page order:<ul>
+<li>the two sides label them differently (Fig on one side, Eq on the other);</li>
+<li>the two sides have <strong>the same count</strong>.</li>
+</ul>
+</li>
+<li>Page order is <code>(page, y0, x0)</code> on the PDF and <code>(page_file, y0, x0)</code> on the web.</li>
+<li>The motivating case: 4.1.6.5.'s stacked formula is a Fig in the PDF and an Eq on the site. Every
+    later equation then met the wrong partner, one off.</li>
+<li>Table images are excluded and keep their numbers:<ul>
+<li>on the PDF side, a table image is one whose centre is inside a Cell;</li>
+<li>on the web side, it is one whose id contains <code>.tableN</code>.</li>
+</ul>
+</li>
+<li>Nothing ever pairs across provisions.</li>
+</ul>
+<p><strong>Rejected approaches.</strong> Don't reintroduce these:</p>
+<ul>
+<li>choosing partners by visual similarity, which paired look-alike diagrams from different rows;</li>
+<li>aligning table images by row, which lost 16 that already paired correctly by number.</li>
+</ul>
+<h3 id="102-figures">10.2 Figures</h3>
+<p>A figure passes when <strong>any</strong> of these three tests passes.</p>
+<p><strong>1. Plain phash ≥ 80%.</strong></p>
+<ul>
+<li>First autocrop to the content (<code>autocrop.py</code>): take the difference from the corner pixel,
+    thresholded at 24 to ignore JPEG noise.</li>
+<li>Then take imagehash's 8×8 phash (64 bits).</li>
+</ul>
+<p><strong>2. Ink phash ≥ 80%</strong> (<code>ink_hash.py</code>). This sees past the marked-up PDF's heavier lines and green
+MRK frames.</p>
+<ol>
+<li>Binarise into ink (below 245) and paper.</li>
+<li>Crop to the ink.</li>
+<li>If all four edges are ≥ 90% ink, treat them as a frame and step inside it. Step while each edge
+      row or column is more than 50% ink, up to a quarter of the side.</li>
+<li>Crop again. Steps 3–4 run at most twice.</li>
+<li>Take a 16×16 phash (256 bits).</li>
+</ol>
+<p><strong>3. Ink correlation ≥ 0.83</strong> (<code>ink_correlation.py</code>).</p>
+<ul>
+<li>Resize the ink content to 24×24 (BOX), invert it, subtract the mean and take the cosine.</li>
+<li>This rescues 9.23.13.7.'s tiny framed house rasters. They are about 40×97 px in the PDF against
+    130×419 px on the site, and score only 62–78% on the hashes.</li>
+<li>The same drawings score 0.86–0.90; different drawings score at most 0.79.</li>
+<li>Any cutoff from 0.80 to 0.85 gives identical results, so 0.83 sits in the middle of the gap.</li>
+</ul>
+<p><strong>The hash score</strong> is <code>(1 − hamming/bits) × 100</code>, where bits = hex length × 4, i.e. 64 or 256.</p>
+<h3 id="103-equations">10.3 Equations</h3>
+<p>Equations are identified by an <code>.EqN</code> key on the web side (<code>comparison_key</code>). A Fig/Eq pair is
+therefore compared as an equation. The rules are applied in this order:</p>
+<p><strong>1. Fail on a MathJax error.</strong></p>
+<ul>
+<li>The site's formula text shows a MathJax error, matching <code>\[[a-z]\]</code> (e.g. "[f]" or "[a]").</li>
+<li>This fails even when the pixels match.</li>
+<li>The site renders these errors in front of formulas that use an unknown command (53 of 133).</li>
+</ul>
+<p><strong>2. Pass if the plain phash is ≥ 70%.</strong></p>
+<ul>
+<li>Equations have their own bar.</li>
+<li>Correct pairs had a median of 75%, and 275 deliberately wrong pairings never reached 70%.</li>
+</ul>
+<p><strong>3. Pass if OCR of the PDF formula matches the site's formula text</strong> (<code>formula_ocr.py</code>,
+<code>equation_text.py</code>).</p>
+<ul>
+<li><strong>Tesseract call:</strong> CLI <code>--psm 6</code>, on the image in greyscale, scaled ×3 (Lanczos), with a 20 px
+    white border and a 60 s timeout.</li>
+<li><strong>Normalisation:</strong> both texts are lowercased and reduced to <code>[0-9a-z]</code>. OCR reads × as x and −
+    as —, and loses superscripts and fraction bars.</li>
+<li><strong>Pass mark:</strong> <code>SequenceMatcher.ratio() ≥ 0.7</code>. At 0.7, none of 428 same-provision wrong-formula
+    pairs passed.</li>
+<li><strong>Limits:</strong><ul>
+<li>OCR reads single-line formulas well, and stacked fractions and sums badly.</li>
+<li>It can only add passes.</li>
+<li>It is skipped when Tesseract isn't installed.</li>
+</ul>
+</li>
+</ul>
+<p>A missing image file on either side fails.</p>
+</section>
+<section><h2 id="11-failure-reasons">11. Failure reasons</h2>
+<p><code>comparison/reasons.py</code> and <code>difference.py</code> give every failed leaf and image one reason, built
+from exactly the text the rule compared:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th><code>kind</code></th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td>The signatures differ. Up to 3 edits (<code>edit_count</code> gives the total). Each edit's <code>pdf</code>/<code>web</code> is <code>[before, changed, after]</code> with 30 characters of context, from <code>difflib.SequenceMatcher</code> over the signatures and mapped back to the original text.</td>
+</tr>
+<tr>
+<td><code>emphasis</code></td>
+<td>Same characters, different bold/italic. Differing runs are merged across punctuation into phrases, with <code>pdf_style</code>/<code>web_style</code> (plain, bold, italic, bold italic).</td>
+</tr>
+<tr>
+<td><code>pdf_empty</code> / <code>web_empty</code></td>
+<td>One side has no compared characters.</td>
+</tr>
+<tr>
+<td><code>no_web</code></td>
+<td>No web counterpart.</td>
+</tr>
+<tr>
+<td><code>image_inside</code></td>
+<td>The text matches, so an image the item owns differs.</td>
+</tr>
+<tr>
+<td><code>image_differs</code> / <code>no_web_image</code></td>
+<td>The web image exists but differs, or there is none.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Each text edit gets a category:</p>
+<ul>
+<li><strong>Letter case:</strong> the two sides are equal ignoring case.</li>
+<li><strong>Note link text:</strong> the web side says "Note".</li>
+<li><strong>Punctuation:</strong> <code>[.,;:"'()]+</code>.</li>
+<li><strong>Reference wording:</strong> "Sentence", "Article", numbers, "of Division B", and so on.</li>
+<li><strong>Standard designation:</strong> <code>ULC|CSA|CGSB|ASTM|…|:\d{2,4}</code>.</li>
+<li><strong>Wording:</strong> anything else.</li>
+</ul>
+<p>The reason takes the edits' shared category, or <code>Mixed</code> if they differ.</p>
+</section>
+<section><h2 id="12-output-contract-comparisonjson">12. Output contract: comparison.json</h2>
+<div class="code"><pre><code class="language-json">{
+ &quot;threshold_percent&quot;: 80.0,
+ &quot;equation_threshold_percent&quot;: 70.0,
+ &quot;statuses&quot;: {&quot;A.1.1.1.1.(1)(a)&quot;: true, &quot;B.4.1.6.2.Eq4&quot;: false, &quot;…&quot;: &quot;…&quot;},
+ &quot;counterparts&quot;: {&quot;B.9.23.17.2.Tbl1.Row1.Col4&quot;: &quot;B.9.23.17.2.Tbl1.Row1.Col3&quot;,
+                  &quot;B.A-9.36.6.3.(4).Tbl1.Row1.Col3&quot;: null},
+ &quot;reasons&quot;: {
+  &quot;A.1.1.1.1.Tbl1.Row3.Col2&quot;: {&quot;kind&quot;: &quot;emphasis&quot;, &quot;edit_count&quot;: 1, &quot;edits&quot;: [
+    {&quot;pdf&quot;: [&quot;…e separation required between &quot;, &quot;some&quot;, &quot; major occupancies.&quot;],
+     &quot;web&quot;: [&quot;…e separation required between &quot;, &quot;some&quot;, &quot; major occupancies.&quot;],
+     &quot;pdf_style&quot;: &quot;italic&quot;, &quot;web_style&quot;: &quot;plain&quot;}]},
+  &quot;B.4.1.6.2.Eq4&quot;: {&quot;kind&quot;: &quot;image_differs&quot;}}
+}
+</code></pre></div>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Holds</th>
+<th style="text-align: right;">Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>statuses</code></td>
+<td>every numbered PDF node and image</td>
+<td style="text-align: right;">94,166</td>
+</tr>
+<tr>
+<td><code>counterparts</code></td>
+<td>only pairings that differ from identity</td>
+<td style="text-align: right;">34,564 (733 of them null)</td>
+</tr>
+<tr>
+<td><code>reasons</code></td>
+<td>only failed leaves and images</td>
+<td style="text-align: right;">5,667</td>
+</tr>
+</tbody>
+</table></div>
+<p>A consumer highlights <code>counterparts[n] ?? n</code> on the web side, so the highlight always shows exactly
+what was compared.</p>
+</section>
+<section><h2 id="13-the-viewer">13. The viewer</h2>
+<p><code>src/serve_mo_toc.py</code> runs FastAPI (<code>src/mo_toc/web/api.py</code>) with these routes:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Serves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/toc</code></td>
+<td>the PDF tree</td>
+</tr>
+<tr>
+<td><code>GET /api/images</code></td>
+<td>the PDF image index</td>
+</tr>
+<tr>
+<td><code>GET /api/web-toc</code></td>
+<td>the web index (503 until built)</td>
+</tr>
+<tr>
+<td><code>GET /api/comparison</code></td>
+<td><code>comparison.json</code> (503 until built)</td>
+</tr>
+<tr>
+<td><code>GET /pdf</code></td>
+<td>the PDF</td>
+</tr>
+<tr>
+<td><code>GET /web-page/{citation}</code></td>
+<td>a saved site page</td>
+</tr>
+<tr>
+<td><code>GET /web-assets/{path}</code></td>
+<td>the mirrored assets</td>
+</tr>
+<tr>
+<td><code>GET /api/image/{i}</code></td>
+<td>a PDF image file</td>
+</tr>
+<tr>
+<td><code>GET /api/web-image/{id}/thumbnail</code></td>
+<td>a web image file</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>"Table of Contents – Both" tab.</strong></p>
+<ul>
+<li>The PDF tree with ✓/✗ badges, the PDF page and the saved web page, side by side.</li>
+<li>Clicking an item highlights its PDF bbox.</li>
+<li>On the web side:<ul>
+<li><code>webLocationFor</code> resolves <code>counterparts</code>.</li>
+<li>The viewer loads <code>/web-page/&lt;citation&gt;</code> in an iframe, zoomed so its body text matches the PDF's
+    text size.</li>
+<li>It finds the element by <code>xpath</code>, then draws a box around the element's <strong>rendered text rects</strong>
+    (<code>renderedContentBox</code>, falling back to the stored bbox). The highlight hugs the text even if
+    fonts shift.</li>
+</ul>
+</li>
+<li>Filters (Figures, Tables, Equations, Text, Images) hide rows. Headings always stay.</li>
+</ul>
+<p><strong>"Why it differs" box.</strong> It sits above the web page and renders the reason:</p>
+<ul>
+<li>a <code>&lt;mark&gt;</code> on the changed stretch;</li>
+<li>an explicit "nothing here on this side" gap;</li>
+<li>the style names for emphasis edits.</li>
+</ul>
+<p>A failed container says "Something inside differs".</p>
+<p><strong>"Compare" tab.</strong> The PDF image and the web image side by side.</p>
+</section>
+<section><h2 id="14-how-a-rule-change-is-judged">14. How a rule change is judged</h2>
+<p><strong>Measure in a scratch directory, never in the shared <code>output/</code>.</strong></p>
+<ol>
+<li>Symlink <code>bcbc_web.json</code>, <code>web_pages/</code>, <code>web_source/</code> and <code>web_images/</code> into the scratch
+      directory.</li>
+<li>Run <code>build_mo_toc.py --output-dir &lt;dir&gt;</code>, then <code>build_comparison.py --output-dir &lt;dir&gt;</code>.</li>
+<li>Compare against a baseline built from <code>main</code> on the same inputs.</li>
+</ol>
+<p>For a web-side change, re-measure a copy of <code>web_pages/</code> first.</p>
+<p><strong>Compare per table, not per key.</strong> Rows pair by content, so a table that gains a row renumbers its
+later rows, and a per-key diff shows false losses.</p>
+<p><strong>Text tolerances.</strong></p>
+<ul>
+<li>List every newly passing item and eyeball a sample.</li>
+<li>Look specifically for items that pass <em>for the wrong reason</em>. For example, the detached-period
+    rule once garbled line-broken citations, so a <code>(?!\d)</code> guard was added.</li>
+<li>Accept only conventions the owner approves by name.</li>
+</ul>
+<p><strong>Image changes need a labelled set:</strong></p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Set</th>
+<th>What it holds</th>
+<th style="text-align: right;">Size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>the currently passing pairs, plus eyeballed false negatives</td>
+<td style="text-align: right;">278</td>
+</tr>
+<tr>
+<td>B</td>
+<td>eyeballed real differences</td>
+<td style="text-align: right;">19</td>
+</tr>
+<tr>
+<td>C</td>
+<td>every same-provision pair whose web <code>src</code> differs; all must fail</td>
+<td style="text-align: right;">6,580</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>Accept a change only if it passes more of A without passing more of B or C.</li>
+<li>For example:<ul>
+<li>The ink hash moved A from 205 to 241, left B at 0, and moved C from 380 to 381. The one new C
+    pair was hypothetical, differing only in a label.</li>
+<li>Ink correlation moved A from 241 to 255, with B and C unchanged.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Definition of done</strong>, for each change:</p>
+<ol>
+<li>Strict TDD: a failing test first, and never weaken an existing test.</li>
+<li><code>ruff check --fix . &amp;&amp; ruff format .</code></li>
+<li><code>radon cc -s -n B .</code> (≤ B)</li>
+<li><code>vulture .</code></li>
+<li><code>pytest --cov=.</code></li>
+<li>The slow real-PDF tests: <code>pytest -o addopts="" -q</code> (about 6–7 min).</li>
+</ol>
+<p>The suite has 1,011 tests, and every change goes through a worktree and a PR.</p>
+</section>
+<section><h2 id="15-results-and-what-is-left">15. Results and what is left</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Measure</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Items compared</td>
+<td class="n">94,166</td>
+</tr>
+<tr>
+<td>Items matching</td>
+<td>83,548 (88.7%)</td>
+</tr>
+<tr>
+<td>Numbered PDF images</td>
+<td>588 (485 figures, 103 equations)</td>
+</tr>
+<tr>
+<td>Images matching</td>
+<td>448 (395 figures, 53 equations)</td>
+</tr>
+</tbody>
+</table></div>
+<p>What remains fails for real reasons. The full detail is in the site discrepancies report.</p>
+<p><strong>Site formatting:</strong></p>
+<ul>
+<li>about 1,700 table cells bold in the PDF but plain on the site;</li>
+<li>about 290 italic differences.</li>
+</ul>
+<p><strong>Site wording:</strong></p>
+<ul>
+<li>reference words repeated ("to Article …");</li>
+<li>Note references rewritten;</li>
+<li>standard designations changed;</li>
+<li>punctuation moved.</li>
+</ul>
+<p><strong>Site data and structure:</strong></p>
+<ul>
+<li>Sections 3.9 and 3.10 swapped;</li>
+<li>Table C-2 is the national table (709 rows against 120);</li>
+<li>Table 5.9.1.1.'s columns combined;</li>
+<li>table notes pasted into cells;</li>
+<li>image descriptions in cells.</li>
+</ul>
+<p><strong>Site images:</strong></p>
+<ul>
+<li>53 garbled MathJax formulas;</li>
+<li>real drawing differences in 9.23.13.7. and A-9.23.13.7.(3);</li>
+<li>47 PDF figures with no site counterpart, including 28 Division C form graphics.</li>
+</ul>
+<p><strong>Left on our side, knowingly:</strong></p>
+<ul>
+<li>about 40 cells in Tables 9.23.13.7.-B/-D, where the PDF draws no rule between sub-rows;</li>
+<li>21 page-split rows, where joining them would be a guess;</li>
+<li>about 20 tiny multi-house rasters that correlate no better than their variants;</li>
+<li>about 25 stacked equations that OCR can't read.</li>
+</ul>
+</section>
+<section><h2 id="16-carrying-the-engine-into-an-existing-application">16. Carrying the engine into an existing application</h2>
+<h3 id="161-what-to-take-as-the-core">16.1 What to take as the core</h3>
+<p>These parts are general and can be lifted almost unchanged:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Files</th>
+<th>Why it is portable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Styled text and signature</td>
+<td><code>src/shared/styled_text.py</code></td>
+<td>No dependencies. Text plus emphasis ranges, and every accepted convention in one table of patterns.</td>
+</tr>
+<tr>
+<td>Unified numbering</td>
+<td><code>src/shared/numbering.py</code>, plus a rule table per source</td>
+<td>Data-driven: a new source needs a rules dict, not code.</td>
+</tr>
+<tr>
+<td>Comparison engine</td>
+<td><code>src/comparison/*</code></td>
+<td>It reads only two trees, two image lists and asset bytes. It knows nothing about PDFs, browsers or HTTP.</td>
+</tr>
+<tr>
+<td>Image metrics</td>
+<td><code>src/image_compare/*</code></td>
+<td>Pure functions over image bytes.</td>
+</tr>
+<tr>
+<td>Playwright snapshot pattern</td>
+<td><code>src/web_toc/parsing/page_source.py</code>, <code>layout_script.py</code>, <code>equation_script.py</code>, <code>page_html.py</code></td>
+<td>These apply to any client-rendered document site: the lazy-load loop, measuring after fonts are ready, panel-relative xpath and bbox, and the MathJax-to-PNG swap.</td>
+</tr>
+</tbody>
+</table></div>
+<p>These parts are specific to this document and must be re-derived for another one:</p>
+<ul>
+<li>the heading regexes and fonts;</li>
+<li>the note-number shapes;</li>
+<li>the page-specific cases in the table heuristics;</li>
+<li>the site's content-JSON URLs;</li>
+<li>the Appendix D builder.</li>
+</ul>
+<p>Keep them behind the same interfaces (<code>PdfSource</code>, the web source, the numbering rules), so the core
+never changes when the document does.</p>
+<h3 id="162-integration-contract">16.2 Integration contract</h3>
+<p>Whatever the host application's own model, the engine needs five inputs:</p>
+<ol>
+<li><strong>A reference tree</strong> of nodes shaped
+      <code>{type, identifier, citation, unified_number, content, emphasis, page, bbox, children}</code>. Only
+      leaves carry <code>content</code>.</li>
+<li><strong>A subject tree</strong> in the same shape, with <code>location {page_file, xpath, bbox}</code> instead of page and
+      bbox.</li>
+<li><strong>Two image lists</strong> of <code>{unified_number, owner_citation, kind, path, bbox/location}</code>. Web
+      equations also carry <code>alt_text</code>.</li>
+<li><strong>An asset loader</strong> that returns bytes for an image path.</li>
+<li><strong>Optionally, an OCR function</strong> from bytes to text.</li>
+</ol>
+<p>It returns <code>{statuses, counterparts, reasons}</code> as in section 12. Treat that JSON as the API between
+the engine and any UI, report or workflow in the host application.</p>
+<h3 id="163-hardening-checklist-for-the-host-application">16.3 Hardening checklist for the host application</h3>
+<ul>
+<li class="check">Snapshot the web source once per review cycle, record the version and date, and build offline
+            from the snapshot. Never compare against a live page.</li>
+<li class="check">Assert completeness at every boundary, and fail the run rather than compare partial data:<ul>
+<li class="check">expected vs rendered row counts;</li>
+<li class="check">JSON vs layout grid;</li>
+<li class="check">every node located (<code>location_report</code>);</li>
+<li class="check">every equation captured.</li>
+</ul>
+</li>
+<li class="check">Measure only after <code>document.fonts.ready</code>. Keep the stored bbox only as a fallback; the viewer
+            should re-measure from the xpath.</li>
+<li class="check">Compare rendered text, not source JSON. Resolve revisions to the snapshot date on both the
+            JSON and the page.</li>
+<li class="check">Keep the reference read-only in the pipeline (the PDF here). Represent its errata with <code>~2</code>
+            keys and report them separately.</li>
+<li class="check">Add a tolerance only as a named, symmetric, uncounted-characters rule with its own tests,
+            including guard tests for what it must <em>not</em> accept.</li>
+<li class="check">Pair only by structure: number, title, content, or position within a provision. Record every
+            non-identity pairing in <code>counterparts</code>, so the UI can show it.</li>
+<li class="check">Keep image thresholds per kind: figures 80%, equations 70%, ink correlation 0.83, OCR 0.7.
+            Change them only against the labelled A/B/C set.</li>
+<li class="check">Make Tesseract optional and additive: its absence must never turn a pass into a fail.</li>
+<li class="check">Rebuild and compare <strong>per table</strong> before and after every change. A change that loses anything
+            needs an explanation for each loss.</li>
+<li class="check">Generate the discrepancy report from <code>reasons</code>, so the site owners get counts, concentrations
+            and examples per kind of difference.</li>
+</ul>
+<h3 id="164-suggested-order-of-adoption">16.4 Suggested order of adoption</h3>
+<ol>
+<li><strong>Port <code>styled_text.py</code> and <code>numbering.py</code></strong> with their tests, and feed the host application's
+      existing PDF and web data through them.<ul>
+<li>Key agreement is the first milestone.</li>
+<li>Measure it as the share of reference nodes that have a same-key subject node.</li>
+</ul>
+</li>
+<li><strong>Port the Playwright snapshot</strong> (render, lazy-load, save, measure), unless the host's web data
+      is already rendered text with locations.</li>
+<li><strong>Port <code>comparison/</code></strong> and produce <code>comparison.json</code>. Wire <code>reasons</code> into the host UI.</li>
+<li><strong>Port the image metrics and pairing.</strong> Build the labelled set from the host's own data before
+      tuning anything.</li>
+<li><strong>Add the table heuristics from §5.5 one at a time</strong>, each driven by a failing case in the host's
+      documents.</li>
+</ol>
+</section>
+<section><h2 id="appendix-a-every-threshold-and-constant">Appendix A: every threshold and constant</h2>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Where</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CENTRE_TOLERANCE</code></td>
+<td>20 pt</td>
+<td><code>pdf_source.py</code></td>
+<td>the line counts as centred (plain captions)</td>
+</tr>
+<tr>
+<td><code>_NEUTRAL_SPREAD</code></td>
+<td class="n">0.05</td>
+<td><code>pdf_source.py</code></td>
+<td>max RGB spread for a table rule</td>
+</tr>
+<tr>
+<td>render zoom</td>
+<td class="n">3</td>
+<td><code>pdf_source.render_region</code></td>
+<td>vector figure crops</td>
+</tr>
+<tr>
+<td><code>LINE_THICKNESS_MAX</code></td>
+<td>2.0 pt</td>
+<td><code>table_extractor.py</code></td>
+<td>a rule's max thickness</td>
+</tr>
+<tr>
+<td><code>BOUNDARY_MERGE_TOLERANCE</code></td>
+<td>2.0 pt</td>
+<td><code>table_extractor.py</code></td>
+<td>merge rule boundaries, match x-ranges</td>
+</tr>
+<tr>
+<td><code>MIN_ANCHOR_TABLE_ROWS</code></td>
+<td class="n">1</td>
+<td><code>table_extractor.py</code></td>
+<td>header-only caption pages</td>
+</tr>
+<tr>
+<td><code>MERGE_MARGIN</code></td>
+<td>5.0 pt</td>
+<td><code>vector_cluster.py</code></td>
+<td>cluster drawing rects</td>
+</tr>
+<tr>
+<td><code>MIN_CLUSTER_AREA</code></td>
+<td>400 pt²</td>
+<td><code>vector_cluster.py</code></td>
+<td>smallest vector figure</td>
+</tr>
+<tr>
+<td><code>MAX_CAPTION_GAP</code></td>
+<td>50 pt</td>
+<td><code>image_matcher.py</code></td>
+<td>caption-to-image distance</td>
+</tr>
+<tr>
+<td><code>MIN_CAPTION_ELIGIBLE_DIM</code></td>
+<td>40 pt</td>
+<td><code>image_matcher.py</code></td>
+<td>smallest captioned image side</td>
+</tr>
+<tr>
+<td><code>MAX_NOISE_ASPECT_RATIO</code></td>
+<td class="n">2.0</td>
+<td><code>image_classification.py</code></td>
+<td>decorative / equation aspect ratio</td>
+</tr>
+<tr>
+<td><code>MAX_NOISE_AREA</code></td>
+<td>1,600 pt²</td>
+<td><code>image_classification.py</code></td>
+<td>decorative icon area</td>
+</tr>
+<tr>
+<td><code>MAX_EQUATION_HEIGHT</code></td>
+<td>70 pt</td>
+<td><code>image_classification.py</code></td>
+<td>tallest equation</td>
+</tr>
+<tr>
+<td>subclause proximity</td>
+<td>8 pt</td>
+<td><code>body_segmenter.py</code></td>
+<td>indent fallback</td>
+</tr>
+<tr>
+<td>viewport</td>
+<td>1500×950</td>
+<td><code>page_source.py</code></td>
+<td>desktop layout</td>
+</tr>
+<tr>
+<td><code>PAGE_FETCH_CONCURRENCY</code></td>
+<td class="n">6</td>
+<td><code>build_web_pages.py</code></td>
+<td>browser tabs</td>
+</tr>
+<tr>
+<td><code>CONTENT_FETCH_CONCURRENCY</code> / <code>DOWNLOAD_CONCURRENCY</code></td>
+<td class="n">8</td>
+<td><code>source_cache.py</code>, <code>build_web_pages.py</code></td>
+<td>HTTP</td>
+</tr>
+<tr>
+<td>ready / growth timeouts</td>
+<td>30 s / 10 s</td>
+<td><code>page_source.py</code></td>
+<td>page ready, rows grew</td>
+</tr>
+<tr>
+<td><code>MAX_STALLS</code></td>
+<td class="n">3</td>
+<td><code>page_source.py</code></td>
+<td>lazy-load stop</td>
+</tr>
+<tr>
+<td>rows per lazy batch (site)</td>
+<td class="n">120</td>
+<td>observed</td>
+<td>why scrolling is needed</td>
+</tr>
+<tr>
+<td><code>EQUATION_SCALE</code></td>
+<td class="n">2</td>
+<td><code>build_web_pages.py</code></td>
+<td>screenshot device scale</td>
+</tr>
+<tr>
+<td><code>SIMILAR_ROW</code></td>
+<td class="n">0.5</td>
+<td><code>row_alignment.py</code></td>
+<td>Jaccard for row anchors</td>
+</tr>
+<tr>
+<td><code>CONTEXT</code> / <code>MAX_EDITS</code></td>
+<td>30 chars / 3</td>
+<td><code>difference.py</code></td>
+<td>reason excerpt</td>
+</tr>
+<tr>
+<td><code>DEFAULT_THRESHOLD_PERCENT</code></td>
+<td class="n">80.0</td>
+<td><code>build_comparison.py</code></td>
+<td>figure hashes</td>
+</tr>
+<tr>
+<td><code>EQUATION_THRESHOLD_PERCENT</code></td>
+<td class="n">70.0</td>
+<td><code>image_similarity.py</code></td>
+<td>equation phash</td>
+</tr>
+<tr>
+<td><code>NOISE_TOLERANCE</code></td>
+<td class="n">24</td>
+<td><code>autocrop.py</code></td>
+<td>autocrop background</td>
+</tr>
+<tr>
+<td><code>INK_LEVEL</code></td>
+<td class="n">245</td>
+<td><code>ink_hash.py</code></td>
+<td>ink vs paper</td>
+</tr>
+<tr>
+<td><code>_FRAME_COVER</code> / <code>_LINE_COVER</code></td>
+<td>0.9 / 0.5</td>
+<td><code>ink_hash.py</code></td>
+<td>frame detection, step-in</td>
+</tr>
+<tr>
+<td>ink phash size</td>
+<td>16×16</td>
+<td><code>ink_hash.py</code></td>
+<td>256 bits</td>
+</tr>
+<tr>
+<td><code>GRID</code></td>
+<td>24×24</td>
+<td><code>ink_correlation.py</code></td>
+<td>correlation grid</td>
+</tr>
+<tr>
+<td><code>FIGURE_INK_CORRELATION</code></td>
+<td class="n">0.83</td>
+<td><code>build_comparison.py</code></td>
+<td>figure rescue</td>
+</tr>
+<tr>
+<td>OCR scale / margin / timeout</td>
+<td>×3 / 20 px / 60 s</td>
+<td><code>formula_ocr.py</code></td>
+<td>Tesseract <code>--psm 6</code></td>
+</tr>
+<tr>
+<td><code>MATCHING_TEXT</code></td>
+<td class="n">0.7</td>
+<td><code>equation_text.py</code></td>
+<td>OCR vs formula text</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section><h2 id="appendix-b-change-history-by-effect">Appendix B: change history by effect</h2>
+<p>The passing count after each step. Each step is one PR with its own tests, and the counts come from
+full rebuilds.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th style="text-align: right;">Passing items</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Equation 70% bar</td>
+<td style="text-align: right;">24,291 → 24,324</td>
+</tr>
+<tr>
+<td>Web table spans as placeholder cells</td>
+<td style="text-align: right;">24,324 → 31,902</td>
+</tr>
+<tr>
+<td>Dashes equal to hyphens</td>
+<td style="text-align: right;">42,210 → 42,833</td>
+</tr>
+<tr>
+<td>Rows paired by content</td>
+<td style="text-align: right;">→ 59,198</td>
+</tr>
+<tr>
+<td>Tables paired by title</td>
+<td style="text-align: right;">→ 65,422</td>
+</tr>
+<tr>
+<td>Rows paired by similarity when counts differ</td>
+<td style="text-align: right;">→ 66,050</td>
+</tr>
+<tr>
+<td>Cells paired by content</td>
+<td style="text-align: right;">→ 69,192</td>
+</tr>
+<tr>
+<td>Note bodies compared</td>
+<td style="text-align: right;">→ 69,482</td>
+</tr>
+<tr>
+<td>Tables paired across articles by unique title</td>
+<td style="text-align: right;">→ 76,622</td>
+</tr>
+<tr>
+<td>Table lines split at column rules (baseline of the 2026-09-27 report)</td>
+<td style="text-align: right;">→ 82,706</td>
+</tr>
+<tr>
+<td>Bullets, typed dashes, unit dots, quote punctuation, cited-number and bracketed-citation periods, superscripts; misset headings, subclause after h, glued markers, Appendix D subclauses</td>
+<td style="text-align: right;">→ 83,333</td>
+</tr>
+<tr>
+<td>Flipped PDF images</td>
+<td style="text-align: right;">→ 83,336</td>
+</tr>
+<tr>
+<td>Ink phash for figures</td>
+<td style="text-align: right;">83,340 → 83,377</td>
+</tr>
+<tr>
+<td>Fig/Eq re-pairing in page order</td>
+<td style="text-align: right;">→ 83,386</td>
+</tr>
+<tr>
+<td>OCR, and failing MathJax errors</td>
+<td style="text-align: right;">→ 83,396</td>
+</tr>
+<tr>
+<td>Ink correlation for figures</td>
+<td style="text-align: right;">→ 83,411</td>
+</tr>
+<tr>
+<td>Site figures with no id</td>
+<td style="text-align: right;">→ <strong>83,548</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>Approaches tried and dropped, recorded so they aren't retried:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>Why it was dropped</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Strict dash equality</td>
+<td>failed about 490 leaves on typography alone</td>
+</tr>
+<tr>
+<td>Similarity pairing of equal-count rows</td>
+<td>lost 49 cells in Table 3.1.8.17.</td>
+</tr>
+<tr>
+<td>Similarity-chosen image partners</td>
+<td>paired look-alike diagrams across rows</td>
+</tr>
+<tr>
+<td>Row-order pairing of table images</td>
+<td>lost 16</td>
+</tr>
+<tr>
+<td>Dropping raster images over tables</td>
+<td>lost 154 real images</td>
+</tr>
+<tr>
+<td>Positional unified numbering</td>
+<td>broke on any extra or missing level</td>
+</tr>
+<tr>
+<td>Measuring layout before fonts loaded</td>
+<td>shifted every bbox</td>
+</tr>
+<tr>
+<td>Reading <code>innerText</code></td>
+<td>lost the CSS-generated reference brackets and doubled MathJax text</td>
+</tr>
+</tbody>
+</table></div></section>
+</main>
+</div>
