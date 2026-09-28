@@ -84,3 +84,11 @@ def test_an_equation_keeps_the_plain_comparison():
     as_equation = compare_images("B.4.1.6.5.Eq1", framed, plain)
     as_figure = compare_images("B.4.1.6.5.Fig1", framed, plain)
     assert as_equation.similarity_percent < as_figure.similarity_percent
+
+
+def test_a_pair_with_an_equation_on_either_side_compares_as_an_equation():
+    from comparison.image_similarity import comparison_key
+
+    assert comparison_key("A.Fig2", "A.Eq3") == "A.Eq3"
+    assert comparison_key("A.Eq1", "A.Fig1") == "A.Eq1"
+    assert comparison_key("A.Fig1", "A.Fig1") == "A.Fig1"

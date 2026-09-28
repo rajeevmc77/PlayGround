@@ -81,3 +81,16 @@ def test_a_failed_image_is_missing_on_the_site_or_differs():
 
 def test_without_a_web_tree_every_failed_item_has_no_web_counterpart():
     assert _reasons(_node("A", content="x"), None, {"A": False}) == {"A": {"kind": "no_web"}}
+
+
+def test_a_failed_image_is_judged_against_its_counterpart():
+    images = [{"unified_number": "A.Fig1"}]
+    reasons = _reasons(
+        _node("A", content="x"),
+        _node("A", content="x"),
+        {"A": True, "A.Fig1": False},
+        counterparts={"A.Fig1": "A.Eq1"},
+        pdf_images=images,
+        web_images=[{"unified_number": "A.Eq1"}],
+    )
+    assert reasons["A.Fig1"] == {"kind": "image_differs"}

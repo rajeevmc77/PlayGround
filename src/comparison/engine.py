@@ -183,7 +183,7 @@ def compare_trees(
 
     def image_status(pdf_image: dict) -> bool:
         unified_number = pdf_image["unified_number"]
-        web_image = web_image_index.get(unified_number)
+        web_image = _web_node_for(unified_number, web_image_index, counterparts)
         status = web_image is not None and images_match(pdf_image, web_image)
         statuses[unified_number] = status
         return status

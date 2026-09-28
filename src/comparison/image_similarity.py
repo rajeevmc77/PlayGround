@@ -19,6 +19,12 @@ EQUATION_THRESHOLD_PERCENT = 70.0
 _EQUATION_KEY = re.compile(r"\.Eq\d+$")
 
 
+def comparison_key(pdf_number: str, web_number: str) -> str:
+    """The key a pair is compared under: an equation on either side makes it
+    an equation pair (4.1.6.5.'s formula the PDF reads as a figure)."""
+    return web_number if _EQUATION_KEY.search(web_number) else pdf_number
+
+
 def threshold_for(unified_number: str, default_percent: float) -> float:
     if _EQUATION_KEY.search(unified_number):
         return EQUATION_THRESHOLD_PERCENT

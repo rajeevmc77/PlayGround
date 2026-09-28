@@ -27,7 +27,9 @@ def _leaves(node: dict):
         yield from _leaves(child)
 
 
-def _image_reasons(pdf_images: list[dict], web_images: list[dict], statuses: dict) -> dict:
+def _image_reasons(
+    pdf_images: list[dict], web_images: list[dict], statuses: dict, counterparts: dict
+) -> dict:
     on_site = {img.get("unified_number") for img in web_images}
     failed = (
         img["unified_number"]
@@ -35,7 +37,11 @@ def _image_reasons(pdf_images: list[dict], web_images: list[dict], statuses: dic
         if statuses.get(img.get("unified_number")) is False
     )
     return {
-        number: {"kind": "image_differs" if number in on_site else "no_web_image"}
+        number: {
+            "kind": "image_differs"
+            if counterparts.get(number, number) in on_site
+            else "no_web_image"
+        }
         for number in failed
     }
 
@@ -58,4 +64,4 @@ def failure_reasons(
             continue
         web_number = counterparts.get(number, number)
         reasons[number] = _text_reason(leaf, web_nodes.get(web_number) if web_number else None)
-    return reasons | _image_reasons(pdf_images, web_images, statuses)
+    return reasons | _image_reasons(pdf_images, web_images, statuses, counterparts)
