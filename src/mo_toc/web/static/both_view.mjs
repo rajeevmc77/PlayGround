@@ -58,6 +58,15 @@ export function minVisibleBox(bbox) {
   };
 }
 
+// The <img> elements a node "el" draws directly: itself, when its own xpath
+// resolves straight to the image leaf (an equation/figure's location often
+// does - see equation_script.py/layout_join.py), else its descendant <img>s.
+// el.querySelectorAll("img") only ever finds descendants, so a node that IS
+// the image would otherwise be measured as drawing nothing.
+export function imagesIn(el) {
+  return el.tagName === "IMG" ? [el] : [...el.querySelectorAll("img")];
+}
+
 function clipTo(r, bounds) {
   return {
     left: Math.max(r.left, bounds.left),
