@@ -235,3 +235,34 @@ def test_extract_images_excludes_a_caption_less_table_grid_end_to_end():
     images = extract_images(source)
 
     assert images == []
+
+
+def _top_and_bottom_png():
+    image = Image.new("RGB", (4, 4), (255, 255, 255))
+    for x in range(4):
+        image.putpixel((x, 0), (255, 0, 0))
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _first_row_colour(data):
+    return Image.open(io.BytesIO(data)).convert("RGB").getpixel((0, 0))
+
+
+def test_an_image_the_page_draws_upside_down_is_saved_the_way_the_page_shows_it():
+    source = FakeImageSource({0: [PageImageInfo(bbox=(0, 0, 10, 10), xref=1, flipped_y=True)]})
+    source.register_image(1, _top_and_bottom_png(), width=4, height=4)
+    [image] = extract_images(source)
+    assert _first_row_colour(image.data) == (255, 255, 255)
+    rows = Image.open(io.BytesIO(image.data)).convert("RGB")
+    assert rows.getpixel((0, 3)) == (255, 0, 0)
+    assert image.ext == "png"
+
+
+def test_an_upright_image_keeps_its_own_bytes():
+    data = _top_and_bottom_png()
+    source = FakeImageSource({0: [PageImageInfo(bbox=(0, 0, 10, 10), xref=1)]})
+    source.register_image(1, data, ext="jpeg", width=4, height=4)
+    [image] = extract_images(source)
+    assert (image.data, image.ext) == (data, "jpeg")

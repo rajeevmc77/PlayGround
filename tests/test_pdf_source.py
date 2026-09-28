@@ -239,3 +239,19 @@ def test_a_line_records_where_each_of_its_spans_sits():
 
 def test_a_line_whose_spans_have_no_boxes_records_no_runs():
     assert _line_from_span_dict(_line_dict(_span("word", "BookAntiqua"))).runs == ()
+
+
+def test_page_images_report_whether_the_page_draws_an_image_flipped(tmp_path):
+    # The A-9.32.3.4 figures (pp. 1491-1495) are drawn with a negative
+    # height: the page shows them upside down relative to how they're stored.
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 10), (255, 0, 0)).save(buf, format="PNG")
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_image(fitz.Rect(10, 10, 60, 60), stream=buf.getvalue(), rotate=180)
+    page.insert_image(fitz.Rect(100, 10, 160, 60), stream=buf.getvalue())
+    path = tmp_path / "flipped.pdf"
+    doc.save(str(path))
+    flipped, upright = PyMuPdfSource(str(path)).page_images(0)
+    assert (flipped.flipped_x, flipped.flipped_y) == (True, True)
+    assert (upright.flipped_x, upright.flipped_y) == (False, False)

@@ -13,7 +13,7 @@ time, from inside a worker process.
 import io
 from dataclasses import dataclass
 
-from mo_toc.parsing.pdf_source import ExtractedImage, PdfSource
+from mo_toc.parsing.pdf_source import ExtractedImage, PageImageInfo, PdfSource
 from mo_toc.parsing.table_extractor import detect_tables_on_page, rects_form_a_grid
 from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
 
@@ -59,10 +59,28 @@ def _raw_image(page_index: int, bbox, extracted: ExtractedImage, kind: str = "ra
     )
 
 
+def _as_drawn(extracted: ExtractedImage, info: PageImageInfo) -> ExtractedImage:
+    """The image the way the page shows it: one the page draws flipped (the
+    A-9.32.3.4 figures are drawn upside down) is turned to match, as a PNG."""
+    from PIL import Image
+
+    if not (info.flipped_x or info.flipped_y):
+        return extracted
+    image = Image.open(io.BytesIO(extracted.data))
+    image = image.convert("RGB") if image.mode == "CMYK" else image
+    if info.flipped_x:
+        image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if info.flipped_y:
+        image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return ExtractedImage(data=buf.getvalue(), ext="png", width=image.width, height=image.height)
+
+
 def raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
     images = []
     for info in source.page_images(page_index):
-        extracted = source.extract_image(info.xref)
+        extracted = _as_drawn(source.extract_image(info.xref), info)
         images.append(_raw_image(page_index, info.bbox, extracted, kind="raster"))
     return images
 
