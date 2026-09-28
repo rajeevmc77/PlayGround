@@ -266,3 +266,25 @@ def test_matches_reads_a_superscript_digit_as_the_digit():
     assert matches(StyledText("0.6 kg/m² of wall"), StyledText("0.6 kg/m2 of wall"))
     assert matches(StyledText("≤ 300 m3"), StyledText("≤ 300 m³"))
     assert not matches(StyledText("m²"), StyledText("m3"))
+
+
+def test_a_bracketed_citations_final_period_does_not_count():
+    """The site ends a Sentence or Clause citation with a period the PDF
+    leaves out: "Sentence D-2.3.9.(2). by way", "(2). and D-2.3.9.(3).,"."""
+    assert matches(
+        StyledText("with Sentence D-2.3.9.(2) by way"),
+        StyledText("with Sentence D-2.3.9.(2). by way"),
+    )
+    assert matches(
+        StyledText("Clause 3.2.4.1.(2)(a), or"), StyledText("Clause 3.2.4.1.(2)(a) ., or")
+    )
+
+
+def test_a_bare_bracket_numbers_period_still_counts():
+    assert not matches(StyledText("in Sentence (2)."), StyledText("in Sentence (2)"))
+
+
+def test_the_site_may_space_a_bracketed_citations_brackets():
+    assert matches(
+        StyledText("and Note A-2.2.7.2.(1)(b).)"), StyledText("and Note A-2.2.7.2.(1) (b) .)")
+    )

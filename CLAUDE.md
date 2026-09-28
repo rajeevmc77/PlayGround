@@ -30,7 +30,8 @@ independent tools live here:
    The tree's ✓/✗ comes from `src/build_comparison.py`: a leaf's text must match the web's
    exactly apart from whitespace, dot glyphs ("•" bullets, unit dots "•"/"·"/"⋅") and the
    site's typing and punctuation conventions it accepts (a typed "---"/"--" is one dash; a
-   comma/period at a closing quote and a cited number's final period don't count - see
+   comma/period at a closing quote and a cited number's or bracketed citation's final period
+   don't count - see
    `_UNCOUNTED` in `src/shared/styled_text.py`), and the only formatting checked is bold/italic (each
    node's `emphasis` ranges) - see `ai_docs/2026-09-26-compare-emphasis-design.md`.
    A Note's content is its body after the run-in title; the web's note heading
@@ -183,7 +184,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (968 tests — 950 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (971 tests — 953 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
