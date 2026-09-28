@@ -79,7 +79,8 @@ independent tools live here:
    numbered paragraphs (as Sentences) are built from its content JSON
    (`src/web_toc/parsing/appendix_extractor.py`), numbered like the PDF (`AppD.D-1.1.1`);
    a Sentence's lettered list items are its Clauses, which have no ids on the site, so the
-   layout pass lists them under their paragraph and they are cited by position (`<para>.li2`).
+   layout pass lists them under their paragraph and they are cited by position (`<para>.li2`) - a
+   Clause's own nested items are its Subclauses (`<para>.li2.li1`).
 
 A standalone CLI companion, `src/check_directory_access.py`, checks (outside the web app) 
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,
@@ -182,7 +183,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (964 tests — 946 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (966 tests — 948 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
