@@ -184,3 +184,63 @@ def test_matches_reads_every_dot_glyph_as_the_bullet_it_shares():
     bullet, no dot glyph counts."""
     assert matches(StyledText("≤ 30 kWh/(m²•year)"), StyledText("≤ 30 kWh/(m²·year)"))
     assert matches(StyledText("W/m2·K"), StyledText("W/m2⋅K"))
+
+
+def test_matches_ignores_a_comma_or_period_at_a_closing_quote():
+    """The PDF puts a standard title's comma or period inside its closing
+    quote; the site leaves it out or moves it outside."""
+    assert matches(
+        StyledText("CSA O80 Series, “Wood preservation,” and"),
+        StyledText('CSA O80 Series, "Wood preservation" and'),
+    )
+    assert matches(StyledText("Fire Alarm Systems.”"), StyledText('Fire Alarm Systems".'))
+    assert matches(StyledText("Venting.” (See Note"), StyledText('Venting". (See Note'))
+
+
+def test_a_comma_or_period_away_from_a_closing_quote_still_counts():
+    assert not matches(StyledText("wood, and"), StyledText("wood and"))
+    assert not matches(StyledText("the “Code”, and"), StyledText('the "Code"; and'))
+    assert not matches(StyledText("see “, ” here"), StyledText('see " " here'))
+
+
+def test_matches_ignores_the_final_period_of_a_cited_number():
+    """The site drops the final period of a cited number where the PDF
+    writes it: "3.2.4.8, 3.2.4.9 and", "(3.8.3.2)", "D-7.2 D-7.3"."""
+    assert matches(
+        StyledText("Articles 3.2.4.8., 3.2.4.9. and 3.2.5.12."),
+        StyledText("Articles 3.2.4.8 , 3.2.4.9 and 3.2.5.12"),
+    )
+    assert matches(StyledText("routes (3.8.3.2.)"), StyledText("routes ( 3.8.3.2 )"))
+    assert matches(StyledText("D-7.2. D-7.3."), StyledText("D-7.2 D-7.3"))
+
+
+def test_a_cited_numbers_inner_periods_still_count():
+    assert not matches(StyledText("Sentence 3.2.4.8.(1)"), StyledText("Sentence 3.2.4.8(1)"))
+    assert not matches(StyledText("3.2.4.8."), StyledText("3.2.48"))
+    assert not matches(StyledText("25 mm."), StyledText("25 mm"))
+
+
+def test_a_tables_letter_follows_its_numbers_final_period():
+    assert matches(StyledText("Table 3.2.3.1.-B"), StyledText("Table 3.2.3.1-B"))
+    assert not matches(StyledText("Table 3.2.3.1.-B"), StyledText("Table 3.2.3.1."))
+
+
+def test_a_cited_numbers_final_period_may_stand_apart_from_it():
+    """The site prints a cross-reference link's final period after the link:
+    "Subsection 9.10.9 . 2 h", "Article 9.10.9.2 .Fire"."""
+    assert matches(StyledText("Subsection 9.10.9. 2 h"), StyledText("Subsection 9.10.9 . 2 h"))
+    assert matches(StyledText("Article 9.10.9.2. Fire"), StyledText("Article 9.10.9.2 .Fire"))
+
+
+def test_a_cited_numbers_final_period_before_a_glued_word():
+    """The PDF's text runs a cited number into the next word
+    ("Subsection 1.3.3.of DivisionA.") where the site has "1.3.3 . of"."""
+    assert matches(
+        StyledText("Subsection 1.3.3.of DivisionA."),
+        StyledText("Subsection 1.3.3 . of Division A ."),
+    )
+
+
+def test_the_sites_spacing_around_a_final_period_or_closing_quote():
+    assert matches(StyledText("Table 9.23.3.4. (See Note"), StyledText("Table 9.23.3.4 .(See Note"))
+    assert matches(StyledText("600 mm o.c.” Thus"), StyledText("600 mm o.c. ” Thus"))

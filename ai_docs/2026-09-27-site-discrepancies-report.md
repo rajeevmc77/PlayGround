@@ -48,6 +48,22 @@ clauses, notes) are the ones to look at. Each one is counted in exactly one row 
 | Site cell is empty | 36 | Spec Table 2, 9.23.13.7., 9.38.1.1. |
 | **Other wording** (not classified automatically) | **1,710** | Spec Table 1, 1.3.1.2., 9.38.1.1. |
 
+### Accepted as matches since this run (2026-09-28)
+
+The counts above are from the 2026-09-27 run. Since then the comparison accepts these typing and
+punctuation differences as matches, so they no longer fail (`src/shared/styled_text.py`). The
+matching items rose to 83,211 of 94,122 (88.4%).
+
+| Difference | PDF | Site | Items that now match |
+|---|---|---|---:|
+| Typed dashes | `Documents—the`, `Systems – Maximum` | `Documents---the`, `Systems -- Maximum` | 24 |
+| Unit multiplication dot | `kWh/(m²•year)` | `kWh/(m²·year)` | 35 |
+| Comma or period at a closing quote | `"Wood preservation," and`, `Systems."` | `"Wood preservation" and`, `Systems".` | 409, with the next row |
+| A cited number's final period | `3.2.4.8., 3.2.4.9.`, `Subsection 9.10.9. 2 h` | `3.2.4.8 , 3.2.4.9`, `Subsection 9.10.9 . 2 h` | (see above) |
+
+The PDF's own "•" before list items is ignored too (37 items). That one was on our side, since the
+site renders the same lists as bullets that aren't text.
+
 ## Structure and data
 
 ### Sections 3.9 and 3.10 are swapped
