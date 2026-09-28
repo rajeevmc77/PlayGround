@@ -29,3 +29,10 @@ def test_distance_is_symmetric():
 def test_result_carries_the_given_stem():
     result = compare("my-stem", "0000000000000000", "0000000000000000")
     assert result.stem == "my-stem"
+
+
+def test_compare_scores_longer_hashes_by_their_own_length():
+    # ink_phash's 16x16 hash is 256 bits: one bit apart is 99.6%, not 98.4%.
+    one_bit_apart = compare("s", "0" * 64, "0" * 63 + "1")
+    assert one_bit_apart.hash_distance == 1
+    assert one_bit_apart.similarity_percent == 99.6

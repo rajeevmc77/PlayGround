@@ -184,7 +184,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (976 tests — 958 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (984 tests — 966 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
@@ -213,3 +213,10 @@ only if/when they're actually touched, not retroactively.
 - Most comparison failures left are the website's own differences (reference wording, standard
   designations, punctuation, bold/italic, the 3.9/3.10 swap, Table C-2), documented with counts
   in `ai_docs/2026-09-27-site-discrepancies-report.md` - check there before chasing a failure.
+- Image comparison (`src/comparison/image_similarity.py`): a figure scores the better of the plain
+  8x8 phash and a 16x16 "ink" phash (`src/image_compare/parsing/ink_hash.py` - ink vs paper, a
+  surrounding frame stepped inside), which sees past the marked-up PDF's heavier lines and green MRK
+  frames; an equation keeps the plain phash. To judge a change to it, score a labelled set - the
+  passing pairs plus eyeballed false positives, the eyeballed real differences, and every
+  same-owner pair whose web `src` differs - and accept only what passes more of the first without
+  more of the others.

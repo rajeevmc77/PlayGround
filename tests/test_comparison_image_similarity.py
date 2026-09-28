@@ -55,3 +55,32 @@ def test_images_match_honors_a_custom_threshold():
     result = ComparisonResult(stem="s", hash_distance=20, similarity_percent=68.8)
     assert images_match(result, threshold_percent=60.0) is True
     assert images_match(result, threshold_percent=80.0) is False
+
+
+def _figure(framed: bool) -> bytes:
+    image = _solid((200, 160), (255, 255, 255))
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(image)
+    for storey in range(3):
+        fill = (245, 210, 222) if storey == 0 else None
+        draw.rectangle(
+            (50, 20 + storey * 40, 150, 60 + storey * 40), outline=(0, 0, 0), fill=fill, width=2
+        )
+    if framed:
+        draw.rectangle((2, 2, 197, 157), outline=(0, 120, 60), width=3)
+    return _bytes(image)
+
+
+def test_a_figure_scores_the_better_of_its_plain_and_ink_comparisons():
+    # The marked-up PDF boxes 9.23.13.7.'s house diagrams in a frame the
+    # site's copy doesn't have: only the ink comparison sees past it.
+    result = compare_images("B.9.23.13.7.Fig1", _figure(framed=True), _figure(framed=False))
+    assert images_match(result)
+
+
+def test_an_equation_keeps_the_plain_comparison():
+    framed, plain = _figure(framed=True), _figure(framed=False)
+    as_equation = compare_images("B.4.1.6.5.Eq1", framed, plain)
+    as_figure = compare_images("B.4.1.6.5.Fig1", framed, plain)
+    assert as_equation.similarity_percent < as_figure.similarity_percent
