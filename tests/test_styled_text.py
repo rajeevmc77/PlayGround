@@ -259,3 +259,10 @@ def test_a_lettered_cited_numbers_final_period_does_not_count():
         StyledText("Section D-6 of Appendix D"), StyledText("Section D-6. of Appendix D")
     )
     assert matches(StyledText("Section D-1.5 applies"), StyledText("Section D-1.5. applies"))
+
+
+def test_matches_reads_a_superscript_digit_as_the_digit():
+    """Both sides mix "kg/m²" with "kg/m2" and "m³" with "m3"."""
+    assert matches(StyledText("0.6 kg/m² of wall"), StyledText("0.6 kg/m2 of wall"))
+    assert matches(StyledText("≤ 300 m3"), StyledText("≤ 300 m³"))
+    assert not matches(StyledText("m²"), StyledText("m3"))

@@ -22,7 +22,8 @@ STYLES = frozenset({"b", "i", "bi"})
 
 # Typographic variants read as the same character: the PDF typesets curly
 # quotes “ ” ‘ ’ where the web often has plain " and ', and – — − (en dash,
-# em dash, minus) and non-breaking/typographic hyphens where it has "-".
+# em dash, minus) and non-breaking/typographic hyphens where it has "-"; and
+# both sides mix superscript digits with plain ones ("kg/m²", "kg/m2").
 _PLAIN_CHARACTERS = str.maketrans(
     {
         "“": '"',
@@ -37,6 +38,9 @@ _PLAIN_CHARACTERS = str.maketrans(
         "–": "-",  # en dash
         "—": "-",  # em dash
         "−": "-",  # minus sign
+        "¹": "1",
+        "²": "2",
+        "³": "3",
     }
 )
 
