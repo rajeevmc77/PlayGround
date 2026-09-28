@@ -187,7 +187,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (1002 tests — 984 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (1007 tests — 989 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
@@ -219,7 +219,9 @@ only if/when they're actually touched, not retroactively.
 - Image comparison (`src/comparison/image_similarity.py`): a figure scores the better of the plain
   8x8 phash and a 16x16 "ink" phash (`src/image_compare/parsing/ink_hash.py` - ink vs paper, a
   surrounding frame stepped inside), which sees past the marked-up PDF's heavier lines and green MRK
-  frames; an equation keeps the plain phash. An equation the site shows a MathJax error in
+  frames; a figure both hashes miss still passes when its ink correlates >= 0.83 at 24x24
+  (`src/image_compare/analysis/ink_correlation.py` - 9.23.13.7.'s ~40px framed house rasters);
+  an equation keeps the plain phash. An equation the site shows a MathJax error in
   ("[f]..." in its alt text) fails; one whose pixels miss still passes when Tesseract's reading of
   the PDF formula matches the site's formula text (`src/comparison/equation_text.py`,
   `formula_ocr.py`). Tesseract is optional (`brew install tesseract`); without it equations are

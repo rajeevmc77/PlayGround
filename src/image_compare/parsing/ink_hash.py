@@ -77,7 +77,11 @@ def _content(mask: Image.Image) -> Image.Image:
     return mask
 
 
+def ink_content(image_bytes: bytes) -> Image.Image:
+    """The figure's ink (black on white), inside any frame, cropped to it."""
+    return _content(_ink_mask(Image.open(io.BytesIO(image_bytes))))
+
+
 def ink_phash(image_bytes: bytes) -> str:
     """16x16 perceptual hash (64 hex characters) of the figure's ink."""
-    mask = _content(_ink_mask(Image.open(io.BytesIO(image_bytes))))
-    return str(imagehash.phash(mask, hash_size=HASH_SIZE))
+    return str(imagehash.phash(ink_content(image_bytes), hash_size=HASH_SIZE))

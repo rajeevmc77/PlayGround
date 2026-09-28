@@ -345,3 +345,19 @@ def test_a_figure_is_never_read_as_text(tmp_path, monkeypatch):
     _write_fixtures(tmp_path)
     run(str(tmp_path))
     assert _status(tmp_path, "V.P1.Fig1") is False
+
+
+def test_a_figure_its_hashes_miss_passes_when_its_ink_lines_up(tmp_path, monkeypatch):
+    _score_every_image_pair(monkeypatch, 60.0)
+    monkeypatch.setattr(build_comparison, "ink_correlation", lambda _a, _b: 0.9)
+    _write_fixtures(tmp_path)
+    run(str(tmp_path))
+    assert _status(tmp_path, "V.P1.Fig1") is True
+
+
+def test_a_figure_whose_ink_lines_up_less_still_fails(tmp_path, monkeypatch):
+    _score_every_image_pair(monkeypatch, 60.0)
+    monkeypatch.setattr(build_comparison, "ink_correlation", lambda _a, _b: 0.8)
+    _write_fixtures(tmp_path)
+    run(str(tmp_path))
+    assert _status(tmp_path, "V.P1.Fig1") is False
