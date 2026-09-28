@@ -67,3 +67,16 @@ def test_zero_dimension_is_not_equation_shaped():
 
 def test_negative_dimension_is_not_equation_shaped():
     assert is_equation_shaped(-5, 10) is False
+
+
+def test_a_two_line_formula_is_equation_shaped():
+    # 4.1.6.10.Eq1, "Ca = xh/(0.03Cbb²) ... and Ca = 4x/(Cb b) ...": the
+    # tallest formula in the PDF.
+    assert is_equation_shaped(190, 60) is True
+
+
+def test_a_wide_diagram_taller_than_any_formula_is_not_equation_shaped():
+    # A-4.1.6.16.(6)'s snow-load diagram is uncaptioned and wide, but no
+    # formula is as tall; nor is the BC logo on the Division C form (72pt).
+    assert is_equation_shaped(406, 116) is False
+    assert is_equation_shaped(185, 72) is False
