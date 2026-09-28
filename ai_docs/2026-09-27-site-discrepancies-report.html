@@ -1,0 +1,484 @@
+<title>BCBC Site Discrepancies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #f6f7f6;
+  --surface: #ffffff;
+  --ink: #1d2422;
+  --muted: #5b6662;
+  --rule: #d9dedb;
+  --accent: #1f6f66;
+  --accent-soft: #e2efed;
+  --pdf: #9b2f22;
+  --pdf-bg: #f8e3df;
+  --site: #1c6b3a;
+  --site-bg: #dcf0e2;
+  --warn-bg: #fbf2d8;
+  --warn-ink: #6d5410;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141a19;
+    --surface: #1c2322;
+    --ink: #e4ebe8;
+    --muted: #9aa8a3;
+    --rule: #2f3a38;
+    --accent: #6cc1b5;
+    --accent-soft: #1f3431;
+    --pdf: #f0a597;
+    --pdf-bg: #43231f;
+    --site: #8fd6a6;
+    --site-bg: #1d3a28;
+    --warn-bg: #372f17;
+    --warn-ink: #ead08a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141a19;
+  --surface: #1c2322;
+  --ink: #e4ebe8;
+  --muted: #9aa8a3;
+  --rule: #2f3a38;
+  --accent: #6cc1b5;
+  --accent-soft: #1f3431;
+  --pdf: #f0a597;
+  --pdf-bg: #43231f;
+  --site: #8fd6a6;
+  --site-bg: #1d3a28;
+  --warn-bg: #372f17;
+  --warn-ink: #ead08a;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  padding-inline: 16px;
+  padding-block: 32px 64px;
+}
+.page { max-width: 880px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.25; margin: 0; }
+h1 { font-size: 2.1rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.45rem; font-weight: 700; padding-top: 8px; border-top: 2px solid var(--ink); }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 0.86em; }
+.eyebrow { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+header { display: grid; gap: 12px; }
+.meta { color: var(--muted); font-size: 0.92rem; }
+section { display: grid; gap: 16px; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 28px; font-variant-numeric: tabular-nums; padding: 16px 20px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.stats div { display: grid; }
+.stats b { font-size: 1.35rem; font-weight: 700; }
+.stats span { color: var(--muted); font-size: 0.85rem; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; font-variant-numeric: tabular-nums; background: var(--surface); }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.n { text-align: right; white-space: nowrap; font-weight: 600; }
+td code { overflow-wrap: anywhere; }
+tr.group td { background: var(--accent-soft); font-weight: 600; }
+.issue { display: grid; gap: 12px; padding: 20px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.issue-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
+.count { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+.where { color: var(--muted); font-size: 0.9rem; }
+.ex { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.ex > div { padding: 10px 12px; font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 0.82rem; line-height: 1.55; overflow-wrap: anywhere; }
+.ex > div + div { border-left: 1px solid var(--rule); }
+.ex .lbl { display: block; font-family: "Libre Franklin", Arial, sans-serif; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+del, ins { text-decoration: none; border-radius: 2px; padding: 0 2px; }
+del { background: var(--pdf-bg); color: var(--pdf); }
+ins { background: var(--site-bg); color: var(--site); }
+.b { font-weight: 700; }
+.i { font-style: italic; }
+.fix { font-size: 0.93rem; }
+.fix b { font-weight: 600; }
+.note { background: var(--warn-bg); color: var(--warn-ink); padding: 14px 18px; border-radius: 6px; font-size: 0.93rem; max-width: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.88rem; color: var(--muted); }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 68ch; }
+ul ul { margin-top: 6px; }
+.placeholder { font-family: "Libre Franklin", Arial, sans-serif; color: var(--muted); }
+@media (max-width: 640px) {
+  .ex { grid-template-columns: 1fr; }
+  .ex > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  h1 { font-size: 1.7rem; }
+}
+</style>
+
+<div class="page">
+<header>
+  <div class="eyebrow">BC Building Code 2024 · PDF vs. website</div>
+  <h1>Where the website differs from the signed PDF</h1>
+  <p>We compared every provision, table cell, note, clause, figure and equation of the signed MO package PDF (<span class="mono">MO Package BCBC MRK signed.pdf</span>) with the same content on the BC Building Code website. This report lists the differences that come from the website: how it renders references, standards, punctuation, formatting and formulas, and places where its data or structure differs from the PDF. Each item has a count, the provisions where it concentrates, real examples, and a suggested fix. The PDF is the reference throughout.</p>
+  <p class="meta">Website: dev.buildingcode.gov.bc.ca, version 2024, content as of 2024-03-08 · First run 2026-09-27 · Updated 2026-09-28</p>
+</header>
+
+<section>
+  <h2>Summary</h2>
+  <div class="stats">
+    <div><b>94,166</b><span>items compared</span></div>
+    <div><b>83,548</b><span>match (88.7%)</span></div>
+    <div><b>448 of 588</b><span>figures and equations match</span></div>
+  </div>
+  <p>An item matches when its text is identical apart from spacing and its bold and italic match. No other styling is compared. Containers such as articles and tables fail when any item inside them differs, so the text items (cells, sentences, clauses, notes) are the ones to look at. In the first run, 5,888 of them differed. Every one was sorted by the kind of difference it shows:</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Kind of difference (first run)</th><th>Items</th><th>Concentrated in</th></tr></thead>
+    <tbody>
+      <tr class="group"><td>Formatting</td><td class="n">1,988</td><td></td></tr>
+      <tr><td><a href="#bold">Bold in the PDF's tables is plain on the site</a></td><td class="n">1,702</td><td>9.38.1.1., 3.10.1.1., 4.5.1.1., 6.10.1.1., 5.10.1.1., 8.3.1.1.</td></tr>
+      <tr><td><a href="#italic">Italic differs</a> and mixed bold/italic</td><td class="n">286</td><td>Appendix D, Spec Tables, 4.1.8.11.</td></tr>
+      <tr class="group"><td>Cross-references</td><td class="n">615</td><td></td></tr>
+      <tr><td><a href="#refwords">Reference words repeated</a> ("to Article …")</td><td class="n">349</td><td>3.10.1.1., Part 3, Part 9</td></tr>
+      <tr><td><a href="#reflost">Note references rewritten or cut short</a></td><td class="n">266</td><td>1.3.1.2., A-Table 9.23.3.5.-B, A-9.36.2.x</td></tr>
+      <tr class="group"><td>Standards and punctuation</td><td class="n">964</td><td></td></tr>
+      <tr><td><a href="#standards">Standard designations changed</a></td><td class="n">477</td><td>5.9.1.1., 9.36.3.10., throughout Parts 3 and 9</td></tr>
+      <tr><td><a href="#punct">Punctuation moved or dropped</a></td><td class="n">466</td><td>5.9.1.1., Appendix D, 3.8.3.1.</td></tr>
+      <tr><td><a href="#case">Letter case in standard titles</a></td><td class="n">21</td><td>5.8.1.4., 5.8.1.5.</td></tr>
+      <tr class="group"><td>Missing or different content</td><td class="n">611</td><td></td></tr>
+      <tr><td><a href="#missing">No matching item on the site</a></td><td class="n">347</td><td>1.3.1.2., 9.38.1.1., Spec Table 1</td></tr>
+      <tr><td><a href="#images">Site cell holds an image description</a></td><td class="n">228</td><td>Spec Table 1, 9.23.13.11., A-9.11.1.4.</td></tr>
+      <tr><td><a href="#empty">Site cell is empty</a></td><td class="n">36</td><td>Spec Table 2, 9.23.13.7., 9.38.1.1.</td></tr>
+      <tr class="group"><td>Other wording</td><td class="n">1,710</td><td></td></tr>
+      <tr><td><a href="#other">Not classified automatically</a></td><td class="n">1,710</td><td>Spec Table 1, 1.3.1.2., 9.38.1.1.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Some differences affect whole sections or tables rather than single items. They are described under <a href="#structure">Structure and data</a>. Figures and equations have <a href="#figures">their own section</a>. <a href="#ours">What is not the site's</a> lists the few remaining differences that come from our own reading of the PDF or the site, so they aren't mistaken for site problems.</p>
+  <div class="legend"><span><del>red</del> text is in the PDF only</span><span><ins>green</ins> text is on the site only</span></div>
+</section>
+
+<section id="changes">
+  <h2>Changes since the first run</h2>
+  <p>The counts above are from the 2026-09-27 run. On 2026-09-28 the matching items rose from 82,706 to <b>83,548 of 94,166 (88.7%)</b>, from three kinds of change:</p>
+  <ul>
+    <li>the typing and punctuation differences below are accepted as matches;</li>
+    <li>our PDF and web extraction was fixed where it misread the source (see <a href="#ours">What is not the site's</a>);</li>
+    <li>the figure and equation comparison now sees past rendering differences, and fails the site's garbled formulas (see <a href="#figures">Figures and equations</a>).</li>
+  </ul>
+  <p>None of these changes alters the PDF's text. Each accepted rule applies to both sides alike.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Accepted as a match</th><th>PDF</th><th>Site</th><th>Items</th></tr></thead>
+    <tbody>
+      <tr><td>Typed dashes</td><td><code>Documents—the</code>, <code>Systems – Maximum</code></td><td><code>Documents---the</code>, <code>Systems -- Maximum</code></td><td class="n">24</td></tr>
+      <tr><td>Unit multiplication dot</td><td><code>kWh/(m²•year)</code></td><td><code>kWh/(m²·year)</code></td><td class="n">35</td></tr>
+      <tr><td>Comma or period at a closing quote</td><td><code>“Wood preservation,” and</code>, <code>Systems.”</code></td><td><code>"Wood preservation" and</code>, <code>Systems".</code></td><td class="n" rowspan="2">409</td></tr>
+      <tr><td>A cited number's final period</td><td><code>3.2.4.8., 3.2.4.9.</code>, <code>Subsection 9.10.9. 2 h</code></td><td><code>3.2.4.8 , 3.2.4.9</code>, <code>Subsection 9.10.9 . 2 h</code></td></tr>
+      <tr><td>A lettered number's final period</td><td><code>Section D-6 of</code></td><td><code>Section D-6. of</code></td><td class="n">5</td></tr>
+      <tr><td>A bracketed citation's final period</td><td><code>Sentence D-2.3.9.(2) by way</code></td><td><code>Sentence D-2.3.9.(2). by way</code></td><td class="n">7</td></tr>
+      <tr><td>Superscript digits</td><td><code>≤ 300 m3</code>, <code>kg/m²</code></td><td><code>≤ 300 m³</code>, <code>kg/m2</code></td><td class="n">4</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="structure">
+  <h2>Structure and data</h2>
+
+  <div class="issue">
+    <div class="issue-head"><h3>Sections 3.9 and 3.10 are swapped</h3><span class="count">2 sections and everything under them</span></div>
+    <p>The site files the PDF's Section 3.9 content under 3.10 and the reverse, down to article level. Its headings and titles are swapped too, so every provision in both sections sits under the wrong number.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF</span>Section 3.9. Self-service Storage Buildings<br>Section 3.10. Objectives and Functional Statements<br>3.9.1.1. Definition</div>
+      <div><span class="lbl">Site</span>3.9 Objectives and Functional Statements<br>3.10 Self-service Storage Buildings<br>3.9.1.1 Attributions to Acceptable Solutions</div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> renumber the two sections in the site's source data.</p>
+  </div>
+
+  <div class="issue">
+    <div class="issue-head"><h3>Table C-2 is the national table, not BC's</h3><span class="count">PDF 120 rows · site 709 rows</span></div>
+    <p>The PDF's Table C-2 (climatic design data) lists British Columbia locations only, ending at Youbou. The site's table continues with Alberta, Ontario, Quebec, Yukon, Nunavut and the rest of Canada.</p>
+    <p class="fix"><b>Suggested fix:</b> confirm which table the BC code should publish. If it's the BC one, trim the site's table to BC locations.</p>
+  </div>
+
+  <div class="issue">
+    <div class="issue-head"><h3>Table 5.9.1.1. combines columns</h3><span class="count">about 190 cells</span></div>
+    <p>The PDF gives the issuing body, document number and title separate columns. The site repeats a combined string, the agency, number and quoted title, in each of those cells.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · two cells</span>A135.6<br>Engineered Wood Siding</div>
+      <div><span class="lbl">Site · both cells</span><ins>ANSI </ins>A135.6<ins>, "</ins>Engineered Wood Siding<ins>"</ins></div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> render each column from its own field.</p>
+  </div>
+
+  <div class="issue">
+    <div class="issue-head"><h3>Clause letters out of order</h3><span class="count">example: 3.1.9.4.(4)</span></div>
+    <p>The site shows the right clauses under the wrong letters. Other clauses cite them by letter, so readers are sent to the wrong clause.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF</span>(a) except as provided in Clause (b), the piping is sealed …<br>(b) in buildings more than 3 storeys in building height …<br>(c) the piping is not located in a vertical service space.</div>
+      <div><span class="lbl">Site</span><ins>c)</ins> except as provided in Clause (b), the piping is sealed …<br><ins>a)</ins> in buildings more than 3 storeys in building height …<br><ins>b)</ins> the piping is not located in a vertical service space.</div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> check the clause order in the source data for this sentence and any like it.</p>
+  </div>
+
+  <div class="issue">
+    <div class="issue-head"><h3>Table notes printed inside cells</h3><span class="count">Spec Table 1 mainly</span></div>
+    <p>Where the PDF puts a note marker such as (6) in a cell, the site pastes the note's whole text into the cell.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF</span>W13 with • 89 mm thick absorptive material on each side<del>(6)(13)</del> …</div>
+      <div><span class="lbl">Site</span>W13 with • 89 mm thick absorptive material on each side<ins>Where bracing material, such as diagonal lumber or plywood, OSB, gypsum board or fibr…</ins></div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> render note references as markers linking to the table's notes.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Formatting</h2>
+
+  <div class="issue" id="bold">
+    <div class="issue-head"><h3>Bold in the PDF's tables is plain on the site</h3><span class="count">1,702 items</span></div>
+    <p class="where">9.38.1.1. (854), 3.10.1.1. (421), 4.5.1.1. (125), 6.10.1.1. (53), 5.10.1.1. (33), 8.3.1.1. (22), plus header cells elsewhere</p>
+    <p>The objectives and functional statements tables bold each provision heading, and many other tables bold their header rows. The site renders these cells in plain text. The words match; only the weight differs.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 9.38.1.1.</span><span class="b">9.3.1.1. General</span></div>
+      <div><span class="lbl">Site</span>9.3.1.1. General</div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> apply the bold style to heading rows in these tables (a template change, not a content edit).</p>
+  </div>
+
+  <div class="issue" id="italic">
+    <div class="issue-head"><h3>Italic differs</h3><span class="count">35 items italic only · 251 mixed bold and italic</span></div>
+    <p>The site italicises defined terms in places where the PDF sets them in roman, and the reverse. In Table 9.23.13.7.-D, for example, the PDF sets "Storey" in the regular face (ArialNarrow, checked in the PDF itself). The site italicises it as a defined term.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 9.23.13.7.-D</span>Storey supporting roof only</div>
+      <div><span class="lbl">Site</span><span class="i">Storey</span> supporting roof only</div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> decide whether the site's defined-term styling should follow the PDF inside tables.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Cross-references</h2>
+  <p>The site generates reference text from links instead of printing the PDF's wording. That produces two kinds of error: repeated reference words, and references that lose part of their number. The losses matter more, because the reader can no longer tell what is being referenced.</p>
+
+  <div class="issue" id="refwords">
+    <div class="issue-head"><h3>Reference words repeated</h3><span class="count">349 items</span></div>
+    <p>In a range or list, the site repeats the reference type before every number.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.1.2.1.(1)</span>Except as permitted by Articles 3.1.2.3. to 3.1.2.5., and 3.1.2.7., every building …</div>
+      <div><span class="lbl">Site</span>Except as permitted by Articles 3.1.2.3. to <ins>Article</ins> 3.1.2.5. , and <ins>Article</ins> 3.1.2.7. , every building …</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.1.6.14.(3)</span>Except as provided in Sentences (4) and 3.1.6.4.(3) and (6), …</div>
+      <div><span class="lbl">Site</span>Except as provided in Sentences (4) and 3.1.6.4.(3) and <ins>3.1.6.4.</ins>(6) , …</div>
+    </div>
+  </div>
+
+  <div class="issue" id="reflost">
+    <div class="issue-head"><h3>References that lose part of their number</h3><span class="count">see counts per pattern</span></div>
+    <p>These patterns overlap with other categories, so each count is the number of items showing that pattern.</p>
+    <ul>
+      <li><b>Article number dropped</b>, 288 items, almost all in Table 1.3.1.2. (Documents Referenced). Its "Code reference" column keeps only the sentence number.</li>
+      <li><b>Table or figure letter dropped</b>, 118 items: "Table 3.2.3.1.-A" becomes "Table 3.2.3.1.".</li>
+      <li><b>Note reference cut to "Note B-n."</b>, 95 items.</li>
+      <li><b>"Note" added before A-numbers</b>, in most of the 266 items in this category.</li>
+      <li><b>Clause reference shortened</b>, 11 items: "Subclause (1)(b)(i)" becomes "Subclause (i)".</li>
+      <li><b>Raw reference code shown</b>, 6 items: the site prints its internal reference code instead of text.</li>
+    </ul>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 1.3.1.2.</span><del>3.6.5.4.</del>(4) <del>3.6.5.5.</del>(1) <del>9.33.6.4.</del>(4) <del>9.33.8.2.</del>(2)</div>
+      <div><span class="lbl">Site</span>(4) (1) (4) (2)</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.1.5.5.(2)</span>… the limiting distance in Tables 3.2.3.1.<del>-B</del> to 3.2.3.1.<del>-E</del> permits …</div>
+      <div><span class="lbl">Site</span>… the limiting distance in Tables 3.2.3.1. to <ins>Table</ins> 3.2.3.1. permits …</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.2.5.12.(10)</span>(See Note <del>A-3.2.5.12.(10)</del>.)</div>
+      <div><span class="lbl">Site</span>(See Note <ins>B-3</ins>.)</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.1.5.6.(2)</span>… deemed to comply with Subclause <del>(1)(b)</del>(i).</div>
+      <div><span class="lbl">Site</span>… deemed to comply with Subclause (i).</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 9.23.11.4.-A</span>Heavyweight construction(4)</div>
+      <div><span class="lbl">Site</span>Heavyweight Construction<ins>[REF:table-note:nbc.divBV2.part9.sect23.subsect11.art4.table1.note4]</ins></div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> print the full target number for every reference, including the table or figure letter and the article number. Print note references as "Note A-…" with the note's own number. Treat any unresolved reference code as a publishing error.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Standards and punctuation</h2>
+
+  <div class="issue" id="standards">
+    <div class="issue-head"><h3>Standard designations changed</h3><span class="count">477 items</span></div>
+    <p>The site adds the issuing body in front of the designation, and sometimes an edition year, where the PDF prints the designation alone.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.1.5.7.(1)(b)(ii)</span>when tested in accordance with CAN/ULC-S138, “Standard Method of Test …</div>
+      <div><span class="lbl">Site</span>when tested in accordance with <ins>ULC</ins> CAN/ULC-S138, "Standard Method of Test …</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 1.4.1.2.(1)</span>… acceptance criteria of CAN/ULC-S114, "Standard Method …</div>
+      <div><span class="lbl">Site</span>… acceptance criteria of <ins>ULC</ins> CAN/ULC-S114<ins>:2018</ins>, "Standard Method …</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · D-1.5.1.(1)(a)</span>CAN/CSA A82.27-M, “Gypsum Board,” or</div>
+      <div><span class="lbl">Site</span><ins>CSA</ins> CAN/CSA A82.27-M<ins>91</ins>, "Gypsum Board" or</div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> print the designation exactly as the code does. If edition years are wanted, they belong in Table 1.3.1.2.</p>
+  </div>
+
+  <div class="issue" id="punct">
+    <div class="issue-head"><h3>Punctuation moved or dropped</h3><span class="count">466 items in the first run</span></div>
+    <p>The site moves commas and periods outside closing quotation marks, drops trailing commas and periods, and adds periods after some section numbers. Most of these are now accepted as matches (see <a href="#changes">Changes since the first run</a>); they are listed here because the site still prints them differently.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.2.4.19.(5)(b)</span>… Fire Alarm Systems<del>.”</del></div>
+      <div><span class="lbl">Site</span>… Fire Alarm Systems<ins>".</ins></div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 1.3.3.3.(1)(a)</span>reserved<del>,</del></div>
+      <div><span class="lbl">Site</span>reserved</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 1.2.1.1.(1)(b)</span>… under Section 2.3 of Division C, …</div>
+      <div><span class="lbl">Site</span>… under Section 2.3<ins>.</ins> of Division C, …</div>
+    </div>
+  </div>
+
+  <div class="issue" id="case">
+    <div class="issue-head"><h3>Letter case in standard titles</h3><span class="count">21 items</span></div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 5.8.1.4.(1)</span>"Building <del>A</del>coustics – Estimation of <del>A</del>coustic <del>P</del>erformance of <del>B</del>uildings …</div>
+      <div><span class="lbl">Site</span>"Building <ins>a</ins>coustics – Estimation of <ins>a</ins>coustic <ins>p</ins>erformance of <ins>b</ins>uildings …</div>
+    </div>
+  </div>
+</section>
+
+<section id="figures">
+  <h2>Figures and equations</h2>
+  <p>The PDF has 588 numbered images: 485 figures and 103 equations. 448 match the site's (395 figures, 53 equations). Figures are compared by their drawing, allowing for the marked-up PDF's heavier line weight, its green revision frames and its smaller embedded copies. Equations are compared by their image and, where OCR can read the PDF's formula, by its text against the site's formula text.</p>
+
+  <div class="issue" id="mathjax">
+    <div class="issue-head"><h3>The site shows garbled formulas</h3><span class="count">53 of its 133 equations</span></div>
+    <p>Where the site's formula uses a command its MathJax renderer doesn't know, it prints the command's letter in brackets in front of the formula, and readers see it. The PDF has no such text.</p>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Where</th><th>Site's formula</th><th>Items</th></tr></thead>
+      <tbody>
+        <tr><td>4.1.8.1., 4.1.8.2., 4.1.8.4. and their notes</td><td><code>[f][a] N̂</code>, <code>[f][a] ŝ_u</code> (the whole formula lost)</td><td class="n">26</td></tr>
+        <tr><td>4.1.7.8., 4.1.7.13.</td><td><code>[f]f_nD√(sF/(sF+βB))</code>, <code>[f]A_N=(1000A)/(max(L²_b,25))</code></td><td class="n">11</td></tr>
+        <tr><td>Appendix D</td><td><code>[f]C′_r</code>, <code>[f]((a(f′_c+20)D^2.5)/(R(KL-1000)))^2</code></td><td class="n">11</td></tr>
+        <tr><td>4.1.6.2., 4.1.6.5. and their notes</td><td><code>[f]l_cC²_w</code>, <code>[f]l_cs=2w_s-(w²_s)/(l_s)</code></td><td class="n">5</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 4.1.6.5.(3)</span>l<sub>cs</sub> = 2w<sub>s</sub> − w<sub>s</sub>²/l<sub>s</sub></div>
+      <div><span class="lbl">Site</span><ins>[f]</ins>l<sub>cs</sub> = 2w<sub>s</sub> − w<sub>s</sub>²/l<sub>s</sub></div>
+    </div>
+    <p>Five of these passed before 2026-09-28 because their pictures looked alike. Every one paired with a PDF equation now fails, because what the site shows is not the PDF's formula.</p>
+    <p class="fix"><b>Suggested fix:</b> check the site's MathJax configuration for the missing commands, then re-render these equations. In most of them the rest of the formula is intact; in the 4.1.8. group the whole formula has been lost and needs its source restored.</p>
+  </div>
+
+  <div class="issue">
+    <div class="issue-head"><h3>Other image differences</h3><span class="count">a few</span></div>
+    <ul>
+      <li><b>Different drawing or formula at the same place.</b> 9.23.13.7.'s house diagrams where the PDF shades another storey, A-9.23.13.7.(3)'s braced-wall figures, and Appendix C's second equation. They show "image differs" in the viewer.</li>
+      <li><b>Figures in the PDF only.</b> Division C's form graphics (28) and the front and back matter's logos have no counterpart on the site. This is expected.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>Missing or different content</h2>
+
+  <div class="issue" id="missing">
+    <div class="issue-head"><h3>No matching item on the site</h3><span class="count">347 items in the first run</span></div>
+    <p class="where">1.3.1.2. (104), 9.38.1.1. (40), Spec Table 1 (24), 9.10.16.2. (10), A-9.11.1.4. (10), Appendix D (about 30)</p>
+    <p>The PDF has these rows, cells or clauses and the site has nothing at that place. In Table 1.3.1.2., whole document rows (e.g. some AAMA and CCBFC entries) have no site row. Items in the 3.9/3.10 swap also land here. Appendix D's subclauses (i), (ii), first counted here, were our own misreading: the site's data nests them inside their clause's list, and we now read them as subclauses.</p>
+  </div>
+
+  <div class="issue" id="images">
+    <div class="issue-head"><h3>Site cell holds an image description</h3><span class="count">228 items</span></div>
+    <p>Where the PDF shows a drawing in a table cell, the site's cell holds the image's description as text. The PDF cell has no text, so it can't match. This is expected and probably fine, but it inflates the count.</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 9.23.13.11.-B</span><span class="placeholder">[drawing]</span></div>
+      <div><span class="lbl">Site</span>Single storey building configuration</div>
+    </div>
+  </div>
+
+  <div class="issue" id="empty">
+    <div class="issue-head"><h3>Site cell is empty</h3><span class="count">36 items</span></div>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 9.15.4.2., header</span>Concrete or Concrete Block, mm</div>
+      <div><span class="lbl">Site</span><span class="placeholder">[empty]</span></div>
+    </div>
+  </div>
+
+  <div class="issue" id="other">
+    <div class="issue-head"><h3>Other wording</h3><span class="count">1,710 items</span></div>
+    <p class="where">Spec Table 1 (265), 1.3.1.2. (249), 9.38.1.1. (127), 9.23.13.7. (46), others under 25 each</p>
+    <p>Items whose differences don't fit one pattern above. Most combine several of the patterns in one item. Others differ in the provision numbers they cite, which looks like content from a different edition:</p>
+    <div class="ex">
+      <div><span class="lbl">PDF · Table 1.1.1.1.(5)</span>Dead-end Corridors Sentence 3.3.1.9.(<del>7</del>), Article 9.9.7.3. …</div>
+      <div><span class="lbl">Site</span>Dead-end Corridors Sentence 3.3.1.9.(<ins>5</ins>) , Article 9.9.7.3 . …</div>
+    </div>
+    <div class="ex">
+      <div><span class="lbl">PDF · 3.2.5.6.(2)</span>… Sentence 3.2.2.10.(<del>1</del>) shall be more than …</div>
+      <div><span class="lbl">Site</span>… Sentence 3.2.2.10.(<ins>3</ins>) shall be more than …</div>
+    </div>
+    <p class="fix"><b>Suggested fix:</b> check these cited numbers against the signed code first. They change meaning, unlike the formatting items.</p>
+  </div>
+</section>
+
+<section id="ours">
+  <h2>What is not the site's</h2>
+  <p>A few remaining differences come from how we read the PDF or the site. They are listed here so they aren't reported as site problems:</p>
+  <ul>
+    <li><b>About 40 cells in Tables 9.23.13.7.-B and -D.</b> The PDF draws no line between some sub-rows, so our extraction keeps them in one row where the site has several.</li>
+    <li><b>21 table rows split by a page break</b> (Tables 1.1.1.1.(5), 1.3.1.2., 9.38.1.1., 9.10.3.1.-B, A-9.11.1.4.-A and -B). The rest of the row continues at the top of the next page, looking exactly like a new row under a spanning cell. 156 real new rows in 3.10.1.1., 4.5.1.1. and 9.38.1.1. look the same, so the split rows are left unjoined rather than risk those.</li>
+    <li><b>About 20 small house diagrams in 9.23.13.7. and 9.23.13.11.</b> The PDF embeds them as tiny rasters (about 40 × 100 px) in a frame. At that size no check we tried tells the same drawing from another house variant without also passing real differences, so they stay failures.</li>
+    <li><b>About 25 equations with fractions or sums.</b> They show the same formula on both sides, but the PDF sets them in a typewriter face and the site in MathJax, so their pictures differ, and OCR can't read stacked formulas well enough to vouch for them.</li>
+    <li><b>An unknown share of the "other wording" items</b> may include extraction errors that weren't reviewed one by one.</li>
+  </ul>
+
+  <h3>Fixed on 2026-09-28</h3>
+  <ul>
+    <li><b>Text:</b>
+      <ul>
+        <li>the "•" the PDF prints before list items;</li>
+        <li>three Articles whose headings the PDF sets in the body font (9.4.2.2., 9.10.9.19., 9.10.16.3.);</li>
+        <li>an "i)" after Clause (h) that starts (h)'s Subclauses (3.2.4.19.(1), 3.8.3.17.(1));</li>
+        <li>markers the PDF sets as their own span with no space after them (pages 45, 127, 1044);</li>
+        <li>Appendix D's nested Subclauses.</li>
+      </ul>
+    </li>
+    <li><b>Figures and equations:</b>
+      <ul>
+        <li>137 site figures our web extraction had skipped because the site's data gives them no id of their own: Spec Table 1's wall-assembly drawings, and some Appendix D and Part 9 note figures. All 137 now match, and PDF figures without a web counterpart fell from 184 to 47;</li>
+        <li>the six A-9.32.3.4. figures, which the PDF draws flipped and we had saved upside down;</li>
+        <li>wide uncaptioned diagrams we had read as equations (A-4.1.6.16., A-9.5.3.1., A-9.8.4.);</li>
+        <li>50 figures that failed only on the PDF's heavier lines, green revision frames or small copies;</li>
+        <li>images the two sides label differently (a formula the PDF reads as a figure in 4.1.6.5., 4.1.6.10. and 4.1.6.12.), now paired by their place in the provision;</li>
+        <li>7 equations that OCR confirms read the same;</li>
+        <li>the viewer's highlight for a drawing a table repeats in many rows.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h3>Errors in the PDF itself</h3>
+  <p>The extraction reproduces these as printed, so the PDF's numbering repeats where the site's doesn't:</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Where</th><th>PDF</th><th>Site</th></tr></thead>
+    <tbody>
+      <tr><td>Clause 9.23.13.11.(1)(h)</td><td>two Clauses lettered <code>h)</code></td><td><code>h)</code> and <code>i)</code> (it letters the first <code>i)</code> too)</td></tr>
+      <tr><td>Article 10.1.1.1. (p. 1549)</td><td><code>10.1.1.1. Scope</code>, then <code>10.1.1.1. Defined Terms</code></td><td>Defined Terms is 10.1.1.2.</td></tr>
+      <tr><td>Clause 10.3.1.1.(1)(a) (p. 1555)</td><td>Subclauses <code>i)</code>, <code>iii)</code>, <code>iii)</code></td><td><code>i)</code>, <code>ii)</code>, <code>iii)</code></td></tr>
+      <tr><td>Articles 9.4.2.2., 9.10.9.19., 9.10.16.3.</td><td>heading in the body font, indented like body text</td><td>ordinary Article headings</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="note">Everything else above was checked against the PDF's own text, fonts, table rules or images. Counts come from the automated comparison and were sorted by pattern; in the first-run table, an item appears in exactly one row.</p>
+</section>
+</div>
