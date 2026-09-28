@@ -8,6 +8,7 @@ import re
 from image_compare.analysis.similarity import compare as _compare_hashes
 from image_compare.domain.models import ComparisonResult
 from image_compare.parsing.autocrop import autocrop_to_content
+from image_compare.parsing.ink_hash import ink_phash
 from image_compare.parsing.phash import compute_phash
 
 DEFAULT_THRESHOLD_PERCENT = 80.0
@@ -29,9 +30,17 @@ def _comparable_phash(image_bytes: bytes) -> str:
 
 
 def compare_images(stem: str, pdf_image_bytes: bytes, web_image_bytes: bytes) -> ComparisonResult:
-    return _compare_hashes(
+    """A figure scores the better of the plain comparison and the ink one
+    (image_compare/parsing/ink_hash.py), which sees past the marked-up PDF's
+    heavier lines and frames; an equation, the plain one only - a formula's
+    typeface differs on each side however its ink is read."""
+    plain = _compare_hashes(
         stem, _comparable_phash(pdf_image_bytes), _comparable_phash(web_image_bytes)
     )
+    if _EQUATION_KEY.search(stem):
+        return plain
+    ink = _compare_hashes(stem, ink_phash(pdf_image_bytes), ink_phash(web_image_bytes))
+    return max(plain, ink, key=lambda result: result.similarity_percent)
 
 
 def images_match(
