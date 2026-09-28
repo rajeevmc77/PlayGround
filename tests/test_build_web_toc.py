@@ -449,3 +449,15 @@ def test_run_builds_appendix_ds_own_articles_and_keeps_its_tables_at_the_appendi
     appendix = _find(tree, APPENDIX_D)
     tables = [c for c in appendix["children"] if c["type"] == "Table"]
     assert [t["unified_number"] for t in tables] == ["AppD.Tbl1"]
+
+
+def test_run_falls_back_to_the_pages_own_copy_of_an_image_never_downloaded(output_dir):
+    # A figure the download step missed is still on the saved page, whose
+    # images are mirrored under web_pages/assets/.
+    (output_dir / "web_images" / f"{SECTION}.subsect1.art1.figure1.jpg").unlink()
+    (image,) = _built(output_dir)["images"]
+    asset = output_dir / "web_pages" / "assets" / f"{image['src']}.jpg"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_bytes(b"jpg")
+    (image,) = _built(output_dir)["images"]
+    assert image["local_path"] == f"web_pages/assets/{image['src']}.jpg"
