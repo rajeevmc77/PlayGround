@@ -61,10 +61,32 @@ def _resolve_by_proximity(pline: PageLine, prev_clause_x0: float | None) -> str:
     return "clause"
 
 
-def _next_subclause_roman(cur_clause: Node | None) -> str | None:
+def _next_subclause_romans(cur_clause: Node | None) -> tuple[str | None, str | None]:
+    """The current clause's next subclause roman and the one after it."""
     if cur_clause is None:
-        return None
-    return to_roman(len(cur_clause.children) + 1)
+        return None, None
+    count = len(cur_clause.children)
+    return to_roman(count + 1), to_roman(count + 2)
+
+
+def _following_tokens(group: list[BodyLine]) -> list[str | None]:
+    """For each line after the sentence's first, the next marker token after
+    it in the sentence (lowercased), or None."""
+    following, upcoming = [], None
+    for _page_index, pline in reversed(group[1:]):
+        following.append(upcoming)
+        match = RE_MARKER.match(pline.text)
+        upcoming = match.group(1).lower() if match else upcoming
+    return following[::-1]
+
+
+def _kind_in_roman_run(kind: str, token: str, following: str | None, next_romans) -> str:
+    """ "h) ... within  i) suites ...,  ii) ...": an ambiguous marker that is
+    the current clause's next roman, with the next marker carrying the roman
+    sequence on, is that clause's subclause - not the next clause letter."""
+    next_roman, roman_after = next_romans
+    in_run = kind == "ambiguous" and token.lower() == next_roman and following == roman_after
+    return "subclause" if in_run else kind
 
 
 def _resolve_kind(kind, token, pline, next_letter, next_roman, threshold, prev_clause_x0):
@@ -177,7 +199,7 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
     next_letter, prev_clause_x0, cur_clause = "a", None, None
     current_owner, current_owner_page = sentence, sentence.page - 1
 
-    for page_index, pline in group[1:]:
+    for (page_index, pline), following in zip(group[1:], _following_tokens(group), strict=True):
         match = RE_MARKER.match(pline.text)
         if not match:
             current_owner, current_owner_page = _continuation_owner(
@@ -186,8 +208,11 @@ def _add_markers_to_sentence(sentence: Node, group: list[BodyLine], end_page: in
             _append_continuation(current_owner, current_owner_page, page_index, pline)
             continue
         token, kind = match.group(1), classify_marker(match.group(1))
-        next_roman = _next_subclause_roman(cur_clause)
-        kind = _resolve_kind(kind, token, pline, next_letter, next_roman, threshold, prev_clause_x0)
+        next_romans = _next_subclause_romans(cur_clause)
+        kind = _kind_in_roman_run(kind, token, following, next_romans)
+        kind = _resolve_kind(
+            kind, token, pline, next_letter, next_romans[0], threshold, prev_clause_x0
+        )
         if kind == "clause":
             cur_clause, next_letter, prev_clause_x0 = _add_clause(
                 sentence, match, page_index, pline, end_page, next_letter

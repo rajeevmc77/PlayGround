@@ -340,3 +340,44 @@ def test_a_wrapped_line_of_a_clause_starting_with_see_stays_in_the_clause():
     ]
     clause = segment_article_body(body, "3.4.6.12.", article_end_page=7)[0].children[0]
     assert clause.content == "swing in the direction of travel (see Note A-3.4.6.12.), and"
+
+
+def test_i_after_clause_h_followed_by_ii_starts_hs_subclauses():
+    """3.2.4.19.(1)(h) "in washrooms, except those located within" goes on
+    "i) suites of residential occupancy, ii) ..., iii) ...": an "i)" that the
+    next marker follows as "ii)" starts clause h's subclauses."""
+    body = [
+        line(5, 100, 50, "1) Signals shall be installed"),
+        line(5, 112, 60, "h) in washrooms, except those located within"),
+        line(5, 124, 60, "i) suites of residential occupancy,"),
+        line(5, 136, 60, "ii) suites of care occupancy, or"),
+        line(5, 148, 60, "iii) patients' sleeping rooms."),
+    ]
+    [clause_h] = segment_article_body(body, "B-3.2.4.19.", article_end_page=7)[0].children
+    assert [s.citation for s in clause_h.children] == [
+        "B-3.2.4.19.(1)(h)(i)",
+        "B-3.2.4.19.(1)(h)(ii)",
+        "B-3.2.4.19.(1)(h)(iii)",
+    ]
+
+
+def test_clause_i_after_hs_subclauses_is_still_a_clause():
+    """3.8.3.17.(1): clause h's own i), ii), then clause "i) have a hand-held
+    shower head" with its own i), ii) - then j)."""
+    body = [
+        line(5, 100, 50, "1) Showers shall"),
+        line(5, 112, 60, "h) have a valve that"),
+        line(5, 124, 60, "i) comply with Clause 3.8.3.8.(1)(b), and"),
+        line(5, 136, 60, "ii) are mounted on the wall,"),
+        line(5, 148, 60, "i) have a hand-held shower head that"),
+        line(5, 160, 60, "i) can be reached from a seated position,"),
+        line(5, 172, 60, "ii) can be used in a fixed position,"),
+        line(5, 184, 60, "j) have recessed soap holders."),
+    ]
+    clauses = segment_article_body(body, "B-3.8.3.17.", article_end_page=7)[0].children
+    assert [c.citation for c in clauses] == [
+        "B-3.8.3.17.(1)(h)",
+        "B-3.8.3.17.(1)(i)",
+        "B-3.8.3.17.(1)(j)",
+    ]
+    assert [len(c.children) for c in clauses] == [2, 2, 0]
