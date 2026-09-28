@@ -46,6 +46,9 @@ _PLAIN_CHARACTERS = str.maketrans(
 # writes "·" or "⋅", so no dot glyph counts.
 _DOTS = frozenset("•·⋅")
 
+# A cited number: "3.2.4.8", "9.38", or lettered - "D-6", "A-9.36.2.4".
+_CITED_NUMBER = r"(?:(?<![A-Za-z])[A-Z]-\d+(?:\.\d+)*|\d+(?:\.\d+)+)"
+
 # Characters the site leaves out or types differently, each pattern's group 1
 # the characters that don't count:
 _UNCOUNTED = (
@@ -61,9 +64,11 @@ _UNCOUNTED = (
     # A cited number's final period, which the site drops or prints apart
     # after its cross-reference link: "3.2.4.8, 3.2.4.9", "(3.8.3.2)",
     # "Subsection 9.10.9 . 2 h" where the PDF has "3.2.4.8.", "(3.8.3.2.)",
-    # "9.10.9. 2 h" - but not the period right before a Sentence's "(1)".
-    re.compile(r"\d+(?:\.\d+)+(\.)(?![\d(])"),
-    re.compile(r"\d+(?:\.\d+)+\s+(\.)"),
+    # "9.10.9. 2 h" - and "Section D-6. of" where the PDF has "D-6 of" - but
+    # not the period right before a Sentence's "(1)", nor one followed by a
+    # digit, where the PDF breaks a line inside the number ("3.2 .4.9.").
+    re.compile(_CITED_NUMBER + r"(\.)(?![\d(])"),
+    re.compile(_CITED_NUMBER + r"\s+(\.)(?!\d)"),
 )
 
 Range = tuple[int, int, str]

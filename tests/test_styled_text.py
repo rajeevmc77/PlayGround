@@ -244,3 +244,18 @@ def test_a_cited_numbers_final_period_before_a_glued_word():
 def test_the_sites_spacing_around_a_final_period_or_closing_quote():
     assert matches(StyledText("Table 9.23.3.4. (See Note"), StyledText("Table 9.23.3.4 .(See Note"))
     assert matches(StyledText("600 mm o.c.” Thus"), StyledText("600 mm o.c. ” Thus"))
+
+
+def test_a_period_the_pdf_breaks_a_cited_number_at_still_counts():
+    """The PDF breaks lines inside citations ("Sentence3.2 .4.9.(3)"): a
+    period followed by a digit is the number's own, however it is spaced."""
+    assert matches(StyledText("Sentence3.2 .4.9.(3)"), StyledText("Sentence 3.2.4.9.(3)"))
+    assert not matches(StyledText("Sentence3.2 .4.9.(3)"), StyledText("Sentence 3.24.9.(3)"))
+
+
+def test_a_lettered_cited_numbers_final_period_does_not_count():
+    """The site ends "Section D-6" of Appendix D with a period the PDF leaves out."""
+    assert matches(
+        StyledText("Section D-6 of Appendix D"), StyledText("Section D-6. of Appendix D")
+    )
+    assert matches(StyledText("Section D-1.5 applies"), StyledText("Section D-1.5. applies"))
