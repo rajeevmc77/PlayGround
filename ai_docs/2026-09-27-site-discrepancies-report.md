@@ -6,7 +6,7 @@ Where the BC Building Code website differs from the signed PDF.
   (`data/MO Package BCBC MRK signed.pdf`) against the same content on the website.
 - **Website:** `dev.buildingcode.gov.bc.ca`, version 2024, content as of 2024-03-08
   (`output/web_source/snapshot.json`).
-- **Comparison run:** 2026-09-27, from `main` at PR #73; updated 2026-09-28 from `main` at PR #96.
+- **Comparison run:** 2026-09-27, from `main` at PR #73; updated 2026-09-28 from `main` at PR #98.
   Inputs are `output/bcbc_pdf.json`, `output/bcbc_web.json` and `output/comparison.json`.
 - **Published copy:** https://claude.ai/artifact/LGAkkPDTsua3hUF5CZutnp
 
@@ -51,7 +51,7 @@ clauses, notes) are the ones to look at. Each one is counted in exactly one row 
 ### Changes since the first run (2026-09-28)
 
 The counts above are from the 2026-09-27 run. On 2026-09-28 the matching items rose to
-**83,411 of 94,166 (88.6%)**, from three kinds of change:
+**83,548 of 94,166 (88.7%)**, from three kinds of change:
 
 - the typing and punctuation differences below are accepted as matches;
 - our PDF and web extraction was fixed where it misread the source (see "What is not the site's");
@@ -249,7 +249,7 @@ and adds periods after some section numbers.
 
 ## Figures and equations
 
-The PDF has 588 numbered images: 485 figures and 103 equations. 311 match the site's (258 figures,
+The PDF has 588 numbered images: 485 figures and 103 equations. 448 match the site's (395 figures,
 53 equations). Figures are compared by their drawing, allowing for the marked-up PDF's heavier line
 weight, its green revision frames and its smaller embedded copies. Equations are compared by their
 image, and, where OCR can read the PDF's formula, by its text against the site's formula text.
@@ -326,10 +326,6 @@ unlike the formatting items.
 A few remaining differences come from how we read the PDF or the site. They are listed here so they
 aren't reported as site problems:
 
-- **137 site figures our web extraction misses.** The site's data gives most figures an id, and we
-  read only those. Spec Table 1's wall-assembly drawings, some Appendix D figures and some Part 9
-  notes' figures have none, so their PDF figures show "no web image". This accounts for most of the
-  184 figures with no web counterpart, and is a fix on our side, not the site's.
 - **About 40 cells in Tables 9.23.13.7.-B and -D.** The PDF draws no line between some sub-rows, so
   our extraction keeps them in one row where the site has several.
 - **21 table rows split by a page break** (Tables 1.1.1.1.(5), 1.3.1.2., 9.38.1.1., 9.10.3.1.-B,
@@ -360,7 +356,10 @@ Fixed since the 2026-09-27 run:
   - images the two sides label differently (a formula the PDF reads as a figure in 4.1.6.5.,
     4.1.6.10. and 4.1.6.12.), now paired by their place in the provision;
   - equations OCR confirms read the same (7);
-  - the viewer's highlight for a drawing a table repeats in many rows.
+  - the viewer's highlight for a drawing a table repeats in many rows;
+  - 137 site figures our web extraction had skipped because the site's data gives them no id of
+    their own (Spec Table 1's wall-assembly drawings, some Appendix D and Part 9 note figures).
+    All 137 match (PR #98); 47 PDF figures are now without a web counterpart, down from 184.
 
 ### Errors in the PDF itself
 
