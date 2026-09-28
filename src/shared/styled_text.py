@@ -6,11 +6,12 @@ comparison checks. Both pipelines record a node's `content` together with
 `matches` is the comparison rule: the two texts must be identical once all
 whitespace is dropped (the PDF breaks lines inside words and citations -
 "fire- resistance", "A- 1.1.1.1." - where the web doesn't), and the "•" the
-PDF prints before list items with it, the site's typed "---"/"--" read as the
-dash they stand for, and every letter and digit must carry
-the same bold/italic on both sides. Punctuation's own styling is ignored:
-whether the comma after an italic term is italic too isn't visible enough to
-matter. Pure: no PDF, browser or file I/O.
+PDF prints before list items with it; the site's typed "---"/"--" read as the
+dash they stand for, and a comma or period at a closing quote or a cited
+number's final period (which the site leaves out) don't count; and every
+letter and digit must carry the same bold/italic on both sides. Punctuation's
+own styling is ignored: whether the comma after an italic term is italic too
+isn't visible enough to matter. Pure: no PDF, browser or file I/O.
 """
 
 import re
@@ -45,9 +46,25 @@ _PLAIN_CHARACTERS = str.maketrans(
 # writes "·" or "⋅", so no dot glyph counts.
 _DOTS = frozenset("•·⋅")
 
-# How the site types a dash the PDF typesets: "---" for an em dash, "--" for
-# an en dash. Each run reads as the one dash it stands for.
-_TYPED_DASH = re.compile(r"-{2,3}")
+# Characters the site leaves out or types differently, each pattern's group 1
+# the characters that don't count:
+_UNCOUNTED = (
+    # A typed dash reads as the one dash it stands for: the site types "---"
+    # for an em dash and "--" for an en dash where the PDF typesets — and –.
+    re.compile(r"-(-{1,2})"),
+    # A comma or period at a closing quote: the PDF puts a standard title's
+    # inside it (“Wood preservation,”), the site leaves it out or moves it
+    # outside ("Wood preservation" / "Fire Alarm Systems".). A curly ” always
+    # closes; a plain " closes when it follows a non-space.
+    re.compile(r'(?<=[^\s“"])([.,])(?=\s*”|")'),
+    re.compile(r'(?:”|(?<=\S)")([.,])'),
+    # A cited number's final period, which the site drops or prints apart
+    # after its cross-reference link: "3.2.4.8, 3.2.4.9", "(3.8.3.2)",
+    # "Subsection 9.10.9 . 2 h" where the PDF has "3.2.4.8.", "(3.8.3.2.)",
+    # "9.10.9. 2 h" - but not the period right before a Sentence's "(1)".
+    re.compile(r"\d+(?:\.\d+)+(\.)(?![\d(])"),
+    re.compile(r"\d+(?:\.\d+)+\s+(\.)"),
+)
 
 Range = tuple[int, int, str]
 
@@ -56,11 +73,20 @@ def _is_compared(char: str) -> bool:
     return not char.isspace() and char not in _DOTS
 
 
+def _uncounted(text: str) -> set[int]:
+    return {
+        i
+        for pattern in _UNCOUNTED
+        for match in pattern.finditer(text)
+        for i in range(match.start(1), match.end(1))
+    }
+
+
 def compared_positions(text: str) -> list[int]:
-    """Where the characters that count in the comparison sit in `text`:
-    not whitespace, not a bullet or dot, and a typed dash's first hyphen only."""
-    typed_tails = {i for m in _TYPED_DASH.finditer(text) for i in range(m.start() + 1, m.end())}
-    return [i for i, char in enumerate(text) if _is_compared(char) and i not in typed_tails]
+    """Where the characters that count in the comparison sit in `text`: not
+    whitespace, not a bullet or dot, and none of the _UNCOUNTED ones."""
+    uncounted = _uncounted(text)
+    return [i for i, char in enumerate(text) if _is_compared(char) and i not in uncounted]
 
 
 def style_of(bold: bool, italic: bool) -> str:
