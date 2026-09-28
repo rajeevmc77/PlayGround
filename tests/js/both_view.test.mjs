@@ -9,6 +9,7 @@ import {
   dominantFontSize,
   isShownInBoth,
   fitScale,
+  imagesIn,
   minVisibleBox,
   pageFileRoute,
   pdfFontSamples,
@@ -301,6 +302,23 @@ test("webLocationFor: follows a table row's recorded counterpart (rows paired by
 
 test("webLocationFor: a row recorded with no counterpart has no web location, not its namesake's", () => {
   assert.equal(webLocationFor("T.Row2", LOCS, new Map([["T.Row2", null]])), null);
+});
+
+test("imagesIn: an element whose own xpath resolves to an <img> leaf is itself the image", () => {
+  const img = { tagName: "IMG" };
+  assert.deepEqual(imagesIn(img), [img]);
+});
+
+test("imagesIn: a container element's descendant <img>s, not itself", () => {
+  const imgA = { tagName: "IMG" };
+  const imgB = { tagName: "IMG" };
+  const div = { tagName: "DIV", querySelectorAll: (sel) => (sel === "img" ? [imgA, imgB] : []) };
+  assert.deepEqual(imagesIn(div), [imgA, imgB]);
+});
+
+test("imagesIn: a container with no <img> descendants draws no images", () => {
+  const div = { tagName: "DIV", querySelectorAll: () => [] };
+  assert.deepEqual(imagesIn(div), []);
 });
 
 test("webLocationFor: null when the resolved number has no location", () => {

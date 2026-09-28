@@ -5,6 +5,7 @@ import {
   collectUnifiedLocations,
   dominantFontSize,
   fitScale,
+  imagesIn,
   minVisibleBox,
   pageFileRoute,
   pdfFontSamples,
@@ -12,7 +13,7 @@ import {
   textMatchScale,
   visibleBothChildren,
   webLocationFor,
-} from "./both_view.mjs?v=7";
+} from "./both_view.mjs?v=8";
 import { filterIds, statusBadge } from "./compare_view.mjs?v=1";
 import { reasonView } from "./reason_view.mjs?v=1";
 
@@ -216,7 +217,7 @@ function nodeAt(doc, xpath) {
 function renderedRects(doc, el) {
   const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   const range = doc.createRange();
-  const rects = [...el.querySelectorAll("img")].map((img) => img.getBoundingClientRect());
+  const rects = imagesIn(el).map((img) => img.getBoundingClientRect());
   for (let text = walker.nextNode(); text; text = walker.nextNode()) {
     range.selectNodeContents(text);
     rects.push(...range.getClientRects());
