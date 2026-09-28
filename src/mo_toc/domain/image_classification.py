@@ -16,6 +16,11 @@ MAX_NOISE_ASPECT_RATIO = (
     2.0  # long side / short side, at or below which a shape reads as square-ish
 )
 MAX_NOISE_AREA = 1600.0  # pt^2 - equivalent to a 40x40pt icon
+# A formula is at most two text lines with fractions: the tallest in the PDF
+# is 60pt (4.1.6.10.Eq1). Wide uncaptioned diagrams (A-4.1.6.16.'s snow-load
+# figures, 116-194pt) and the Division C form's logo and panels (72pt+) are
+# taller than any.
+MAX_EQUATION_HEIGHT = 70.0  # pt
 
 
 def is_decorative(width: float, height: float) -> bool:
@@ -30,8 +35,9 @@ def is_decorative(width: float, height: float) -> bool:
 def is_equation_shaped(width: float, height: float) -> bool:
     """A rendered inline formula reads left-to-right on one text line, so its
     crop is always wider than tall - unlike a diagram, which is as likely to
-    be portrait or square. Reuses the same aspect-ratio boundary as
-    is_decorative's "square-ish" test, just on the opposite side of it."""
-    if width <= 0 or height <= 0 or width <= height:
+    be portrait or square - and no taller than two text lines. Reuses the
+    same aspect-ratio boundary as is_decorative's "square-ish" test, just on
+    the opposite side of it."""
+    if width <= 0 or height <= 0 or width <= height or height > MAX_EQUATION_HEIGHT:
         return False
     return width / height >= MAX_NOISE_ASPECT_RATIO
