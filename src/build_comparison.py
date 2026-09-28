@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from comparison.asset_loader import load_pdf_image_bytes, load_web_image_bytes
 from comparison.content_match import content_matches
 from comparison.engine import compare_trees, table_counterparts_in
+from comparison.equation_text import formula_text_matches, shows_mathjax_error
+from comparison.formula_ocr import read_formula
 from comparison.image_pairing import image_counterparts
 from comparison.image_similarity import (
     DEFAULT_THRESHOLD_PERCENT,
@@ -30,12 +32,23 @@ from comparison.image_similarity import (
     compare_images,
     comparison_key,
     images_match,
+    is_equation,
     threshold_for,
 )
 from comparison.reasons import failure_reasons
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
+
+
+def _equation_matches(pixels_match: bool, pdf_bytes: bytes, web_image: dict) -> bool:
+    """An equation the site shows a MathJax error in ("[f]...") is not the
+    PDF's; otherwise one its pixels miss still matches when OCR reads the
+    PDF's formula as the site's formula text (comparison/equation_text.py)."""
+    formula = web_image.get("alt_text", "")
+    if shows_mathjax_error(formula):
+        return False
+    return pixels_match or formula_text_matches(read_formula(pdf_bytes), formula)
 
 
 def _image_matcher(output_dir: Path, threshold_percent: float):
@@ -48,7 +61,10 @@ def _image_matcher(output_dir: Path, threshold_percent: float):
             pdf_image.get("unified_number", ""), web_image.get("unified_number", "")
         )
         result = compare_images(unified_number, pdf_bytes, web_bytes)
-        return images_match(result, threshold_for(unified_number, threshold_percent))
+        pixels_match = images_match(result, threshold_for(unified_number, threshold_percent))
+        if not is_equation(unified_number):
+            return pixels_match
+        return _equation_matches(pixels_match, pdf_bytes, web_image)
 
     return _match
 

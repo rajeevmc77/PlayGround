@@ -304,3 +304,44 @@ def test_a_comparison_where_everything_matches_records_no_reasons(tmp_path):
     run(str(tmp_path))
 
     assert json.loads((tmp_path / "comparison.json").read_text())["reasons"] == {}
+
+
+def _set_web_formula(tmp_path, alt_text):
+    payload = json.loads((tmp_path / "bcbc_web.json").read_text())
+    payload["images"][0]["alt_text"] = alt_text
+    (tmp_path / "bcbc_web.json").write_text(json.dumps(payload))
+
+
+def _status(tmp_path, number):
+    return json.loads((tmp_path / "comparison.json").read_text())["statuses"][number]
+
+
+def test_an_equation_its_pixels_miss_passes_when_its_text_reads_the_same(tmp_path, monkeypatch):
+    _score_every_image_pair(monkeypatch, 60.0)
+    monkeypatch.setattr(build_comparison, "read_formula", lambda _b: "Area = 0.24(2 x LD - 1.2)")
+    _write_fixtures(tmp_path)
+    _rename_image(tmp_path, "V.P1.Eq1")
+    _set_web_formula(tmp_path, "Area=0.24(2×LD-1.2)^2")
+    run(str(tmp_path))
+    assert _status(tmp_path, "V.P1.Eq1") is True
+
+
+def test_an_equation_the_site_shows_a_mathjax_error_in_fails_however_alike(tmp_path, monkeypatch):
+    _score_every_image_pair(monkeypatch, 95.0)
+    _write_fixtures(tmp_path)
+    _rename_image(tmp_path, "V.P1.Eq1")
+    _set_web_formula(tmp_path, "[f]l_cs=2w_s-(w^2_s)/(l_s)")
+    run(str(tmp_path))
+    assert _status(tmp_path, "V.P1.Eq1") is False
+
+
+def test_a_figure_is_never_read_as_text(tmp_path, monkeypatch):
+    _score_every_image_pair(monkeypatch, 60.0)
+
+    def no_ocr(_bytes):
+        raise AssertionError("a figure is compared by its pixels alone")
+
+    monkeypatch.setattr(build_comparison, "read_formula", no_ocr)
+    _write_fixtures(tmp_path)
+    run(str(tmp_path))
+    assert _status(tmp_path, "V.P1.Fig1") is False

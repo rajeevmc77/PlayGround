@@ -19,14 +19,18 @@ EQUATION_THRESHOLD_PERCENT = 70.0
 _EQUATION_KEY = re.compile(r"\.Eq\d+$")
 
 
+def is_equation(unified_number: str) -> bool:
+    return bool(_EQUATION_KEY.search(unified_number))
+
+
 def comparison_key(pdf_number: str, web_number: str) -> str:
     """The key a pair is compared under: an equation on either side makes it
     an equation pair (4.1.6.5.'s formula the PDF reads as a figure)."""
-    return web_number if _EQUATION_KEY.search(web_number) else pdf_number
+    return web_number if is_equation(web_number) else pdf_number
 
 
 def threshold_for(unified_number: str, default_percent: float) -> float:
-    if _EQUATION_KEY.search(unified_number):
+    if is_equation(unified_number):
         return EQUATION_THRESHOLD_PERCENT
     return default_percent
 
@@ -43,7 +47,7 @@ def compare_images(stem: str, pdf_image_bytes: bytes, web_image_bytes: bytes) ->
     plain = _compare_hashes(
         stem, _comparable_phash(pdf_image_bytes), _comparable_phash(web_image_bytes)
     )
-    if _EQUATION_KEY.search(stem):
+    if is_equation(stem):
         return plain
     ink = _compare_hashes(stem, ink_phash(pdf_image_bytes), ink_phash(web_image_bytes))
     return max(plain, ink, key=lambda result: result.similarity_percent)
