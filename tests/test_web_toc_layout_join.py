@@ -364,3 +364,20 @@ def test_a_list_item_position_past_the_measured_items_is_left_unlocated():
     layout = {"elements": {para: _entry("div[1]", "1) Provided:", 1)}, "lists": {para: items}}
     joined = _join(root, {para: layout}, pages=(para,))
     assert _find(joined, f"{para}.li2").location is None
+
+
+def test_each_copy_of_an_image_used_again_on_a_page_takes_its_own_place():
+    # 9.23.13.7.'s tables show the same house diagram (bc-graphics/gg00556a)
+    # in many rows: the n-th image with a src takes the n-th place it's drawn.
+    layout = _layout()
+    layout["images"] = [
+        {"src": "/web-assets/bc-graphics/fig1.jpg", "text": "", **_entry("img[1]", "", 20)},
+        {"src": "/web-assets/bc-graphics/fig1.jpg", "text": "", **_entry("img[2]", "", 40)},
+    ]
+    first = WebImage(id="f1", src="bc-graphics/fig1", alt_text="", owner_citation=SENTENCE)
+    second = WebImage(id="f2", src="bc-graphics/fig1", alt_text="", owner_citation=SENTENCE)
+    third = WebImage(id="f3", src="bc-graphics/fig1", alt_text="", owner_citation=SENTENCE)
+    _join(_tree(), {SECTION: layout}, images=[first, second, third])
+    assert first.location["xpath"] == f"{ROOT}/img[1]"
+    assert second.location["xpath"] == f"{ROOT}/img[2]"
+    assert third.location is None
