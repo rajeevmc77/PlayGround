@@ -407,3 +407,19 @@ def test_an_untitled_leftover_table_never_pairs_across_scopes():
     pdf = _node("R", "r", "", [_node("A", "a", "", [_titled_table("A.Tbl1", "", [["x"]])])])
     web = _node("R", "r", "", [_node("B", "b", "", [_titled_table("B.Tbl1", "", [["x"]])])])
     assert "A.Tbl1" not in table_counterparts_in(pdf, web)
+
+
+def test_an_image_compares_against_its_counterpart_not_the_same_numbered_one():
+    pdf_tree = _node("P1", "part1", "text")
+    web_tree = _node("P1", "part1", "text")
+    pdf_images = [_image("P1.Fig1", "part1")]
+    web_images = [_image("P1.Fig1", "part1"), _image("P1.Eq1", "part1")]
+    compared = []
+
+    def record(pdf_image, web_image):
+        compared.append(web_image["unified_number"])
+        return True
+
+    counterparts = {"P1.Fig1": "P1.Eq1"}
+    compare_trees(pdf_tree, pdf_images, web_tree, web_images, ALWAYS_MATCH, record, counterparts)
+    assert compared == ["P1.Eq1"]

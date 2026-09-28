@@ -23,10 +23,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from comparison.asset_loader import load_pdf_image_bytes, load_web_image_bytes
 from comparison.content_match import content_matches
 from comparison.engine import compare_trees, table_counterparts_in
+from comparison.image_pairing import image_counterparts
 from comparison.image_similarity import (
     DEFAULT_THRESHOLD_PERCENT,
     EQUATION_THRESHOLD_PERCENT,
     compare_images,
+    comparison_key,
     images_match,
     threshold_for,
 )
@@ -42,7 +44,9 @@ def _image_matcher(output_dir: Path, threshold_percent: float):
         web_bytes = load_web_image_bytes(output_dir, web_image)
         if pdf_bytes is None or web_bytes is None:
             return False
-        unified_number = pdf_image.get("unified_number", "")
+        unified_number = comparison_key(
+            pdf_image.get("unified_number", ""), web_image.get("unified_number", "")
+        )
         result = compare_images(unified_number, pdf_bytes, web_bytes)
         return images_match(result, threshold_for(unified_number, threshold_percent))
 
@@ -60,9 +64,10 @@ def run(output_dir: str, threshold_percent: float = DEFAULT_THRESHOLD_PERCENT) -
     web_json = out / "bcbc_web.json"
     web_payload = json.loads(web_json.read_text()) if web_json.exists() else None
     web_tree = web_payload["tree"] if web_payload else None
-    counterparts = table_counterparts_in(pdf_payload["volume"], web_tree)
-
     web_images = web_payload["images"] if web_payload else []
+    counterparts = table_counterparts_in(pdf_payload["volume"], web_tree) | image_counterparts(
+        pdf_payload["volume"], pdf_payload["images"], web_images
+    )
     statuses = compare_trees(
         pdf_payload["volume"],
         pdf_payload["images"],

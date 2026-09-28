@@ -40,7 +40,10 @@ independent tools live here:
    there pairs across articles on a title no other leftover shares), and their rows/cells
    by content, not by their positional unified number (`src/comparison/row_alignment.py`);
    an empty PDF cell with no web cell in a paired row passes (the site lists only the cells
-   a row starts, not the positions a span covers). `comparison.json`'s `counterparts` records
+   a row starts, not the positions a span covers). Images pair by `unified_number` within their
+   provision, except where the two sides label a provision's non-table images differently
+   (Fig vs Eq) and have as many: those pair in page order (`src/comparison/image_pairing.py`) -
+   never across provisions. `comparison.json`'s `counterparts` records
    every pairing that differs (null = no web counterpart) and the viewer's web highlight
    follows it (`webLocationFor` in `both_view.mjs`). Its `reasons` say why each failed text
    item or image differs - the differing stretches with context and their kind, or which
@@ -184,7 +187,7 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (984 tests — 966 by default plus 18 `slow`) covers `src/mo_toc/`,
+- A real test suite (992 tests — 974 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
