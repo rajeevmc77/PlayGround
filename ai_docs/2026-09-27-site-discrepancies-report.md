@@ -51,15 +51,17 @@ clauses, notes) are the ones to look at. Each one is counted in exactly one row 
 ### Accepted as matches since this run (2026-09-28)
 
 The counts above are from the 2026-09-27 run. Since then the comparison accepts these typing and
-punctuation differences as matches, so they no longer fail (`src/shared/styled_text.py`). The
-matching items rose to 83,211 of 94,122 (88.4%).
+punctuation differences as matches, so they no longer fail (`src/shared/styled_text.py`). With
+them and the extraction fixes listed under "What is not the site's", the matching items rose to
+83,326 of 94,166 (88.5%).
 
 | Difference | PDF | Site | Items that now match |
 |---|---|---|---:|
 | Typed dashes | `Documents—the`, `Systems – Maximum` | `Documents---the`, `Systems -- Maximum` | 24 |
 | Unit multiplication dot | `kWh/(m²•year)` | `kWh/(m²·year)` | 35 |
 | Comma or period at a closing quote | `"Wood preservation," and`, `Systems."` | `"Wood preservation" and`, `Systems".` | 409, with the next row |
-| A cited number's final period | `3.2.4.8., 3.2.4.9.`, `Subsection 9.10.9. 2 h` | `3.2.4.8 , 3.2.4.9`, `Subsection 9.10.9 . 2 h` | (see above) |
+| A cited number's final period | `3.2.4.8., 3.2.4.9.`, `Subsection 9.10.9. 2 h`, `D-6 of` | `3.2.4.8 , 3.2.4.9`, `Subsection 9.10.9 . 2 h`, `D-6. of` | (see above), and 5 more |
+| Superscript digits | `≤ 300 m3`, `kg/m²` | `≤ 300 m³`, `kg/m2` | 4 |
 
 The PDF's own "•" before list items is ignored too (37 items). That one was on our side, since the
 site renders the same lists as bullets that aren't text.
@@ -284,13 +286,28 @@ reported as site problems:
 
 - **About 40 cells in Tables 9.23.13.7.-B and -D.** The PDF draws no line between some sub-rows, so
   our extraction keeps them in one row where the site has several.
-- **Bulleted list items in notes and tables.** The PDF prints the "•" as text, while the site draws
-  its bullets with styling. About 360 items carry a bullet; for most of them, it isn't the only
-  difference.
-- **One blank row in Table 1.1.1.1.(5).** A stray rule in the PDF splits a cell, which shifts the rows
-  around row 14.
-- **An unknown share of the 1,710 "other wording" items** may include extraction errors that weren't
+- **21 table rows split by a page break** (Tables 1.1.1.1.(5), 1.3.1.2., 9.38.1.1., 9.10.3.1.-B,
+  A-9.11.1.4.-A and -B). The rest of the row continues at the top of the next page, looking exactly
+  like a new row under a spanning cell. 156 real new rows in 3.10.1.1., 4.5.1.1. and 9.38.1.1. look
+  the same, so the split rows are left unjoined rather than risk those.
+- **An unknown share of the "other wording" items** may include extraction errors that weren't
   reviewed one by one.
+
+Fixed since the 2026-09-27 run (PRs #77 to #87): the "•" the PDF prints before list items; three
+Articles whose headings the PDF sets in the body font (9.4.2.2., 9.10.9.19., 9.10.16.3.); an "i)"
+after Clause (h) that starts (h)'s Subclauses (3.2.4.19.(1), 3.8.3.17.(1)); markers the PDF sets as
+their own span with no space after them (pages 45, 127, 1044); and Appendix D's nested Subclauses.
+
+### Errors in the PDF itself
+
+The extraction reproduces these as printed, so the PDF's numbering repeats where the site's doesn't:
+
+| Where | PDF | Site |
+|---|---|---|
+| Clause 9.23.13.11.(1)(h) | two Clauses lettered `h)` | `h)` and `i)` (it letters the first `i)` too) |
+| Article 10.1.1.1. (p. 1549) | `10.1.1.1. Scope`, then `10.1.1.1. Defined Terms` | Defined Terms is 10.1.1.2. |
+| Clause 10.3.1.1.(1)(a) (p. 1555) | Subclauses `i)`, `iii)`, `iii)` | `i)`, `ii)`, `iii)` |
+| Articles 9.4.2.2., 9.10.9.19., 9.10.16.3. | heading in the body font, indented like body text | ordinary Article headings |
 
 Everything else above was checked against the PDF's own text, fonts or table rules. Counts come from
 the automated comparison and were sorted by pattern; an item appears in exactly one row of the
