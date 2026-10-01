@@ -12,3 +12,4 @@ token.json
 .coverage
 .coverage.*
 jira_config.toml
+AOTPulse Specs/
