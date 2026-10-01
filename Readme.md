@@ -1,7 +1,8 @@
 # PlayGround
 
-A playground for Google Workspace/Drive APIs and PDF structural parsing. Two independent
-tools live here.
+A playground for Google Workspace/Drive APIs, PDF structural parsing and JIRA automation.
+Three independent tools live here: the Directory/Drive web app (§1), the BC Building Code
+PDF/web indexes and viewer (§2–4), and the AOT Pulse JIRA backlog creator (§5).
 
 ## 1. Directory/Drive web app (`app.py`)
 
@@ -113,7 +114,8 @@ pytest -q
 ```
 
 Runs the full suite for `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`,
-`src/web_toc/`, `src/build_web_toc.py`, and `src/shared/` (279 tests). Excludes the
+`src/web_toc/`, `src/build_web_toc.py`, `src/shared/`, `src/jira_backlog/` and the other
+`build_*.py` scripts (1081 tests). Excludes the
 `slow` marker by default (a real-1685-page-PDF integration test and a real-website
 integration test); run it explicitly with:
 
@@ -174,6 +176,102 @@ the PDF does not), the same real section is not guaranteed to carry the same
 `unified_number` in both tabs — it's a per-tree outline number, not a cross-reference
 key. Shown in the viewer next to each tree row.
 
+## 5. AOT Pulse JIRA backlog (`src/create_jira_backlog.py`)
+
+Creates the AOT Pulse epics, with their stories under them, in JIRA project `AUBM`. It uses
+the JIRA Cloud REST v3 calls from `JIRA.postman_collection.json`: list projects, list
+assignable users, and create issue. It logs in with your Atlassian account email and an
+API token.
+
+### Sources
+
+Both sources live in `AOTPulse Specs/`. Git ignores that folder, so copy it into the
+project root yourself.
+
+- **`AOT BidHub — Epics & User Stories.md`:** each `## Epic N` becomes an Epic, and each
+  row of its table becomes a Story. A story carries its user story, acceptance criteria,
+  FR references and status.
+- **`<feature>/spec.md` (spec-kit):**
+  - Each epic's description includes the spec it formalizes. Epics 1–9 map to the user
+    stories of `001-aot-bidhub`, and Epics 10–15 to `013`–`018`.
+  - The `002`–`012` list/detail enhancements aren't in the epics document. Their user
+    stories become stories of the module's epic, with their P1–P5 priority mapped to a
+    JIRA priority.
+
+That makes 105 issues in all: 15 epics and 90 stories. The epic-to-spec mapping lives in
+`src/jira_backlog/domain/aot_pulse_links.py`.
+
+### Configuration
+
+Copy the template and fill it in. Git ignores `jira_config.toml`, so your token isn't
+committed.
+
+```bash
+cp jira_config.example.toml jira_config.toml
+```
+
+```toml
+[jira]
+url = "https://aottech.atlassian.net"
+username = "you@aot-technologies.com"   # your Atlassian account email
+api_token = "..."                       # https://id.atlassian.com/manage-profile/security/api-tokens
+project_key = "AUBM"
+```
+
+Environment variables override the file. Exporting `JIRA_API_TOKEN` alone keeps the token
+out of files entirely.
+
+```bash
+export JIRA_URL="https://aottech.atlassian.net"
+export JIRA_USERNAME="you@aot-technologies.com"
+export JIRA_API_TOKEN="..."
+export JIRA_PROJECT_KEY="AUBM"   # optional, defaults to AUBM
+```
+
+The `[issues]` section is optional:
+
+- `labels`: added to every issue.
+- `assignee_account_id`: assigns every issue to one person; `--check` lists the account ids.
+- `[issues.priorities]`: maps spec priorities to JIRA priority names.
+- `epic_name_field` / `epic_link_field`: only for older company-managed projects that
+  still require the legacy Epic Name and Epic Link fields.
+
+Pass `--config <path>` to read a config file from somewhere else.
+
+### Run
+
+Check access to the project and list the account ids you can assign to:
+
+```bash
+python src/create_jira_backlog.py --check
+```
+
+Write every request body to `output/jira_backlog_preview.json` without calling JIRA. This
+needs no credentials.
+
+```bash
+python src/create_jira_backlog.py --dry-run
+```
+
+Create one epic and its stories first, to check them in JIRA. `--epic` can be repeated.
+
+```bash
+python src/create_jira_backlog.py --epic 1
+```
+
+Then create everything:
+
+```bash
+python src/create_jira_backlog.py
+```
+
+Every created key is recorded in `output/jira_backlog_state.json`, so a re-run, or a resume
+after a failure, skips what already exists and never makes duplicates. To re-create an
+issue, delete its entry from that file.
+
+New issues start in the project's default status, even though the epics document marks the
+stories "Shipped". The tool doesn't change ticket status.
+
 ## Folder structure
 
 - `app.py` — the FastAPI directory/Drive app; stays in the project root as its own entry
@@ -185,14 +283,22 @@ key. Shown in the viewer next to each tree row.
   - `build_mo_toc.py` — CLI entry point that runs the mo_toc parsing pipeline.
   - `serve_mo_toc.py` — CLI entry point that serves the interactive web viewer.
   - `check_directory_access.py` — standalone CLI tool (see above).
+  - `jira_backlog/` — the AOT Pulse JIRA backlog library: `parsing/` (epics document and
+    spec.md readers), `domain/` (backlog records and the epic-to-spec mapping), `jira/`
+    (REST client and issue fields), `output/` (Atlassian Document Format descriptions and the
+    created-keys state file), `application/` (the publisher).
+  - `create_jira_backlog.py` — CLI entry point that creates the backlog in JIRA (see §5).
   - `shared/` — small pure-function helpers with no dependency on either indexing
     library, shared between `mo_toc/` and `web_toc/` (currently just the unified
     document-level numbering algorithm).
   - All scripts anchor their file paths (credentials, token, PDF, output) to the project
     root, not the current working directory, so they run correctly regardless of where
     they're invoked from.
-- `tests/` — the automated test suite (279 tests) for `src/mo_toc/`, `src/build_mo_toc.py`,
-  `src/serve_mo_toc.py`, `src/web_toc/`, `src/build_web_toc.py`, and `src/shared/`.
+- `tests/` — the automated test suite (1081 tests) for `src/mo_toc/`, `src/build_mo_toc.py`,
+  `src/serve_mo_toc.py`, `src/web_toc/`, `src/build_web_toc.py`, `src/shared/`,
+  `src/jira_backlog/`, `src/create_jira_backlog.py` and the other `build_*.py` scripts.
+- `AOTPulse Specs/` — the AOT Pulse epics document and spec-kit specs read by §5 (ignored
+  by git; kept locally).
 - `data/` — input source files, e.g. `MO Package BCBC MRK signed.pdf`.
 - `output/` — everything a program run produces (`bcbc_pdf.json`, `mo_toc.md`,
   `images/` for PDF images, `bcbc_web.json`, `web_images/` for cached web images).
@@ -203,8 +309,10 @@ key. Shown in the viewer next to each tree row.
   rewrite (`bcbc_mo_index.py`, `bcbc2024_index.py`, `extract_figures.py`,
   `extract_figures_2024.py`). Not imported by anything active — kept for historical
   reference only.
-- Root also holds `credentials.json` / `token.json` (OAuth secrets — never commit these)
-  and `requirements.txt`.
+- Root also holds `credentials.json` / `token.json` (OAuth secrets — never commit these),
+  `jira_config.toml` (JIRA API token, ignored by git; template in `jira_config.example.toml`),
+  `JIRA.postman_collection.json` (the JIRA API reference requests; it stores credentials,
+  so it is ignored by git too) and `requirements.txt`.
 
 ## Status
 
