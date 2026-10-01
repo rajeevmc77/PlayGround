@@ -1,0 +1,29 @@
+# Copy to jira_config.toml (git-ignored) and fill in. Any of url / username /
+# api_token / project_key can instead come from the JIRA_URL, JIRA_USERNAME,
+# JIRA_API_TOKEN and JIRA_PROJECT_KEY environment variables, which win over this file.
+# Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
+
+[jira]
+url = "https://aottech.atlassian.net"
+username = "you@aot-technologies.com"
+api_token = ""
+project_key = "AUBM"
+
+[issues]
+epic_issue_type = "Epic"
+story_issue_type = "Story"
+labels = ["aot-pulse"]
+# Only for a company-managed project that still requires the legacy fields
+# (e.g. "customfield_10011" Epic Name, "customfield_10014" Epic Link):
+# epic_name_field = ""
+# epic_link_field = ""
+# Assign every issue to one person; `--check` lists the project's account ids.
+# assignee_account_id = ""
+
+# Spec-kit priority -> JIRA priority name. Remove the table to leave priority unset.
+[issues.priorities]
+P1 = "High"
+P2 = "Medium"
+P3 = "Low"
+P4 = "Low"
+P5 = "Lowest"
