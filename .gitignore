@@ -13,3 +13,4 @@ token.json
 .coverage.*
 jira_config.toml
 AOTPulse Specs/
+JIRA.postman_collection.json
