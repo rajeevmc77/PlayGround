@@ -11,3 +11,4 @@ token.json
 .worktrees/
 .coverage
 .coverage.*
+jira_config.toml

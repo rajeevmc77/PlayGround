@@ -90,6 +90,18 @@ A standalone CLI companion, `src/check_directory_access.py`, checks (outside the
 whether a given account can list the Workspace directory via the People API vs. the Admin SDK,
 and prints which path works and why.
 
+3. **AOT Pulse JIRA backlog** (`src/jira_backlog/`, `src/create_jira_backlog.py`) — creates the
+   AOT Pulse epics and their stories in JIRA project `AUBM` through the REST v3 calls in
+   `JIRA.postman_collection.json` (basic auth, account email + API token). Sources live in
+   `AOTPulse Specs/`: the epics document's 15 epics and their story tables, plus each
+   spec-kit `spec.md` - the spec an epic formalizes goes in its description, and the 002-012
+   list/detail enhancements (absent from the epics document) become stories of their module's
+   epic (`domain/aot_pulse_links.py`). Settings come from `jira_config.toml` (git-ignored; see
+   `jira_config.example.toml`) or `JIRA_URL`/`JIRA_USERNAME`/`JIRA_API_TOKEN`/`JIRA_PROJECT_KEY`.
+   `--dry-run` writes the request bodies to `output/jira_backlog_preview.json` without calling
+   JIRA; a real run records every created key in `output/jira_backlog_state.json`, so a re-run
+   skips what exists (delete an entry to re-create that issue).
+
 ## Folder structure
 - `app.py` — the FastAPI app; stays in the project root (its own entry point).
 - `src/` — Python modules and scripts. `mo_toc/` is the main indexing library (see item 2 above).
@@ -169,7 +181,7 @@ Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker f
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
 `src/build_web_toc.py`, `src/build_web_pages.py`, `src/comparison/`, `src/build_comparison.py`,
-`src/shared/`, and `tests/` (including
+`src/shared/`, `src/jira_backlog/`, `src/create_jira_backlog.py`, and `tests/` (including
 `tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
 — not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
