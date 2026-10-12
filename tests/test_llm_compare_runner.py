@@ -204,6 +204,14 @@ def test_a_permanent_error_fails_the_whole_batch_without_retrying():
     assert all(r.message == "bad request" for r in records.values())
 
 
+def test_the_api_key_is_scrubbed_from_error_text_stored_in_rows():
+    judge = ScriptedJudge(error=Permanent("401 for https://x/?key=s3cr3t-key (s3cr3t-key)"))
+    records = asyncio.run(judge_pairs(_prepared("A"), _deps(judge, api_key="s3cr3t-key")))
+    message = records["pdf:images/A.png"].message
+    assert "s3cr3t-key" not in message
+    assert message == "401 for https://x/?key=[redacted] ([redacted])"
+
+
 def test_a_transient_error_is_retried_then_succeeds():
     judge = ScriptedJudge(fail_times=1)
     deps = _deps(judge)

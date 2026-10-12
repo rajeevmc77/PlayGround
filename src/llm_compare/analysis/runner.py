@@ -260,13 +260,19 @@ def _store_answers(pairs, result, good, batch_id, deps, records) -> None:
         _store(pairs[number - 1], good[number], share, batch_id, deps, records)
 
 
+def _scrubbed(message: str, api_key: str) -> str:
+    """Provider errors can echo the request URL; never let the key reach the report."""
+    return message.replace(api_key, "[redacted]") if api_key else message
+
+
 async def _attempt(pairs, batch_id, deps, records) -> list[PreparedPair]:
     """One call for `pairs`; returns the pairs it gave no usable verdict for."""
     try:
         result = await _call_judge(pairs, deps)
     except JudgeError as error:
+        message = _scrubbed(str(error), deps.config.api_key)
         for pair in pairs:
-            records[pair.row_id] = _error_record(pair, batch_id, str(error))
+            records[pair.row_id] = _error_record(pair, batch_id, message)
         return []
     good, missing = validate_verdicts(len(pairs), result.verdicts)
     _store_answers(pairs, result, good, batch_id, deps, records)
