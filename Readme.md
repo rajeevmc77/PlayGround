@@ -316,17 +316,25 @@ tokens of an answer that fails to parse are still counted in the report.
 
 ### Run
 
+In this order (calibrating is optional, and the report only comes from a normal run):
+
 ```bash
-python src/build_llm_comparison.py --dry-run       # counts + estimated tokens/cost, no API call
-python src/build_llm_comparison.py --limit 10      # try 10 pairs first
-python src/build_llm_comparison.py --calibrate 24  # choose max_edge / batch size by evidence
-python src/build_llm_comparison.py                 # the full run (resumable, cached)
+python src/build_llm_comparison.py --dry-run       # 1. counts + estimated tokens/cost/time, no API call
+python src/build_llm_comparison.py --calibrate 24  # 2. optional: choose max_edge / batch size (no report)
+python src/build_llm_comparison.py --limit 10      # 3. try 10 pairs first (writes the report)
+python src/build_llm_comparison.py                 # 4. the full run (resumable, cached; writes the report)
+open output/llm_image_report.html                  # 5. look at it
 ```
 
 `--dry-run` makes no API call and no network request (it makes litellm use its bundled price
-map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). `--calibrate N` judges
+map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). Besides the counts and
+the estimated tokens and cost it prints a `rough time:` line: the number of calls divided by
+the workers, times a guessed 10 s per call (single-pair calls took 5-28 s with default thinking).
+That is a guess, not a measurement; the real time is printed after a run. `--calibrate N` judges
 N sample pairs under several settings (this spends tokens) and prints the recommended
-`max_edge` - put it in `llm_compare_config.toml` yourself. It also prints, per setting, the
+`max_edge` - put it in `llm_compare_config.toml` yourself. It does not write the HTML report:
+it prints a table (with an `elapsed` column, how long each setting took) and ends with
+`saved: <output-dir>/llm_compare/calibration.json` and a note saying so. It also prints, per setting, the
 estimated vs actual input tokens with the implied `token_scale`, and suggests the `token_scale`
 to configure when the estimate is more than 15% off. When a setting judged fewer pairs than the
 sample, a `<setting>: first error: ...` line gives its first error message (the API key
@@ -350,11 +358,31 @@ in flight when you press Ctrl-C may still be billed by the provider; its usage c
 
 Written to `--output-dir` (default: the same directory as `--source-dir`, i.e. `output/`):
 
-- `llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens and cost,
-  and a header summary (this run's tokens and cost, and the cumulative tokens and cost of every
-  LLM verdict shown, cached ones included); filter by verdict or search.
-- `llm_image_compare.json` — the same data for programs.
-- `llm_compare/cache.json` — the verdict cache; `llm_compare/calibration.json` after `--calibrate`.
+- `output/llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens,
+  cost and call time, and a header summary (this run's tokens, cost and time, and the cumulative
+  tokens and cost of every LLM verdict shown, cached ones included); filter by verdict or search.
+  Only a normal run writes it, not `--dry-run` or `--calibrate`.
+- `output/llm_image_compare.json` — the same data for programs.
+- `output/llm_compare/cache.json` — the verdict cache.
+- `output/llm_compare/calibration.json` — written by `--calibrate` only (variants, tokens,
+  verdicts and `elapsed_seconds`).
+
+#### Timing and the report
+
+Every normal run ends with a line like
+`time: total 4m 12s (scoring 38 s, judging 3m 34s), 41 calls avg 9.8 s slowest 28.1 s, 62 pairs/min`
+(or `..., no LLM calls` when the hash and the cache settled everything). The same figures are
+in the report's header cards and in the JSON `summary`. What is measured, with a monotonic clock:
+
+- **scoring** - hashing and trimming every pair, before any call is made.
+- **judging (LLM)** - the whole LLM phase, wall clock, including rate-limiter waits and retry
+  backoff; a run answered wholly from the cache still has a (tiny) judging time. `pairs/min` is
+  the pairs judged live in this run over that time.
+- **call** - the model's response time for one call only (the limiter's waits and the backoff
+  sleeps are excluded; a call that failed is not timed). A batch's pairs share their call's
+  time, shown beside the batch number in the report's Tokens / cost cell and as `call_seconds`
+  in the JSON row; a pair re-asked alone shows that retry's time. Cached rows have no call time.
+  Calls run concurrently, so the calls' times add up to more than the judging time.
 
 From a git worktree (whose own `output/` and `.env` are empty), read the main checkout's
 inputs and key with `--source-dir` and `--env-file`, and write somewhere else:

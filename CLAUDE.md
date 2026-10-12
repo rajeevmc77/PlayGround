@@ -118,9 +118,13 @@ and prints which path works and why.
    thinking), and the tokens of an answer that fails to parse
    are still counted. Pairs the hash settles, skipped pairs and web-only images still get a row.
    `output/llm_image_report.html` lists every image with its verdict, tokens and cost (this run's
-   and the cumulative cost of every verdict, cached ones included). Ctrl-C cancels in place:
+   and the cumulative cost of every verdict, cached ones included). A run also times itself
+   (injectable `JudgeDeps.clock`): scoring vs judging seconds, each completed call's model time
+   (limiter waits excluded), shown as a terminal `time:` line, in the report header/JSON and per
+   row (`call_seconds`); only a normal run writes the HTML report, `--calibrate` just prints its
+   table (with per-variant elapsed time) and where it saved `calibration.json`. Ctrl-C cancels in place:
    finished verdicts are kept and cached, unfinished pairs become ERROR rows, exit 130.
-   `--dry-run` prints the plan with no API call, `--limit N` tries N pairs, `--calibrate N`
+   `--dry-run` prints the plan (with a rough, guessed time) with no API call, `--limit N` tries N pairs, `--calibrate N`
    prints the recommended `max_edge` (put it in `llm_compare_config.toml` yourself) and the
    estimated vs actual input tokens with a suggested `token_scale` when the estimate is more
    than 15% off (a setting that judged too few pairs also prints its first, key-scrubbed error);
@@ -230,8 +234,8 @@ only if/when they're actually touched, not retroactively.
 
 ## Working notes
 - A real test suite (1011 tests — 993 by default plus 18 `slow` — before the LLM image
-  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 298:
-  297 by default plus 1 `slow`) covers `src/mo_toc/`,
+  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 358:
+  357 by default plus 1 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, `src/llm_compare/`, the
   `build_*.py`/`serve_mo_toc.py` scripts and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). WARNING:
