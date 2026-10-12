@@ -1,0 +1,11 @@
+# Copy to llm_compare_config.toml (git-ignored) to override defaults. The API key and model
+# come from GEMINI_API_KEY / GEMINI_MODEL in the environment or .env, never from this file.
+hash_match_percent = 90      # a phash score at or above this is a match and is not sent to the LLM
+max_edge = 1024              # longest side, px, images are scaled down to (set from --calibrate)
+max_pairs_per_call = 6       # image pairs per LLM call
+max_input_tokens = 60000     # input budget per call
+rpm = 30                     # provider requests per minute
+tpm = 250000                 # provider tokens per minute
+workers = 4                  # concurrent calls
+# input_price_per_million = 0.0   # USD per 1M tokens; only needed when LiteLLM has no price
+# output_price_per_million = 0.0

@@ -14,3 +14,6 @@ token.json
 jira_config.toml
 AOTPulse Specs/
 JIRA.postman_collection.json
+.env
+llm_compare_config.toml
+.superpowers/
