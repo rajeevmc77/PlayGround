@@ -57,6 +57,10 @@ def test_api_key_comes_from_environment_or_dotenv_only():
         "single_retries = -1",
         "input_price_per_million = -1",
         "token_scale = 0",
+        "request_timeout_seconds = 0",
+        "request_timeout_seconds = -1",
+        "request_timeout_seconds = inf",
+        "request_timeout_seconds = nan",
     ],
 )
 def test_out_of_range_values_are_rejected(text):
@@ -98,3 +102,16 @@ def test_litellm_model_adds_the_gemini_prefix_once():
     assert litellm_model("gemini-3.8-flash") == "gemini/gemini-3.8-flash"
     assert litellm_model("gemini/gemini-3.8-flash") == "gemini/gemini-3.8-flash"
     assert litellm_model("") == ""
+
+
+def test_request_timeout_defaults_to_two_minutes_and_can_be_overridden():
+    assert load_config("", {}).request_timeout_seconds == 120.0
+    assert load_config("request_timeout_seconds = 45", {}).request_timeout_seconds == 45.0
+    assert load_config("request_timeout_seconds = 0.5", {}).request_timeout_seconds == 0.5
+
+
+def test_request_timeout_must_be_a_number():
+    with pytest.raises(ConfigError, match="request_timeout_seconds must be a number"):
+        load_config('request_timeout_seconds = "soon"', {})
+    with pytest.raises(ConfigError, match="request_timeout_seconds must be above 0"):
+        load_config("request_timeout_seconds = 0", {})

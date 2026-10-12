@@ -1,6 +1,7 @@
 """Settings for the LLM image comparison, read from llm_compare_config.toml text plus
 GEMINI_API_KEY / GEMINI_MODEL (environment first, then .env, then the file for the model)."""
 
+import math
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
@@ -29,6 +30,9 @@ class LlmCompareConfig:
     retry_attempts: int = 5
     retry_base_delay: float = 1.0
     retry_max_delay: float = 60.0
+    # dspy 3.4's native transport otherwise waits up to 600 s for a reply; a thinking answer
+    # took up to ~30 s in practice, so this bounds a stuck request, which is then retried.
+    request_timeout_seconds: float = 120.0
     input_price_per_million: float | None = None
     output_price_per_million: float | None = None
 
@@ -51,6 +55,7 @@ _FLOAT_KEYS = (
     "token_scale",
     "retry_base_delay",
     "retry_max_delay",
+    "request_timeout_seconds",
     "input_price_per_million",
     "output_price_per_million",
 )
@@ -119,8 +124,9 @@ def _check_ints(config: LlmCompareConfig) -> None:
 def _check_floats(config: LlmCompareConfig) -> None:
     if not 0 < config.hash_match_percent <= 100:
         raise ConfigError("hash_match_percent must be above 0 and at most 100")
-    if config.token_scale <= 0:
-        raise ConfigError("token_scale must be above 0")
+    for name in ("token_scale", "request_timeout_seconds"):
+        if not 0 < getattr(config, name) < math.inf:
+            raise ConfigError(f"{name} must be above 0 and finite")
     for name in _FLOAT_KEYS:
         value = getattr(config, name)
         if value is not None and value < 0:

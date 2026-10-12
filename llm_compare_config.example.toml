@@ -10,5 +10,8 @@ max_output_tokens = 8192     # output cap per call, thinking included; must cove
 rpm = 30                     # provider requests per minute
 tpm = 250000                 # provider tokens per minute
 workers = 4                  # concurrent calls
+request_timeout_seconds = 120  # per request; a stuck one is cut off and retried. Thinking
+                             # answers took up to ~30 s in practice (the library's own wait
+                             # is 600 s, which once stalled a run for ~18 minutes)
 # input_price_per_million = 0.0   # USD per 1M tokens; only needed when LiteLLM has no price
 # output_price_per_million = 0.0

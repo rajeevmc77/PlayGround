@@ -325,7 +325,10 @@ estimated vs actual input tokens with the implied `token_scale`, and suggests th
 to configure when the estimate is more than 15% off.
 
 Rate limits (429), server errors (5xx), timeouts and dropped connections are retried with
-exponential backoff; a provider's `retry_after` hint is honoured up to `retry_max_delay`. Other
+exponential backoff; a provider's `retry_after` hint is honoured up to `retry_max_delay`.
+Each request is cut off after `request_timeout_seconds` (default 120): the library's own wait
+is 600 s, which once left a run hanging on one request for about 18 minutes, while a thinking
+answer took up to ~30 s in practice. A timed-out request is retried like any other. Other
 errors (bad request, bad key, billing) fail that call's pairs as ERROR rows at once.
 
 Exit codes: 0 success, 2 bad configuration or missing/malformed input, 130 interrupted with

@@ -135,6 +135,9 @@ class DspyPairJudge:
             max_tokens=config.max_output_tokens,
             num_retries=0,
             cache=False,
+            # Without it the native transport waits up to 600 s for a reply (a hung request
+            # once stalled a run ~18 min); a timeout is Transient, so the limiter retries it.
+            timeout=config.request_timeout_seconds,
         )
         self._predictor = predictor or dspy.Predict(build_signature(instructions))
         # No silent second (JSON) attempt: every billed call must go through our limiter.

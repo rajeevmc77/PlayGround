@@ -157,6 +157,28 @@ def test_the_real_lm_caps_output_at_max_output_tokens():
     assert DspyPairJudge(config, PRICES)._lm.kwargs["max_tokens"] == 4096
 
 
+def test_the_real_lm_bounds_a_request_by_request_timeout_seconds():
+    """dspy 3.4's native transport waits up to 600 s for a reply unless the LM is given a
+    timeout; the configured one must reach lm15's read/write/pool waits."""
+    from dspy.clients.engines.lm15_engine import timeouts_for
+
+    config = LlmCompareConfig(api_key="k", model="gemini-x", request_timeout_seconds=45.0)
+    judge = DspyPairJudge(config, PRICES)
+    timeouts = timeouts_for(judge._lm.kwargs["timeout"])
+    assert (timeouts.read, timeouts.write, timeouts.pool) == (45.0, 45.0, 45.0)
+
+
+def test_the_default_request_timeout_is_120_seconds_for_the_read_wait():
+    from dspy.clients.engines.lm15_engine import timeouts_for
+
+    judge = DspyPairJudge(LlmCompareConfig(api_key="k", model="gemini-x"), PRICES)
+    assert timeouts_for(judge._lm.kwargs["timeout"]).read == 120.0
+
+
+def test_a_request_that_times_out_is_transient_so_the_limiter_retries_it():
+    assert isinstance(map_litellm_error(LMTimeoutError("timed out after 120 s")), Transient)
+
+
 # ---- the real DSPy pipeline, offline ----------------------------------------------------
 # dspy.LM accepts a custom engine (complete(Request) -> Response); this one returns a canned
 # completion with usage, or raises a dspy.lm15 error, so the real Predict + ChatAdapter +
