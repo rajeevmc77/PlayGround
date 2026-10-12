@@ -19,7 +19,14 @@ from llm_compare.analysis.runner import (
 from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.errors import Permanent, Transient
 from llm_compare.domain.judge import JudgeResult
-from llm_compare.domain.models import ImagePair, PairVerdict, Usage, Verdict
+from llm_compare.domain.models import (
+    ImagePair,
+    PairVerdict,
+    PdfLocation,
+    Usage,
+    Verdict,
+    WebLocation,
+)
 from llm_compare.output.cache import VerdictCache, pair_cache_key
 from tests.llm_compare_support import image_pair, png_bytes, prepared_pair
 
@@ -588,3 +595,79 @@ def test_an_interrupted_run_still_reports_its_timing_up_to_the_interrupt():
     )
     assert outcome.interrupted and outcome.judging_seconds == 12.0
     assert outcome.call_seconds == (5.0,) and outcome.records[0].call_seconds == 5.0
+
+
+# ---- locations --------------------------------------------------------------------------
+
+PDF_AT = PdfLocation(3, 10.0, 20.0, 110.0, 70.0)
+WEB_AT = WebLocation("web_pages/p.html", "/html/body/main/img[1]", 1, 2, 3, 4, "nbc.a.fig1")
+
+
+def _located(key, **extra):
+    return replace(_pair(key), pdf_location=PDF_AT, web_location=WEB_AT, **extra)
+
+
+def _both_locations(record):
+    return (record.pdf_location, record.web_location) == (PDF_AT, WEB_AT)
+
+
+def test_every_kind_of_record_a_run_produces_carries_both_locations():
+    keys = ["hi", "lo", "extra", "gone"]
+    web_only = replace(_located("w"), row_id="web:w", pdf_path=None)
+    skipped = _located("s", skip_reason="no web counterpart")
+    pairs = [_located(k) for k in keys] + [web_only, skipped]
+    outcome = run_comparison(
+        pairs,
+        _loader(_scored_files(["hi", "lo", "extra"])),
+        _timed(ScriptedJudge(), FakeClock()),
+        limit=1,
+        scorer=_scores(hi=99.0, lo=10.0, extra=10.0),
+    )
+    verdicts = {r.key: r.verdict for r in outcome.records}
+    assert verdicts == {
+        "hi": Verdict.MATCH_PHASH,
+        "lo": Verdict.IDENTICAL,
+        "extra": Verdict.SKIPPED,  # past --limit
+        "gone": Verdict.SKIPPED,  # image file missing
+        "w": Verdict.WEB_ONLY,
+        "s": Verdict.SKIPPED,
+    }
+    assert all(_both_locations(r) for r in outcome.records)
+
+
+def _prepared_located(key):
+    prepared = prepared_pair(key, tokens=100, pdf=f"images/{key}.png")
+    return replace(prepared, pair=replace(prepared.pair, pdf_location=PDF_AT, web_location=WEB_AT))
+
+
+def test_cached_error_and_interrupted_records_carry_both_locations():
+    cache = VerdictCache()
+    asyncio.run(judge_pairs([_prepared_located("A")], _deps(ScriptedJudge(), cache)))
+    cached = asyncio.run(judge_pairs([_prepared_located("A")], _deps(ScriptedJudge(), cache)))
+    failed = asyncio.run(
+        judge_pairs([_prepared_located("B")], _deps(ScriptedJudge(error=Permanent("x"))))
+    )
+    assert cached["pdf:images/A.png"].cached and _both_locations(cached["pdf:images/A.png"])
+    assert failed["pdf:images/B.png"].verdict is Verdict.ERROR
+    assert _both_locations(failed["pdf:images/B.png"])
+
+
+def test_a_pair_never_answered_keeps_its_locations_on_its_error_row():
+    judge = ScriptedJudge(drop_always={"B"})
+    records = asyncio.run(judge_pairs([_prepared_located("B")], _deps(judge)))
+    assert "no usable verdict" in records["pdf:images/B.png"].message
+    assert _both_locations(records["pdf:images/B.png"])
+
+
+def test_an_interrupted_pair_keeps_its_locations_on_its_error_row():
+    clock, keys = FakeClock(), ["a", "b"]
+    files = {
+        f"{d}/{k}.png": png_bytes(box=(5 + n, 5, 40, 30))
+        for n, k in enumerate(keys)
+        for d in ("images", "web_images")
+    }
+    deps = _timed(TimedInterrupt(clock), clock, max_pairs_per_call=1, workers=1)
+    outcome = run_comparison(
+        [_located(k) for k in keys], _loader(files), deps, scorer=_scores(a=1.0, b=1.0)
+    )
+    assert outcome.records[1].message == INTERRUPTED and _both_locations(outcome.records[1])

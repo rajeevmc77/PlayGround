@@ -117,6 +117,8 @@ def _record(pair: ImagePair, verdict: Verdict, **extra) -> PairRecord:
         pdf_path=pair.pdf_path,
         web_path=pair.web_path,
         web_key=pair.web_key,
+        pdf_location=pair.pdf_location,
+        web_location=pair.web_location,
         **extra,
     )
 
