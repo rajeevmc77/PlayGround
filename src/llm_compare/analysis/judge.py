@@ -115,6 +115,25 @@ def _verdicts_of(prediction) -> list[PairVerdict]:
     ]
 
 
+def _build_lm(config: LlmCompareConfig) -> dspy.LM:
+    # An empty reasoning_effort sends nothing, leaving the model's own default thinking.
+    effort = {"reasoning_effort": config.reasoning_effort} if config.reasoning_effort else {}
+    return dspy.LM(
+        litellm_model(config.model),
+        api_key=config.api_key,
+        temperature=0.0,
+        # Caps output (thinking included): a looping answer is the one that fails to
+        # parse and is re-queued, so an uncapped one would be billed again and again.
+        max_tokens=config.max_output_tokens,
+        num_retries=0,
+        cache=False,
+        # Without it the native transport waits up to 600 s for a reply (a hung request
+        # once stalled a run ~18 min); a timeout is Transient, so the limiter retries it.
+        timeout=config.request_timeout_seconds,
+        **effort,
+    )
+
+
 class DspyPairJudge:
     def __init__(
         self,
@@ -126,19 +145,7 @@ class DspyPairJudge:
         instructions: str = INSTRUCTIONS,
     ):
         self._prices = prices
-        self._lm = lm or dspy.LM(
-            litellm_model(config.model),
-            api_key=config.api_key,
-            temperature=0.0,
-            # Caps output (thinking included): a looping answer is the one that fails to
-            # parse and is re-queued, so an uncapped one would be billed again and again.
-            max_tokens=config.max_output_tokens,
-            num_retries=0,
-            cache=False,
-            # Without it the native transport waits up to 600 s for a reply (a hung request
-            # once stalled a run ~18 min); a timeout is Transient, so the limiter retries it.
-            timeout=config.request_timeout_seconds,
-        )
+        self._lm = lm or _build_lm(config)
         self._predictor = predictor or dspy.Predict(build_signature(instructions))
         # No silent second (JSON) attempt: every billed call must go through our limiter.
         self._adapter = dspy.ChatAdapter(use_json_adapter_fallback=False)
