@@ -417,6 +417,34 @@ def test_calibrate_prints_a_recommendation_and_saves_the_variants(tmp_path, monk
     assert not (source / "llm_compare" / "cache.json").exists()
 
 
+class ThreeTimesTheEstimate:
+    """Reports 3x the input tokens we estimate for the call (overhead 1 in this config)."""
+
+    async def judge(self, pairs):
+        verdicts = [PairVerdict(n, Verdict.IDENTICAL, ()) for n in range(1, len(pairs) + 1)]
+        return JudgeResult(verdicts, Usage(3 * (sum(p.tokens for p in pairs) + 1), 1, 0.0))
+
+
+def test_calibrate_checks_the_token_estimate_against_usage_with_the_configured_scale(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    (source / "scale.toml").write_text("token_scale = 2.0\ncall_overhead_tokens = 1\n")
+    args = _args(source, "--calibrate", "1")
+    args[args.index("--config") + 1] = str(source / "scale.toml")
+    assert main(args, env=ENV, judge=ThreeTimesTheEstimate()) == 0
+    out = capsys.readouterr().out
+    assert "estimated vs actual input tokens" in out
+    # usage is 3x the estimate made with the configured token_scale 2.0: suggest 6.0
+    assert out.splitlines()[-1] == (
+        "actual input tokens were 3.00x the estimate: suggest token_scale = 6.00 "
+        "in llm_compare_config.toml"
+    )
+    saved = json.loads((source / "llm_compare" / "calibration.json").read_text())
+    assert all(v["input_tokens"] == 3 * v["estimated_input_tokens"] > 0 for v in saved)
+
+
 @pytest.mark.parametrize("value", ["0", "-3", "many"])
 def test_an_invalid_calibrate_count_is_rejected_before_any_work(tmp_path, value):
     source = _source(tmp_path)

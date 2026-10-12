@@ -58,6 +58,8 @@ class Classification:
 class RunStats:
     calls: int = 0
     wasted: Usage = field(default_factory=Usage)
+    # What we estimated the answered calls' input would be, to check against their usage.
+    estimated_input_tokens: int = 0
 
 
 @dataclass
@@ -241,12 +243,14 @@ async def _call_judge(pairs: list[PreparedPair], deps: JudgeDeps):
     estimate = estimate_call_tokens(
         pairs, config.call_overhead_tokens, config.output_tokens_per_pair
     )
+    input_estimate = sum(pair.tokens for pair in pairs) + config.call_overhead_tokens
 
     async def once():
         reservation = await deps.limiter.acquire(estimate)
         deps.stats.calls += 1
         result = await deps.judge.judge(pairs)
         deps.limiter.release(reservation, result.usage.input_tokens + result.usage.output_tokens)
+        deps.stats.estimated_input_tokens += input_estimate
         return result
 
     return await call_with_retries(

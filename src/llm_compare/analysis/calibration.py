@@ -27,6 +27,8 @@ class VariantResult:
     output_tokens: int
     cost: float | None
     verdicts: dict[str, Verdict]
+    # Our estimate of the answered calls' input (pair tokens + call overhead, per call).
+    estimated_input_tokens: int = 0
 
 
 def default_variants(default_edge: int, default_batch: int) -> list[Variant]:
@@ -74,6 +76,7 @@ async def _run_one(scored, variant, config, make_deps) -> VariantResult:
         sum(record.output_tokens for record in records) + deps.stats.wasted.output_tokens,
         _total_cost(records),
         {record.row_id: record.verdict for record in records},
+        deps.stats.estimated_input_tokens,
     )
 
 
@@ -156,7 +159,40 @@ def _verdict_line(results: list[VariantResult]) -> str:
     return f"recommended max_edge: {best}"
 
 
-def format_calibration(results: list[VariantResult]) -> str:
+def _scale(estimated: int, actual: int) -> float | None:
+    """actual / estimated input tokens; None when either side has nothing to compare."""
+    return actual / estimated if estimated > 0 and actual > 0 else None
+
+
+def _estimate_line(result: VariantResult) -> str:
+    scale = _scale(result.estimated_input_tokens, result.input_tokens)
+    shown = "n/a" if scale is None else f"{scale:.2f}"
+    return (
+        f"{result.variant.name}: estimated vs actual input tokens "
+        f"{result.estimated_input_tokens:,} vs {result.input_tokens:,} "
+        f"(implied token_scale {shown})"
+    )
+
+
+def _overall_scale(results: list[VariantResult]) -> float | None:
+    measured = [r for r in results if _scale(r.estimated_input_tokens, r.input_tokens)]
+    return _scale(
+        sum(r.estimated_input_tokens for r in measured), sum(r.input_tokens for r in measured)
+    )
+
+
+def _token_scale_lines(results: list[VariantResult], token_scale: float) -> list[str]:
+    """One closing suggestion, only when actual usage is more than 15% off the estimate."""
+    scale = _overall_scale(results)
+    if scale is None or abs(scale - 1.0) <= 0.15:
+        return []
+    return [
+        f"actual input tokens were {scale:.2f}x the estimate: suggest token_scale = "
+        f"{token_scale * scale:.2f} in llm_compare_config.toml"
+    ]
+
+
+def format_calibration(results: list[VariantResult], token_scale: float = 1.0) -> str:
     total = len(results[0].verdicts) if results else 0
     lines = ["variant                      input tok  output tok  judged  agreement with original"]
     for result in results:
@@ -166,4 +202,12 @@ def format_calibration(results: list[VariantResult]) -> str:
             f"{result.variant.name:<28} {result.input_tokens:>9,} {result.output_tokens:>11,}"
             f"  {judged:>6}  {share:>9.0%}"
         )
-    return "\n".join([*lines, *_batching_lines(results), _verdict_line(results)])
+    return "\n".join(
+        [
+            *lines,
+            *(_estimate_line(result) for result in results),
+            *_batching_lines(results),
+            _verdict_line(results),
+            *_token_scale_lines(results, token_scale),
+        ]
+    )

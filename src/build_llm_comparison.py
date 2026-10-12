@@ -200,6 +200,7 @@ def _save_calibration(results: list[VariantResult], output_dir: Path) -> None:
         {
             "variant": result.variant.name,
             "input_tokens": result.input_tokens,
+            "estimated_input_tokens": result.estimated_input_tokens,
             "output_tokens": result.output_tokens,
             "cost": result.cost,
             "verdicts": {key: verdict.value for key, verdict in result.verdicts.items()},
@@ -224,7 +225,7 @@ def _calibrate(count: int, args, config, pairs, judge) -> int:
 
     variants = default_variants(config.max_edge, config.max_pairs_per_call)
     results = asyncio.run(run_variants(sample_evenly(routed, count), variants, config, make_deps))
-    print(format_calibration(results))
+    print(format_calibration(results, config.token_scale))
     _save_calibration(results, args.output_dir or args.source_dir)
     return 0
 

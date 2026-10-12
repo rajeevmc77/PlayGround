@@ -101,6 +101,49 @@ def test_run_variants_judges_the_same_sample_once_per_variant_with_fresh_caches(
     assert [r.variant.max_pairs_per_call for r in results] == [1, 1, 1, 6]
     assert all(r.verdicts == {"pdf:images/a.png": Verdict.IDENTICAL} for r in results)
     assert all(r.input_tokens == 10 for r in results)
+    # the one pair's own estimate (516 at 40x30 + 40x30) plus one call's overhead
+    assert all(r.estimated_input_tokens == 516 + config.call_overhead_tokens for r in results)
+
+
+def _estimated(name, edge, estimated, actual, verdicts):
+    return VariantResult(Variant(name, edge, 1), actual, 0, 0.0, verdicts, estimated)
+
+
+def test_each_variant_shows_estimated_vs_actual_input_tokens_and_the_implied_scale():
+    base = {"a": Verdict.IDENTICAL}
+    text = format_calibration(
+        [_estimated("orig", ORIGINAL_EDGE, 8000, 9000, base), _estimated("768", 768, 0, 3, base)]
+    )
+    assert (
+        "orig: estimated vs actual input tokens 8,000 vs 9,000 (implied token_scale 1.12)" in text
+    )
+    assert "768: estimated vs actual input tokens 0 vs 3 (implied token_scale n/a)" in text
+
+
+def test_a_close_estimate_suggests_no_change_to_token_scale():
+    base = {"a": Verdict.IDENTICAL}
+    results = [_estimated("orig", ORIGINAL_EDGE, 1000, 1100, base)]
+    assert "suggest" not in format_calibration(results)
+
+
+def test_an_estimate_off_by_more_than_15_percent_suggests_the_token_scale_to_configure():
+    base = {"a": Verdict.IDENTICAL}
+    results = [
+        _estimated("orig", ORIGINAL_EDGE, 1000, 1500, base),
+        _estimated("768", 768, 1000, 1500, base),
+    ]
+    last = format_calibration(results, token_scale=1.2).splitlines()[-1]
+    assert last == (
+        "actual input tokens were 1.50x the estimate: suggest token_scale = 1.80 "
+        "in llm_compare_config.toml"
+    )
+
+
+def test_no_usage_reported_suggests_nothing_and_divides_by_nothing():
+    base = {"a": Verdict.ERROR}
+    results = [_estimated("orig", ORIGINAL_EDGE, 1000, 0, base)]
+    text = format_calibration(results)
+    assert "implied token_scale n/a" in text and "suggest" not in text
 
 
 def _twenty(verdict, judged=20):

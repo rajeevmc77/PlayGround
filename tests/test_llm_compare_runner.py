@@ -174,6 +174,20 @@ def test_pairs_are_packed_into_calls_and_usage_is_split_across_them():
     assert all(r.batch_id is not None and not r.cached for r in records.values())
 
 
+def test_each_answered_call_adds_its_estimated_input_tokens_to_the_stats():
+    judge = ScriptedJudge(drop_in_batches={"B"})
+    deps = _deps(judge, call_overhead_tokens=50)
+    asyncio.run(judge_pairs(_prepared("A", "B", "C"), deps))
+    # [A, B, C] then B alone: every pair's estimated tokens plus each call's overhead
+    assert deps.stats.estimated_input_tokens == (300 + 50) + (100 + 50)
+
+
+def test_a_failed_call_adds_no_estimate():
+    deps = _deps(ScriptedJudge(error=Permanent("x")))
+    asyncio.run(judge_pairs(_prepared("A"), deps))
+    assert deps.stats.estimated_input_tokens == 0
+
+
 def test_nothing_to_judge_makes_no_call():
     judge = ScriptedJudge()
     assert asyncio.run(judge_pairs([], _deps(judge))) == {}
