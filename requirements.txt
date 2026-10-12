@@ -16,4 +16,4 @@ playwright>=1.40.0
 ruff>=0.6.0
 radon>=6.0.0
 vulture>=2.11
-dspy>=3.1.0
+dspy>=3.4,<3.5  # error classes (LMRateLimitError...) and usage tracking differ across versions

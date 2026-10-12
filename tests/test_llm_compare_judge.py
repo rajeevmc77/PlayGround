@@ -4,6 +4,18 @@ from dataclasses import replace
 
 import dspy
 import pytest
+from dspy.utils.exceptions import (
+    LMAuthError,
+    LMBillingError,
+    LMInvalidRequestError,
+    LMLockTimeoutError,
+    LMProviderError,
+    LMRateLimitError,
+    LMServerError,
+    LMTimeoutError,
+    LMTransportError,
+    LMUnexpectedError,
+)
 
 from llm_compare.analysis.judge import (
     DspyPairJudge,
@@ -137,6 +149,53 @@ def test_rate_limits_carry_retry_after_and_server_errors_are_transient():
     assert isinstance(map_litellm_error(_http("Timeout")), Transient)
     assert isinstance(map_litellm_error(_http("BadRequestError", 400)), Permanent)
     assert isinstance(map_litellm_error(RuntimeError("boom")), Permanent)
+
+
+def test_dspy_rate_limit_errors_are_rate_limited_with_their_retry_after():
+    limited = map_litellm_error(LMRateLimitError("slow down", status=429, retry_after=7.0))
+    assert isinstance(limited, RateLimited) and limited.retry_after == 7.0
+    unhinted = map_litellm_error(LMRateLimitError("slow down", status=429))
+    assert isinstance(unhinted, RateLimited) and unhinted.retry_after is None
+
+
+def test_a_dspy_error_with_status_429_is_rate_limited_whatever_its_class():
+    assert isinstance(map_litellm_error(LMProviderError("quota", status=429)), RateLimited)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        LMServerError("unavailable", status=503),
+        LMServerError("internal"),
+        LMTimeoutError("timed out"),
+        LMTransportError("connection reset"),
+        LMLockTimeoutError("credential lock busy"),
+        LMProviderError("bad gateway", status=502),
+    ],
+)
+def test_retryable_dspy_errors_are_transient(error):
+    assert type(map_litellm_error(error)) is Transient
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        LMInvalidRequestError("bad image", status=400),
+        LMAuthError("bad key", status=401),
+        LMBillingError("no credit", status=402),
+        LMUnexpectedError("engine bug"),
+        LMProviderError("nope", status=404),
+    ],
+)
+def test_other_dspy_errors_are_permanent(error):
+    assert type(map_litellm_error(error)) is Permanent
+
+
+def test_a_real_dspy_rate_limit_from_the_call_is_rate_limited():
+    judge, _ = _judge(LMRateLimitError("slow down", status=429, retry_after=3.0))
+    with pytest.raises(RateLimited) as raised:
+        _run(judge)
+    assert raised.value.retry_after == 3.0
 
 
 def test_errors_from_the_call_are_mapped_to_judge_errors():

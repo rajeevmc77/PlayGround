@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 import dspy
+from dspy.utils.exceptions import AdapterParseError, LMRateLimitError, is_retryable_lm_error
 from pydantic import BaseModel, Field
 
 from llm_compare.analysis.prompt import INSTRUCTIONS
@@ -15,13 +16,9 @@ from llm_compare.domain.errors import JudgeError, Permanent, RateLimited, Transi
 from llm_compare.domain.judge import JudgeResult
 from llm_compare.domain.models import PairVerdict, PreparedPair, Prices, Usage, Verdict
 
-try:
-    from dspy.utils.exceptions import AdapterParseError
+_PARSE_ERRORS: tuple[type[Exception], ...] = (AdapterParseError, ValueError)
 
-    _PARSE_ERRORS: tuple[type[Exception], ...] = (AdapterParseError, ValueError)
-except ImportError:
-    _PARSE_ERRORS = (ValueError,)
-
+# LiteLLM-shaped errors (by class name), for an engine that does not wrap them.
 _TRANSIENT_NAMES = {
     "Timeout",
     "APIConnectionError",
@@ -59,18 +56,41 @@ def _to_image(png: bytes) -> dspy.Image:
 
 
 def _retry_after(error: Exception) -> float | None:
-    headers = getattr(getattr(error, "response", None), "headers", None) or {}
+    hint = getattr(error, "retry_after", None)
+    if hint is None:
+        headers = getattr(getattr(error, "response", None), "headers", None) or {}
+        hint = headers.get("retry-after")
     try:
-        return float(headers.get("retry-after"))
+        return float(hint)
     except (TypeError, ValueError):
         return None
 
 
+def _status(error: Exception) -> int | None:
+    """dspy's LM errors carry `.status`; LiteLLM-shaped ones `.status_code`."""
+    status = getattr(error, "status", None)
+    return status if isinstance(status, int) else getattr(error, "status_code", None)
+
+
+def _is_rate_limit(error: Exception) -> bool:
+    if isinstance(error, LMRateLimitError) or _status(error) == 429:
+        return True
+    return type(error).__name__ == "RateLimitError"
+
+
+def _is_transient(error: Exception) -> bool:
+    status = _status(error)
+    if is_retryable_lm_error(error) or (isinstance(status, int) and status >= 500):
+        return True
+    return type(error).__name__ in _TRANSIENT_NAMES
+
+
 def map_litellm_error(error: Exception) -> JudgeError:
-    status = getattr(error, "status_code", None)
-    if status == 429 or type(error).__name__ == "RateLimitError":
+    """dspy 3.4 raises its own LM errors (LMRateLimitError, LMServerError, LMTimeoutError,
+    LMTransportError, ...); LiteLLM-shaped ones (name/status_code/response.headers) still map."""
+    if _is_rate_limit(error):
         return RateLimited(str(error), _retry_after(error))
-    if (status is not None and status >= 500) or type(error).__name__ in _TRANSIENT_NAMES:
+    if _is_transient(error):
         return Transient(str(error))
     return Permanent(str(error))
 
