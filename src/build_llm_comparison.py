@@ -97,12 +97,37 @@ def _read_text(path: Path) -> str:
     return path.read_text() if path.is_file() else ""
 
 
+class InputError(Exception):
+    """An input file is not JSON shaped the way the PDF/web/comparison builds write it."""
+
+
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise InputError(f"{path.name} is not valid JSON: {error}") from error
+
+
+def _images(name: str, data) -> list:
+    images = data.get("images") if isinstance(data, dict) else None
+    if not isinstance(images, list):
+        raise InputError(f'{name} has no "images" list - rebuild it')
+    return images
+
+
+def _counterparts(data) -> dict:
+    counterparts = data.get("counterparts", {}) if isinstance(data, dict) else None
+    if not isinstance(counterparts, dict):
+        raise InputError('comparison.json has no "counterparts" object - rebuild it')
+    return counterparts
+
+
 def _load_inputs(source_dir: Path) -> tuple[list[dict], list[dict], dict]:
     missing = [name for name in INPUT_FILES if not (source_dir / name).is_file()]
     if missing:
         raise FileNotFoundError(f"missing in {source_dir}: {', '.join(missing)}")
-    pdf, web, comparison = (json.loads((source_dir / name).read_text()) for name in INPUT_FILES)
-    return pdf["images"], web["images"], comparison.get("counterparts", {})
+    pdf, web, comparison = (_read_json(source_dir / name) for name in INPUT_FILES)
+    return _images("bcbc_pdf.json", pdf), _images("bcbc_web.json", web), _counterparts(comparison)
 
 
 def _loader(source_dir: Path):
@@ -248,7 +273,7 @@ def main(argv=None, env: Mapping[str, str] = os.environ, judge=None, now: str | 
     args = _parser().parse_args(argv)
     try:
         config, pairs = _setup(args, env)
-    except (ConfigError, FileNotFoundError) as error:
+    except (ConfigError, FileNotFoundError, InputError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     cache = VerdictCache((args.output_dir or args.source_dir) / "llm_compare" / "cache.json")

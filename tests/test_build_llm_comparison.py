@@ -146,6 +146,34 @@ def test_missing_input_files_exit_with_a_clear_message(tmp_path, capsys):
     assert "bcbc_pdf.json" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("name", "text", "expected"),
+    [
+        ("bcbc_pdf.json", "{not json", "bcbc_pdf.json is not valid JSON"),
+        ("bcbc_web.json", '{"tree": {}}', 'bcbc_web.json has no "images" list'),
+        ("bcbc_pdf.json", '{"images": {}}', 'bcbc_pdf.json has no "images" list'),
+        ("bcbc_pdf.json", "[1, 2]", 'bcbc_pdf.json has no "images" list'),
+        ("comparison.json", "[]", 'comparison.json has no "counterparts" object'),
+        ("comparison.json", '{"counterparts": []}', 'comparison.json has no "counterparts"'),
+    ],
+)
+def test_a_malformed_input_file_exits_2_with_a_clear_message(
+    tmp_path, capsys, name, text, expected
+):
+    source = _source(tmp_path)
+    (source / name).write_text(text)
+    judge = AllIdentical()
+    assert main(_args(source), env=ENV, judge=judge) == 2
+    assert expected in capsys.readouterr().err
+    assert judge.calls == 0 and not (source / "llm_image_report.html").exists()
+
+
+def test_comparison_json_without_counterparts_still_means_none(tmp_path):
+    source = _source(tmp_path)
+    (source / "comparison.json").write_text("{}")
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+
+
 def test_an_invalid_config_file_exits_with_its_message(tmp_path, capsys):
     source = _source(tmp_path)
     (source / "bad.toml").write_text("rpm = 0")
