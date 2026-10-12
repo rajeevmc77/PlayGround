@@ -15,6 +15,7 @@ from llm_compare.analysis.calibration import (
 from llm_compare.analysis.limiter import RateLimiter
 from llm_compare.analysis.runner import JudgeDeps, ScoredPair
 from llm_compare.config import LlmCompareConfig
+from llm_compare.domain.errors import Permanent
 from llm_compare.domain.judge import JudgeResult
 from llm_compare.domain.models import PairVerdict, Usage, Verdict
 from llm_compare.output.cache import VerdictCache
@@ -235,3 +236,81 @@ def test_a_batched_variant_without_a_same_edge_single_says_so():
 def test_sampling_zero_or_fewer_gives_nothing():
     assert sample_evenly([1, 2, 3], 0) == []
     assert sample_evenly([1, 2, 3], -2) == []
+
+
+def _errored(name, edge, verdicts, first_error):
+    return VariantResult(Variant(name, edge, 1), 0, 0, 0.0, verdicts, first_error=first_error)
+
+
+def test_a_variant_that_judged_fewer_pairs_than_the_sample_shows_its_first_error():
+    base = {"a": Verdict.IDENTICAL, "b": Verdict.IDENTICAL}
+    broken = {"a": Verdict.ERROR, "b": Verdict.IDENTICAL}
+    results = [
+        _result("orig", ORIGINAL_EDGE, 1, 9, base),
+        _errored("768px, 1 per call", 768, broken, "CERTIFICATE_VERIFY_FAILED: self-signed"),
+    ]
+    lines = format_calibration(results).splitlines()
+    assert "768px, 1 per call: first error: CERTIFICATE_VERIFY_FAILED: self-signed" in lines
+
+
+def test_a_fully_judged_variant_shows_no_error_line():
+    base = {"a": Verdict.IDENTICAL}
+    results = [_errored("orig", ORIGINAL_EDGE, base, "stale message")]
+    assert "first error" not in format_calibration(results)
+
+
+def test_a_variant_without_an_error_message_shows_no_error_line():
+    results = [_result("orig", ORIGINAL_EDGE, 1, 9, {"a": Verdict.ERROR})]
+    assert "first error" not in format_calibration(results)
+
+
+def test_the_first_error_is_one_line_cut_to_about_200_characters():
+    broken = {"a": Verdict.ERROR}
+    message = "boom\n" + "x" * 500
+    text = format_calibration([_errored("orig", ORIGINAL_EDGE, broken, message)])
+    line = next(row for row in text.splitlines() if "first error" in row)
+    assert line.startswith("orig: first error: boom xxx") and line.endswith("...")
+    assert len(line) < len("orig: first error: ") + 210
+
+
+def test_error_lines_come_before_the_closing_verdict_line():
+    broken = {"a": Verdict.ERROR}
+    text = format_calibration([_errored("orig", ORIGINAL_EDGE, broken, "bad key")])
+    lines = text.splitlines()
+    assert lines[-1].startswith("the original-size baseline produced no verdicts")
+    assert lines[-2] == "orig: first error: bad key"
+
+
+class AlwaysFails:
+    def __init__(self, error):
+        self.error = error
+
+    async def judge(self, pairs):
+        raise self.error
+
+
+def test_run_variants_keeps_the_first_error_and_scrubs_the_api_key_from_it():
+    secret = "AIzaFAKEKEY123"
+    png = png_bytes()
+    scored = [ScoredPair(image_pair("a", pdf="images/a.png"), png, png, 10.0)]
+    config = LlmCompareConfig(api_key=secret, model="m", retry_base_delay=0.0)
+    failing = AlwaysFails(Permanent(f"400 for https://x/v1?key={secret} bad request"))
+
+    def make_deps(settings):
+        return JudgeDeps(failing, RateLimiter(10_000, 10**9), VerdictCache(), settings, "v1")
+
+    results = asyncio.run(run_variants(scored, default_variants(1024, 6)[:1], config, make_deps))
+    assert results[0].first_error == "400 for https://x/v1?key=[redacted] bad request"
+    assert secret not in format_calibration(results)
+
+
+def test_a_fully_judged_run_records_no_first_error():
+    png = png_bytes()
+    scored = [ScoredPair(image_pair("a", pdf="images/a.png"), png, png, 10.0)]
+    config = LlmCompareConfig(model="m", retry_base_delay=0.0)
+
+    def make_deps(settings):
+        return JudgeDeps(AllIdentical(), RateLimiter(10_000, 10**9), VerdictCache(), settings, "v1")
+
+    results = asyncio.run(run_variants(scored, default_variants(1024, 6)[:1], config, make_deps))
+    assert results[0].first_error == ""

@@ -228,6 +228,7 @@ def _save_calibration(results: list[VariantResult], output_dir: Path) -> None:
             "estimated_input_tokens": result.estimated_input_tokens,
             "output_tokens": result.output_tokens,
             "cost": result.cost,
+            "first_error": result.first_error,
             "verdicts": {key: verdict.value for key, verdict in result.verdicts.items()},
         }
         for result in results

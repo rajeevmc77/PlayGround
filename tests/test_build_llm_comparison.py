@@ -10,6 +10,7 @@ import build_llm_comparison
 from build_llm_comparison import main
 from llm_compare.analysis.judge import DspyPairJudge
 from llm_compare.analysis.limiter import RateLimiter
+from llm_compare.domain.errors import Permanent
 from llm_compare.domain.judge import JudgeResult
 from llm_compare.domain.models import PairVerdict, Usage, Verdict
 from tests.llm_compare_support import png_bytes
@@ -443,6 +444,23 @@ def test_calibrate_prints_a_recommendation_and_saves_the_variants(tmp_path, monk
     assert saved[0]["verdicts"] == {"pdf:images/a.png": "IDENTICAL"}
     assert not (source / "llm_image_report.html").exists()
     assert not (source / "llm_compare" / "cache.json").exists()
+
+
+class RejectsEverything:
+    async def judge(self, pairs):
+        raise Permanent("[SSL: CERTIFICATE_VERIFY_FAILED] for https://x/?key=AIzaFAKEKEY")
+
+
+def test_calibrate_shows_why_nothing_was_judged_and_saves_it(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    env = {**ENV, "GEMINI_API_KEY": "AIzaFAKEKEY"}
+    assert main(_args(source, "--calibrate", "1"), env=env, judge=RejectsEverything()) == 0
+    out = capsys.readouterr().out
+    assert "original size, 1 per call: first error: [SSL: CERTIFICATE_VERIFY_FAILED]" in out
+    assert "?key=[redacted]" in out and "AIzaFAKEKEY" not in out
+    saved = json.loads((source / "llm_compare" / "calibration.json").read_text())
+    assert saved[0]["first_error"].endswith("?key=[redacted]")
 
 
 class ThreeTimesTheEstimate:

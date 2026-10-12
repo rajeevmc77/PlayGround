@@ -11,6 +11,7 @@ from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.models import LLM_VERDICTS, Verdict
 
 ORIGINAL_EDGE = 10**6
+_ERROR_WIDTH = 200
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,8 @@ class VariantResult:
     verdicts: dict[str, Verdict]
     # Our estimate of the answered calls' input (pair tokens + call overhead, per call).
     estimated_input_tokens: int = 0
+    # The first ERROR row's message (already scrubbed of the API key), "" when there was none.
+    first_error: str = ""
 
 
 def default_variants(default_edge: int, default_batch: int) -> list[Variant]:
@@ -63,6 +66,13 @@ def _total_cost(records) -> float | None:
     return None if any(cost is None for cost in costs) else sum(costs)
 
 
+def _first_error(records) -> str:
+    return next(
+        (record.message for record in records if record.verdict is Verdict.ERROR and record.message),
+        "",
+    )
+
+
 async def _run_one(scored, variant, config, make_deps) -> VariantResult:
     settings = replace(
         config, max_edge=variant.max_edge, max_pairs_per_call=variant.max_pairs_per_call
@@ -77,6 +87,7 @@ async def _run_one(scored, variant, config, make_deps) -> VariantResult:
         _total_cost(records),
         {record.row_id: record.verdict for record in records},
         deps.stats.estimated_input_tokens,
+        _first_error(records),
     )
 
 
@@ -192,6 +203,18 @@ def _token_scale_lines(results: list[VariantResult], token_scale: float) -> list
     ]
 
 
+def _error_lines(results: list[VariantResult]) -> list[str]:
+    """Why a variant judged fewer pairs than the sample: its first error, on one line."""
+    total = len(results[0].verdicts) if results else 0
+    lines = []
+    for result in results:
+        if result.first_error and judged_count(result.verdicts) < total:
+            text = " ".join(result.first_error.split())
+            shown = text if len(text) <= _ERROR_WIDTH else text[:_ERROR_WIDTH] + "..."
+            lines.append(f"{result.variant.name}: first error: {shown}")
+    return lines
+
+
 def format_calibration(results: list[VariantResult], token_scale: float = 1.0) -> str:
     total = len(results[0].verdicts) if results else 0
     lines = ["variant                      input tok  output tok  judged  agreement with original"]
@@ -207,6 +230,7 @@ def format_calibration(results: list[VariantResult], token_scale: float = 1.0) -
             *lines,
             *(_estimate_line(result) for result in results),
             *_batching_lines(results),
+            *_error_lines(results),
             _verdict_line(results),
             *_token_scale_lines(results, token_scale),
         ]

@@ -322,7 +322,11 @@ map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). `--cali
 N sample pairs under several settings (this spends tokens) and prints the recommended
 `max_edge` - put it in `llm_compare_config.toml` yourself. It also prints, per setting, the
 estimated vs actual input tokens with the implied `token_scale`, and suggests the `token_scale`
-to configure when the estimate is more than 15% off.
+to configure when the estimate is more than 15% off. When a setting judged fewer pairs than the
+sample, a `<setting>: first error: ...` line gives its first error message (the API key
+scrubbed, cut to ~200 characters), so a run where every call fails says why. When a setting judged fewer pairs than the
+sample, a `<setting>: first error: ...` line gives its first error message (the API key
+scrubbed, cut to ~200 characters), so a run where every call fails says why.
 
 Rate limits (429), server errors (5xx), timeouts and dropped connections are retried with
 exponential backoff; a provider's `retry_after` hint is honoured up to `retry_max_delay`.
