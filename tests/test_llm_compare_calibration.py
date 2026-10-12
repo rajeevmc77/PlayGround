@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 
 from llm_compare.analysis.calibration import (
     ORIGINAL_EDGE,
@@ -314,3 +315,54 @@ def test_a_fully_judged_run_records_no_first_error():
 
     results = asyncio.run(run_variants(scored, default_variants(1024, 6)[:1], config, make_deps))
     assert results[0].first_error == ""
+
+
+# ---- timing -----------------------------------------------------------------------------
+
+
+class FiveSecondCalls:
+    """Every call takes 5 s of the fake clock the variants' deps share."""
+
+    def __init__(self, clock):
+        self.clock = clock
+
+    async def judge(self, pairs):
+        self.clock[0] += 5.0
+        verdicts = [PairVerdict(n, Verdict.IDENTICAL, ()) for n in range(1, len(pairs) + 1)]
+        return JudgeResult(verdicts, Usage(10 * len(pairs), len(pairs), 0.0))
+
+
+def test_each_variant_records_how_long_its_judging_took():
+    png, clock = png_bytes(), [100.0]
+    scored = [
+        ScoredPair(image_pair(key, pdf=f"images/{key}.png"), png, png, 10.0) for key in ("a", "b")
+    ]
+    config = LlmCompareConfig(model="m", retry_base_delay=0.0, workers=1)
+
+    def make_deps(settings):
+        limiter = RateLimiter(10_000, 10**9)
+        return JudgeDeps(
+            FiveSecondCalls(clock),
+            limiter,
+            VerdictCache(),
+            settings,
+            "v1",
+            clock=lambda: clock[0],
+        )
+
+    results = asyncio.run(run_variants(scored, default_variants(1024, 6), config, make_deps))
+    # the three one-per-call variants make two 5 s calls; the batched one makes a single call
+    assert [r.elapsed_seconds for r in results] == [10.0, 10.0, 10.0, 5.0]
+
+
+def test_a_variant_result_without_a_measurement_has_zero_elapsed_time():
+    assert _result("orig", ORIGINAL_EDGE, 1, 9, {"a": Verdict.IDENTICAL}).elapsed_seconds == 0.0
+
+
+def test_the_table_has_an_elapsed_column_for_every_variant():
+    base = {"a": Verdict.IDENTICAL}
+    slow = replace(_result("orig", ORIGINAL_EDGE, 1, 9000, base), elapsed_seconds=252.0)
+    quick = replace(_result("768", 768, 1, 3000, base), elapsed_seconds=38.4)
+    lines = format_calibration([slow, quick]).splitlines()
+    assert lines[0].endswith("elapsed")
+    assert lines[1].endswith("4m 12s") and lines[2].endswith("38.4 s")
