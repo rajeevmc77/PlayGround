@@ -14,9 +14,9 @@ def test_defaults_apply_when_nothing_is_configured():
     assert config.max_output_tokens == 8192
 
 
-def test_the_output_estimate_defaults_to_what_thinking_answers_measured_at():
+def test_the_output_estimate_defaults_to_what_low_reasoning_answers_measured_at():
     config = load_config("", {})
-    assert config.output_tokens_per_pair == 800
+    assert config.output_tokens_per_pair == 300
     # a 6-pair call's estimate must fit the output cap, thinking headroom included
     assert config.output_tokens_per_pair * config.max_pairs_per_call < config.max_output_tokens
 
@@ -24,6 +24,14 @@ def test_the_output_estimate_defaults_to_what_thinking_answers_measured_at():
 def test_the_example_config_file_loads_and_documents_the_output_cap():
     example = Path(__file__).resolve().parent.parent / "llm_compare_config.example.toml"
     assert load_config(example.read_text(), {}).max_output_tokens == 8192
+
+
+def test_the_example_config_documents_reasoning_effort_and_still_loads_with_it_enabled():
+    example = Path(__file__).resolve().parent.parent / "llm_compare_config.example.toml"
+    text = example.read_text()
+    assert '# reasoning_effort = "low"' in text
+    enabled = text.replace('# reasoning_effort = "low"', 'reasoning_effort = "low"')
+    assert load_config(enabled, {}).reasoning_effort == "low"
 
 
 def test_max_output_tokens_is_a_whole_number_of_at_least_one():
@@ -122,3 +130,33 @@ def test_request_timeout_must_be_a_number():
         load_config('request_timeout_seconds = "soon"', {})
     with pytest.raises(ConfigError, match="request_timeout_seconds must be above 0"):
         load_config("request_timeout_seconds = 0", {})
+
+
+ALLOWED_EFFORTS = ["", "minimal", "low", "medium", "high", "off"]
+
+
+def test_reasoning_effort_defaults_to_low():
+    assert load_config("", {}).reasoning_effort == "low"
+
+
+@pytest.mark.parametrize("effort", ALLOWED_EFFORTS)
+def test_reasoning_effort_accepts_each_allowed_value_from_the_file(effort):
+    assert load_config(f'reasoning_effort = "{effort}"', {}).reasoning_effort == effort
+
+
+@pytest.mark.parametrize("effort", ["max", "LOW", "Low", " low", "none"])
+def test_an_unknown_or_differently_cased_reasoning_effort_names_the_allowed_values(effort):
+    with pytest.raises(ConfigError, match="reasoning_effort must be one of") as raised:
+        load_config(f'reasoning_effort = "{effort}"', {})
+    assert all(f'"{allowed}"' in str(raised.value) for allowed in ALLOWED_EFFORTS)
+
+
+@pytest.mark.parametrize("value", ["5", "true", "['low']"])
+def test_a_non_text_reasoning_effort_is_rejected(value):
+    with pytest.raises(ConfigError, match="reasoning_effort must be text"):
+        load_config(f"reasoning_effort = {value}", {})
+
+
+def test_reasoning_effort_is_not_read_from_the_environment():
+    env = {"REASONING_EFFORT": "high", "GEMINI_REASONING_EFFORT": "high"}
+    assert load_config("", env, env).reasoning_effort == "low"
