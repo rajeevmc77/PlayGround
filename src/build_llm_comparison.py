@@ -125,6 +125,8 @@ def _asset_prefix(source_dir: Path, output_dir: Path) -> str:
 
 
 def _real_judge(config: LlmCompareConfig):
+    # numpy/imagehash must already be loaded before dspy is imported (dspy's lazy-import hook
+    # breaks numpy's first import); this module's top-level imports guarantee it.
     from llm_compare.analysis.judge import DspyPairJudge
 
     return DspyPairJudge(config, resolve_prices(config))
@@ -219,6 +221,20 @@ def _calibrate(count: int, args, config, pairs, judge) -> int:
     return 0
 
 
+def _dry_run(args, config, pairs, cache) -> int:
+    # The dry run calls nothing: stop litellm fetching its price map from GitHub on import.
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    prices = resolve_prices(config)
+    print(
+        format_plan(
+            plan_run(
+                pairs, _loader(args.source_dir), config, cache, PROMPT_VERSION, prices, score_pair
+            )
+        )
+    )
+    return 0
+
+
 def main(argv=None, env: Mapping[str, str] = os.environ, judge=None, now: str | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -228,10 +244,7 @@ def main(argv=None, env: Mapping[str, str] = os.environ, judge=None, now: str | 
         return 2
     cache = VerdictCache((args.output_dir or args.source_dir) / "llm_compare" / "cache.json")
     if args.dry_run:
-        prices = resolve_prices(config)
-        load = _loader(args.source_dir)
-        print(format_plan(plan_run(pairs, load, config, cache, PROMPT_VERSION, prices, score_pair)))
-        return 0
+        return _dry_run(args, config, pairs, cache)
     problem = _check_credentials(config, judge)
     if problem:
         print(f"error: {problem}", file=sys.stderr)

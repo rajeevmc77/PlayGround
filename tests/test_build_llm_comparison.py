@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -95,6 +96,18 @@ def test_dry_run_calls_nothing_writes_no_report_and_needs_no_key(tmp_path, capsy
     assert main(_args(source, "--dry-run"), env={"PATH": ""}, judge=judge) == 0
     assert judge.calls == 0 and not (source / "llm_image_report.html").exists()
     assert "LLM calls" in capsys.readouterr().out
+
+
+def test_dry_run_keeps_litellm_off_the_network_by_using_its_local_price_map(tmp_path, monkeypatch):
+    monkeypatch.delenv("LITELLM_LOCAL_MODEL_COST_MAP", raising=False)
+    assert main(_args(_source(tmp_path), "--dry-run"), env={"PATH": ""}) == 0
+    assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "True"
+
+
+def test_dry_run_respects_an_explicit_price_map_setting(tmp_path, monkeypatch):
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "False")
+    assert main(_args(_source(tmp_path), "--dry-run"), env={"PATH": ""}) == 0
+    assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "False"
 
 
 def test_a_missing_key_or_model_exits_before_any_call(tmp_path, capsys):
