@@ -1,9 +1,11 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from llm_compare.domain.models import PairRecord, Usage, Verdict
+from llm_compare.domain.models import PairRecord, PdfLocation, Usage, Verdict, WebLocation
+from llm_compare.output.links import RowLinks
 from llm_compare.output.report import (
     build_report,
     format_time_line,
@@ -449,3 +451,132 @@ def test_one_call_is_not_plural_and_a_small_rate_keeps_a_decimal():
 def test_calls_that_judged_nothing_live_show_no_rate():
     summary = {**_SUMMARY, "pairs_per_minute": None}
     assert format_time_line(summary).endswith("41 calls avg 9.8 s slowest 28.1 s")
+
+
+# ---- links to the exact location ---------------------------------------------------------
+
+PDF_AT = PdfLocation(40, 91.4, 72.0, 481.0, 252.2)
+WEB_AT = WebLocation(
+    "web_pages/nbc.html", "/html/body/main/div/main/img[1]", 488, 1530.45, 988, 1816.98, "nbc.a.fig"
+)
+PDF_HREF = "../data/MO%20Package.pdf#page=40"
+WEB_HREF = "../out/web_pages/nbc.html#nbc.a.table1.row2"
+
+
+def _located_record(**extra):
+    return _rec(
+        "A.Fig2",
+        Verdict.IDENTICAL,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+        batch_id=1,
+        pdf_location=PDF_AT,
+        web_location=WEB_AT,
+        **extra,
+    )
+
+
+def _linked_html(links, record=None):
+    record = record or _located_record()
+    report = build_report(
+        [record],
+        calls=1,
+        wasted=Usage(),
+        model="m",
+        prompt_version="v",
+        generated_at="t",
+        links={record.row_id: links},
+    )
+    return render_html(report), report
+
+
+_FULL = RowLinks(PDF_HREF, WEB_HREF, "nbc.a.table1.row2", False)
+
+
+def test_the_json_row_carries_the_locations_and_the_resolved_links():
+    _, report = _linked_html(_FULL)
+    row = report["rows"][0]
+    assert row["pdf_location"] == {"page": 40, "x0": 91.4, "y0": 72.0, "x1": 481.0, "y1": 252.2}
+    assert row["web_location"]["page_file"] == "web_pages/nbc.html"
+    assert row["web_location"]["element_id"] == "nbc.a.fig"
+    assert (row["pdf_href"], row["web_href"]) == (PDF_HREF, WEB_HREF)
+    assert (row["web_anchor"], row["web_anchor_exact"]) == ("nbc.a.table1.row2", False)
+
+
+def test_a_report_built_without_links_still_has_the_location_fields_empty_of_links():
+    _, report = _html([_located_record()])
+    row = report["rows"][0]
+    assert row["pdf_location"]["page"] == 40
+    assert (row["pdf_href"], row["web_href"], row["web_anchor"]) == (None, None, None)
+    assert row["web_anchor_exact"] is None
+
+
+def test_the_pdf_image_gets_a_link_to_its_page_and_the_box_in_points():
+    html, _ = _linked_html(_FULL)
+    assert f'<a href="{PDF_HREF}" target="_blank" rel="noopener">PDF p. 40 ↗</a>' in html
+    assert "box x 91-481 · y 72-252 pt" in html
+
+
+def test_the_web_image_gets_a_link_to_the_saved_page_with_the_xpath_and_box_as_tooltip():
+    html, _ = _linked_html(_FULL)
+    assert f'href="{WEB_HREF}" target="_blank" rel="noopener"' in html
+    assert ">saved page ↗</a>" in html
+    tooltip = 'title="/html/body/main/div/main/img[1] · x 488-988 · y 1530-1817 px"'
+    assert tooltip in html
+
+
+def test_an_exact_anchor_is_labelled_exact_and_a_nearer_one_names_its_trailing_segments():
+    exact, _ = _linked_html(RowLinks(PDF_HREF, WEB_HREF, "nbc.a.fig", True))
+    nearest, _ = _linked_html(_FULL)
+    assert "exact element" in exact and "nearest enclosing" not in exact
+    assert "nearest enclosing: table1.row2" in nearest and "exact element" not in nearest
+
+
+def test_a_page_without_any_enclosing_id_is_linked_as_page_only():
+    html, _ = _linked_html(RowLinks(PDF_HREF, "../out/web_pages/nbc.html", None, None))
+    assert 'href="../out/web_pages/nbc.html"' in html and "page only" in html
+
+
+def test_without_hrefs_the_location_is_text_with_no_dead_link():
+    html, _ = _linked_html(RowLinks())
+    assert "PDF p. 40" in html and "box x 91-481" in html
+    assert "saved page not found" in html
+    assert "↗" not in html and 'target="_blank" rel="noopener">PDF' not in html
+
+
+def test_a_row_without_locations_shows_no_location_text():
+    html, _ = _html([_rec("A.Fig1", Verdict.MATCH_PHASH)])
+    assert "PDF p." not in html and "saved page" not in html and "box x" not in html
+
+
+def test_a_web_only_row_shows_only_the_web_location():
+    record = PairRecord(
+        row_id="web:w",
+        key="W.Fig1",
+        verdict=Verdict.WEB_ONLY,
+        pdf_path=None,
+        web_path="web_images/w.jpg",
+        web_location=WEB_AT,
+    )
+    html, _ = _linked_html(RowLinks(None, WEB_HREF, "nbc.a.table1.row2", False), record)
+    assert "PDF p." not in html and ">saved page ↗</a>" in html
+
+
+def test_everything_interpolated_into_the_links_is_escaped():
+    hostile = WebLocation("p.html", '/x"><script>alert(2)</script>', 1, 2, 3, 4, "i")
+    record = _located_record()
+    record = replace(record, web_location=hostile)
+    links = RowLinks('x"><script>alert(1)</script>#page=1', 'y"><b>z</b>', '<i>.a"b', False)
+    html, _ = _linked_html(links, record)
+    for raw in ("<script>alert(1)</script>", "<script>alert(2)</script>", "<b>z</b>", "<i>"):
+        assert raw not in html
+    assert "&lt;script&gt;alert(2)&lt;/script&gt;" in html
+    assert "nearest enclosing: &lt;i&gt;.a&quot;b" in html
+
+
+def test_the_location_text_wraps_and_the_phone_width_layout_is_unchanged():
+    html, _ = _linked_html(_FULL)
+    assert ".loc{" in html and "overflow-wrap:anywhere" in html
+    assert "td img{max-width:260px;max-height:200px" in html
+    assert "name='viewport' content='width=device-width,initial-scale=1'" in html

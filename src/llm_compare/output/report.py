@@ -4,7 +4,7 @@ every image (both sides, side by side), its verdict, and what the LLM check cost
 
 import json
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from html import escape
 from pathlib import Path
@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from llm_compare.domain.durations import format_duration
 from llm_compare.domain.models import LLM_VERDICTS, PairRecord, Usage, Verdict
+from llm_compare.output.links import RowLinks
 
 _ROUTE = {
     Verdict.MATCH_PHASH: "hash",
@@ -136,11 +137,12 @@ def format_time_line(summary: dict) -> str:
     return f"time: {phases}, {_calls_text(summary)}"
 
 
-def _row(record: PairRecord) -> dict:
+def _row(record: PairRecord, links: RowLinks) -> dict:
     row = asdict(record)
     row["verdict"] = record.verdict.value
     row["route"] = _ROUTE.get(record.verdict, "—")
     row["differences"] = list(record.differences)
+    row.update(asdict(links))
     return row
 
 
@@ -155,7 +157,9 @@ def build_report(
     scoring_seconds: float = 0.0,
     judging_seconds: float = 0.0,
     call_seconds: Sequence[float] = (),
+    links: Mapping[str, RowLinks] | None = None,
 ) -> dict:
+    links = links or {}
     return {
         "generated_at": generated_at,
         "model": model,
@@ -163,7 +167,7 @@ def build_report(
         "summary": summarise(
             records, calls, wasted, scoring_seconds, judging_seconds, call_seconds
         ),
-        "rows": [_row(record) for record in records],
+        "rows": [_row(record, links.get(record.row_id, RowLinks())) for record in records],
     }
 
 
@@ -193,6 +197,7 @@ border:1px solid currentColor}
 .v-MATCH_PHASH,.v-IDENTICAL{color:var(--ok)}.v-DIFFERENT,.v-ERROR{color:var(--bad)}
 .v-SKIPPED{color:var(--warn)}.v-WEB_ONLY{color:var(--info)}
 ul{margin:4px 0 0 18px;padding:0}.num{white-space:nowrap}
+.loc{margin-top:4px;color:var(--mute);font-size:12px;overflow-wrap:anywhere}.loc a{color:var(--info)}
 """
 
 _SCRIPT = """
@@ -222,6 +227,45 @@ def _image_cell(path: str | None, prefix: str, sent: list | None, label: str) ->
         f'<a href="{source}" target="_blank" rel="noopener">'
         f'<img loading="lazy" src="{source}" alt="{alt}"></a>{caption}'
     )
+
+
+def _link(href: str, text: str, title: str = "") -> str:
+    tip = f' title="{escape(title, quote=True)}"' if title else ""
+    return f'<a href="{escape(href, quote=True)}" target="_blank" rel="noopener"{tip}>{text}</a>'
+
+
+def _span(low: float, high: float) -> str:
+    return f"{low:.0f}-{high:.0f}"
+
+
+def _pdf_where(row: dict) -> str:
+    where = row["pdf_location"]
+    if where is None:
+        return ""
+    label = f"PDF p. {where['page']}"
+    head = _link(row["pdf_href"], f"{label} ↗") if row["pdf_href"] else escape(label)
+    box = f"box x {_span(where['x0'], where['x1'])} · y {_span(where['y0'], where['y1'])} pt"
+    return f"<div class='loc'>{head}<br>{box}</div>"
+
+
+def _anchor_note(row: dict) -> str:
+    anchor = row["web_anchor"]
+    if anchor is None:
+        return "page only (no matching element id)"
+    if row["web_anchor_exact"]:
+        return "exact element"
+    return f"nearest enclosing: {escape('.'.join(anchor.split('.')[-2:]))}"
+
+
+def _web_where(row: dict) -> str:
+    where = row["web_location"]
+    if where is None:
+        return ""
+    box = f"x {_span(where['x0'], where['x1'])} · y {_span(where['y0'], where['y1'])} px"
+    tip = f"{where['xpath']} · {box}"
+    if not row["web_href"]:
+        return f"<div class='loc' title=\"{escape(tip, quote=True)}\">saved page not found</div>"
+    return f"<div class='loc'>{_link(row['web_href'], 'saved page ↗', tip)}<br>{_anchor_note(row)}</div>"
 
 
 def _details(row: dict) -> str:
@@ -255,8 +299,8 @@ def _row_html(row: dict, prefix: str) -> str:
     badge = f"<span class='badge v-{verdict}'>{verdict}</span><div class='cap'>{row['route']}</div>"
     cells = [
         f"<td class='key'>{escape(row['key'])}</td>",
-        f"<td>{_image_cell(row['pdf_path'], prefix, row['sent_pdf'], pdf_label)}</td>",
-        f"<td>{_image_cell(row['web_path'], prefix, row['sent_web'], web_label)}</td>",
+        f"<td>{_image_cell(row['pdf_path'], prefix, row['sent_pdf'], pdf_label)}{_pdf_where(row)}</td>",
+        f"<td>{_image_cell(row['web_path'], prefix, row['sent_web'], web_label)}{_web_where(row)}</td>",
         f"<td>{badge}</td>",
         f"<td>{_details(row)}</td>",
         f"<td class='num'>{_usage(row)}</td>",
