@@ -318,17 +318,29 @@ python src/build_llm_comparison.py                 # the full run (resumable, ca
 ```
 
 `--dry-run` makes no API call and no network request (it makes litellm use its bundled price
-map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). `--calibrate N` judges N sample pairs under several settings
-(this spends tokens) and recommends `max_edge`; put it in `llm_compare_config.toml`. Exit codes:
-0 success, 2 bad configuration or missing input, 130 interrupted with Ctrl-C (cached verdicts
-are kept and unfinished pairs show as ERROR).
+map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). `--calibrate N` judges
+N sample pairs under several settings (this spends tokens) and prints the recommended
+`max_edge` - put it in `llm_compare_config.toml` yourself. It also prints, per setting, the
+estimated vs actual input tokens with the implied `token_scale`, and suggests the `token_scale`
+to configure when the estimate is more than 15% off.
+
+Rate limits (429), server errors (5xx), timeouts and dropped connections are retried with
+exponential backoff; a provider's `retry_after` hint is honoured up to `retry_max_delay`. Other
+errors (bad request, bad key, billing) fail that call's pairs as ERROR rows at once.
+
+Exit codes: 0 success, 2 bad configuration or missing/malformed input, 130 interrupted with
+Ctrl-C. Ctrl-C (pressed any number of times) stops the run within moments: verdicts already
+given are kept with their tokens and cost and saved to the cache, pairs not yet judged show as
+ERROR "run interrupted before this pair was judged", and the report is still written. A call
+in flight when you press Ctrl-C may still be billed by the provider; its usage cannot be known.
 
 ### Results
 
 Written to `--output-dir` (default: the same directory as `--source-dir`, i.e. `output/`):
 
 - `llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens and cost,
-  and a header summary; filter by verdict or search.
+  and a header summary (this run's tokens and cost, and the cumulative tokens and cost of every
+  LLM verdict shown, cached ones included); filter by verdict or search.
 - `llm_image_compare.json` — the same data for programs.
 - `llm_compare/cache.json` — the verdict cache; `llm_compare/calibration.json` after `--calibrate`.
 
@@ -350,7 +362,7 @@ ruff check --fix src/llm_compare src/build_llm_comparison.py tests
 ruff format src/llm_compare src/build_llm_comparison.py tests
 radon cc -s -n B src/llm_compare src/build_llm_comparison.py
 vulture src/llm_compare src/build_llm_comparison.py tests
-pytest --cov=src/llm_compare --cov=src/build_llm_comparison --cov-branch
+pytest --cov=src/llm_compare --cov=build_llm_comparison --cov-branch  # the CLI is imported as a top-level module
 ```
 
 `tests/test_llm_compare_live.py` (marker `slow`) calls the real model on three pairs; it skips
