@@ -9,6 +9,7 @@ from llm_compare.analysis.judge import (
     DspyPairJudge,
     PairVerdictModel,
     build_manifest,
+    build_signature,
     map_litellm_error,
 )
 from llm_compare.analysis.prompt import INSTRUCTIONS, PROMPT_VERSION
@@ -192,3 +193,17 @@ def test_the_call_runs_without_the_json_retry_and_with_usage_tracking_scoped_to_
     assert isinstance(adapter, dspy.ChatAdapter) and adapter.use_json_adapter_fallback is False
     assert tracking is True
     assert dspy.settings.track_usage == before
+
+
+def test_the_real_signature_takes_manifest_and_images_and_returns_typed_verdicts():
+    signature = build_signature(INSTRUCTIONS)
+    assert set(signature.input_fields) == {"manifest", "images"}
+    assert set(signature.output_fields) == {"verdicts"}
+    assert signature.instructions == INSTRUCTIONS.strip()
+
+
+def test_without_an_injected_predictor_the_judge_builds_the_real_dspy_one():
+    config = LlmCompareConfig(api_key="k", model="gemini-x")
+    judge = DspyPairJudge(config, PRICES, lm=object())
+    assert isinstance(judge._predictor, dspy.Predict)
+    assert set(judge._predictor.signature.input_fields) == {"manifest", "images"}

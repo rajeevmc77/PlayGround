@@ -4,6 +4,7 @@ import pytest
 
 import build_llm_comparison
 from build_llm_comparison import main
+from llm_compare.analysis.judge import DspyPairJudge
 from llm_compare.analysis.limiter import RateLimiter
 from llm_compare.domain.judge import JudgeResult
 from llm_compare.domain.models import PairVerdict, Usage, Verdict
@@ -207,3 +208,13 @@ def test_an_invalid_calibrate_count_is_rejected_before_any_work(tmp_path, value)
         main(_args(source, "--calibrate", value), env=ENV, judge=judge)
     assert raised.value.code == 2 and judge.calls == 0
     assert not (source / "llm_compare").exists()
+
+
+def test_with_a_key_and_a_model_the_credential_check_passes():
+    config = build_llm_comparison.LlmCompareConfig(api_key="k", model="gemini-x")
+    assert build_llm_comparison._check_credentials(config, None) is None
+
+
+def test_the_real_judge_is_a_dspy_judge_for_the_configured_model():
+    config = build_llm_comparison.LlmCompareConfig(api_key="k", model="gemini-x")
+    assert isinstance(build_llm_comparison._real_judge(config), DspyPairJudge)
