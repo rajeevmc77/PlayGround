@@ -26,7 +26,7 @@ class CtrlC:
         if self.pressed:
             task.cancel()
 
-    def __call__(self, signum, frame) -> None:
+    def __call__(self, _signum, _frame) -> None:
         self.pressed = True
         if self._task is not None and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._task.cancel)

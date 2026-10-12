@@ -56,6 +56,12 @@ def test_entries_that_are_not_objects_are_dropped_on_load(tmp_path):
     assert [cache.get(key) for key in ("list", "text", "none")] == [None, None, None]
 
 
+def test_a_file_that_is_not_an_object_loads_as_empty(tmp_path):
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps([{"verdict": "IDENTICAL"}]))
+    assert VerdictCache(path).get("0") is None
+
+
 def test_a_corrupt_file_loads_as_empty_and_is_overwritten_on_save(tmp_path):
     path = tmp_path / "cache.json"
     path.write_text("{not json")

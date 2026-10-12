@@ -179,22 +179,12 @@ class CannedEngine:
             usage=lm15.Usage(input_tokens=1000, output_tokens=50, total_tokens=1200),
         )
 
-    def stream(self, request):
-        raise NotImplementedError
-
-    async def aclose(self):
-        return None
-
 
 class NoSyncEngine:
+    """dspy.LM wants a sync engine beside the async one; the judge only calls async."""
+
     def complete(self, request):
         raise NotImplementedError
-
-    def stream(self, request):
-        raise NotImplementedError
-
-    def close(self):
-        return None
 
 
 def _real_pipeline(engine):

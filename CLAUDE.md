@@ -226,8 +226,8 @@ only if/when they're actually touched, not retroactively.
 
 ## Working notes
 - A real test suite (1011 tests — 993 by default plus 18 `slow` — before the LLM image
-  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 255:
-  254 by default plus 1 `slow`) covers `src/mo_toc/`,
+  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 256:
+  255 by default plus 1 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, `src/llm_compare/`, the
   `build_*.py`/`serve_mo_toc.py` scripts and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). WARNING:
