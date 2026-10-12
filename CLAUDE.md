@@ -102,6 +102,32 @@ and prints which path works and why.
    JIRA; a real run records every created key in `output/jira_backlog_state.json`, so a re-run
    skips what exists (delete an entry to re-create that issue).
 
+4. **LLM visual image comparison** (`src/llm_compare/`, `src/build_llm_comparison.py`) — a second
+   opinion on the PDF/web image pairs the perceptual hash scores below 90% (`hash_match_percent`),
+   read from `output/` (`bcbc_pdf.json`, `bcbc_web.json`, `comparison.json`). Each pair is
+   flattened/trimmed/scaled down (`max_edge`), batched by pair count and token budget, judged by a
+   multimodal Gemini model through DSPy (async, rate-limited by RPM/TPM; 429s, 5xx, timeouts and
+   dropped connections - dspy 3.4's `LMRateLimitError`/`LMServerError`/`LMTimeoutError`/
+   `LMTransportError`, mapped in `map_litellm_error` - back off and retry, a provider
+   `retry_after` capped at `retry_max_delay`; each request is bounded by
+   `request_timeout_seconds`, default 120, since dspy's own wait is 600 s) as IDENTICAL / DIFFERENT with reasons, and cached
+   in `llm_compare/cache.json` so a re-run makes no calls. Output per call is capped by
+   `max_output_tokens` (thinking included; must cover `output_tokens_per_pair` x
+   `max_pairs_per_call` plus thinking headroom), and the tokens of an answer that fails to parse
+   are still counted. Pairs the hash settles, skipped pairs and web-only images still get a row.
+   `output/llm_image_report.html` lists every image with its verdict, tokens and cost (this run's
+   and the cumulative cost of every verdict, cached ones included). Ctrl-C cancels in place:
+   finished verdicts are kept and cached, unfinished pairs become ERROR rows, exit 130.
+   `--dry-run` prints the plan with no API call, `--limit N` tries N pairs, `--calibrate N`
+   prints the recommended `max_edge` (put it in `llm_compare_config.toml` yourself) and the
+   estimated vs actual input tokens with a suggested `token_scale` when the estimate is more
+   than 15% off (a setting that judged too few pairs also prints its first, key-scrubbed error);
+   `--source-dir`/`--env-file` let a worktree read the main checkout's
+   `output/` and `.env`. `GEMINI_API_KEY`/`GEMINI_MODEL` come from the environment or `.env`;
+   other settings from `llm_compare_config.toml` (see `llm_compare_config.example.toml`); both
+   files are git-ignored. Spec `docs/superpowers/specs/2026-10-12-llm-image-compare-design.md`,
+   plan `docs/superpowers/plans/2026-10-12-llm-image-compare.md`.
+
 ## Folder structure
 - `app.py` — the FastAPI app; stays in the project root (its own entry point).
 - `src/` — Python modules and scripts. `mo_toc/` is the main indexing library (see item 2 above).
@@ -127,8 +153,9 @@ and prints which path works and why.
   2026-09-20 rewrite (`bcbc_mo_index.py`, `bcbc2024_index.py`, `extract_figures.py`,
   `extract_figures_2024.py`). Not imported by anything active — kept for historical
   reference only, per its name: do not import from or copy logic out of it into new work.
-- Root also holds: `credentials.json` / `token.json` (OAuth secrets — never commit these if
-  this ever becomes a git repo), `requirements.txt`, `Readme.md`.
+- Root also holds: `credentials.json` / `token.json` / `.env` / `llm_compare_config.toml` (OAuth
+  secrets and the Gemini key/settings — git-ignored, never commit these), `requirements.txt`,
+  `Readme.md`.
 
 ## Setup
 ```bash
@@ -181,7 +208,8 @@ Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker f
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
 `src/build_web_toc.py`, `src/build_web_pages.py`, `src/comparison/`, `src/build_comparison.py`,
-`src/shared/`, `src/jira_backlog/`, `src/create_jira_backlog.py`, and `tests/` (including
+`src/shared/`, `src/jira_backlog/`, `src/create_jira_backlog.py`, `src/llm_compare/`,
+`src/build_llm_comparison.py`, and `tests/` (including
 `tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
 — not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/
@@ -199,10 +227,14 @@ only if/when they're actually touched, not retroactively.
   exactly the workflow the `mo_toc` viewer work used.
 
 ## Working notes
-- A real test suite (1011 tests — 993 by default plus 18 `slow`) covers `src/mo_toc/`,
-  `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
-  and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
-  `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
+- A real test suite (1011 tests — 993 by default plus 18 `slow` — before the LLM image
+  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 274:
+  273 by default plus 1 `slow`) covers `src/mo_toc/`,
+  `src/web_toc/`, `src/comparison/`, `src/shared/`, `src/llm_compare/`, the
+  `build_*.py`/`serve_mo_toc.py` scripts and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
+  `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). WARNING:
+  `tests/test_llm_compare_live.py` is slow-marked too - with `GEMINI_API_KEY`/`GEMINI_MODEL` and a
+  built `output/` present, both of those commands spend real API money. The OLD
   exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full
