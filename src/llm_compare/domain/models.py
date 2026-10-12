@@ -98,3 +98,6 @@ class PairRecord:
     cached: bool = False
     sent_pdf: tuple[int, int] | None = None
     sent_web: tuple[int, int] | None = None
+    # How long the model took to answer the call that gave this verdict (a batch's pairs
+    # share their call's figure); None for a row that did not come from a call of this run.
+    call_seconds: float | None = None
