@@ -107,6 +107,35 @@ def summarise(
     }
 
 
+def _rate_text(pairs_per_minute: float | None) -> str:
+    if pairs_per_minute is None:
+        return ""
+    shown = f"{pairs_per_minute:.0f}" if pairs_per_minute >= 10 else f"{pairs_per_minute:.1f}"
+    return f", {shown} pairs/min"
+
+
+def _calls_text(summary: dict) -> str:
+    count = summary["calls_timed"]
+    if count == 0:
+        return "no LLM calls"
+    noun = "call" if count == 1 else "calls"
+    return (
+        f"{count} {noun} avg {format_duration(summary['avg_call_seconds'])} "
+        f"slowest {format_duration(summary['slowest_call_seconds'])}"
+        f"{_rate_text(summary['pairs_per_minute'])}"
+    )
+
+
+def format_time_line(summary: dict) -> str:
+    """The one terminal line: the run's total, its two phases and what the calls looked like."""
+    phases = (
+        f"total {format_duration(summary['total_seconds'])} "
+        f"(scoring {format_duration(summary['scoring_seconds'])}, "
+        f"judging {format_duration(summary['judging_seconds'])})"
+    )
+    return f"time: {phases}, {_calls_text(summary)}"
+
+
 def _row(record: PairRecord) -> dict:
     row = asdict(record)
     row["verdict"] = record.verdict.value

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import signal
 import time
 
@@ -483,7 +484,8 @@ def test_calibrate_checks_the_token_estimate_against_usage_with_the_configured_s
     out = capsys.readouterr().out
     assert "estimated vs actual input tokens" in out
     # usage is 3x the estimate made with the configured token_scale 2.0: suggest 6.0
-    assert out.splitlines()[-1] == (
+    # the last two lines are now "saved: ..." and the note that --calibrate writes no HTML report
+    assert out.splitlines()[-3] == (
         "actual input tokens were 3.00x the estimate: suggest token_scale = 6.00 "
         "in llm_compare_config.toml"
     )
@@ -509,3 +511,100 @@ def test_with_a_key_and_a_model_the_credential_check_passes():
 def test_the_real_judge_is_a_dspy_judge_for_the_configured_model():
     config = build_llm_comparison.LlmCompareConfig(api_key="k", model="gemini-x")
     assert isinstance(build_llm_comparison._real_judge(config), DspyPairJudge)
+
+
+# ---- timing -----------------------------------------------------------------------------
+
+TIME_LINE = re.compile(
+    r"time: total .+ \(scoring .+, judging .+\), 1 call avg .+ slowest .+?( pairs/min|)$"
+)
+NO_CALLS = re.compile(r"time: total .+ \(scoring .+, judging .+\), no LLM calls$")
+
+
+def _summary(source):
+    return json.loads((source / "llm_image_compare.json").read_text())["summary"]
+
+
+def test_a_run_prints_how_long_it_took_after_the_other_summary_lines(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[-2].startswith("all judged verdicts:") and TIME_LINE.fullmatch(lines[-1])
+
+
+def test_the_report_and_its_json_carry_the_timing_the_run_measured(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    summary = _summary(source)
+    assert summary["calls_timed"] == 1 and summary["judging_seconds"] > 0
+    assert summary["total_seconds"] == pytest.approx(
+        summary["scoring_seconds"] + summary["judging_seconds"]
+    )
+    assert summary["slowest_call_seconds"] == summary["avg_call_seconds"] >= 0
+    assert _report_rows(source)[0]["call_seconds"] == summary["slowest_call_seconds"]
+    assert "run time" in (source / "llm_image_report.html").read_text()
+
+
+def test_a_cached_rerun_says_it_made_no_llm_calls_and_its_rows_carry_no_call_time(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    capsys.readouterr()
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    assert NO_CALLS.fullmatch(capsys.readouterr().out.splitlines()[-1])
+    assert _report_rows(source)[0]["call_seconds"] is None
+    assert _summary(source)["calls_timed"] == 0
+
+
+def test_a_run_the_hash_settles_alone_says_it_made_no_llm_calls(tmp_path, capsys):
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    assert NO_CALLS.fullmatch(capsys.readouterr().out.splitlines()[-1])
+
+
+def test_an_interrupted_run_still_prints_the_time_it_took(tmp_path, monkeypatch, capsys):
+    code, source, _, _ = _interrupted_main(tmp_path, monkeypatch, CtrlCOnThirdCall())
+    assert code == 130
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last.startswith("time: total ") and "2 calls avg" in last
+    assert _summary(source)["calls_timed"] == 2 and _summary(source)["judging_seconds"] > 0
+
+
+def _calibrated(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source, out = _source(tmp_path / "src"), tmp_path / "out"
+    assert main(_args(source, "--calibrate", "1", out=out), env=ENV, judge=AllIdentical()) == 0
+    return out, capsys.readouterr().out.splitlines()
+
+
+def test_calibrate_ends_by_saying_where_it_saved_and_that_it_writes_no_html_report(
+    tmp_path, monkeypatch, capsys
+):
+    out, lines = _calibrated(tmp_path, monkeypatch, capsys)
+    assert lines[-2] == f"saved: {out / 'llm_compare' / 'calibration.json'}"
+    assert lines[-1] == (
+        "note: --calibrate does not build the HTML report; run without --calibrate "
+        "(add --limit N to try N pairs) to write llm_image_report.html"
+    )
+    assert (out / "llm_compare" / "calibration.json").is_file()
+    assert not (out / "llm_image_report.html").exists()
+
+
+def test_calibrate_shows_and_saves_how_long_each_variant_took(tmp_path, monkeypatch, capsys):
+    out, lines = _calibrated(tmp_path, monkeypatch, capsys)
+    assert lines[0].endswith("agreement with original  elapsed")
+    saved = json.loads((out / "llm_compare" / "calibration.json").read_text())
+    assert len(saved) == 4 and all(entry["elapsed_seconds"] >= 0 for entry in saved)
+
+
+def test_the_dry_run_gives_a_labelled_rough_time(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    assert main(_args(source, "--dry-run"), env={"PATH": ""}, judge=AllIdentical()) == 0
+    assert "rough time: ~10 s (calls / workers x ~10 s per call; measured" in (
+        capsys.readouterr().out
+    )

@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 
 from llm_compare.domain.models import PairRecord, Usage, Verdict
-from llm_compare.output.report import build_report, render_html, summarise, write_report
+from llm_compare.output.report import (
+    build_report,
+    format_time_line,
+    render_html,
+    summarise,
+    write_report,
+)
 
 
 def _rec(key, verdict, **extra):
@@ -392,3 +398,46 @@ def test_a_row_without_a_call_time_shows_only_its_batch_or_cached_note():
     assert "<div class='cap'>batch 3</div>" in html
     assert "<div class='cap'>earlier run · cached</div>" in html
     assert "· n/a" not in html and " s</div>" not in html
+
+
+# ---- the terminal's time line -----------------------------------------------------------
+
+_SUMMARY = {
+    "scoring_seconds": 38.0,
+    "judging_seconds": 214.0,
+    "total_seconds": 252.0,
+    "calls_timed": 41,
+    "avg_call_seconds": 9.8,
+    "slowest_call_seconds": 28.1,
+    "pairs_per_minute": 62.4,
+}
+
+
+def test_the_time_line_gives_the_total_its_parts_the_calls_and_the_rate():
+    assert format_time_line(_SUMMARY) == (
+        "time: total 4m 12s (scoring 38 s, judging 3m 34s), "
+        "41 calls avg 9.8 s slowest 28.1 s, 62 pairs/min"
+    )
+
+
+def test_the_time_line_for_a_run_with_no_llm_calls_says_so():
+    quiet = {
+        **_SUMMARY,
+        "judging_seconds": 0.0,
+        "total_seconds": 38.0,
+        "calls_timed": 0,
+        "avg_call_seconds": None,
+        "slowest_call_seconds": None,
+        "pairs_per_minute": None,
+    }
+    assert format_time_line(quiet) == ("time: total 38 s (scoring 38 s, judging 0 s), no LLM calls")
+
+
+def test_one_call_is_not_plural_and_a_small_rate_keeps_a_decimal():
+    summary = {**_SUMMARY, "calls_timed": 1, "pairs_per_minute": 2.44}
+    assert format_time_line(summary).endswith("1 call avg 9.8 s slowest 28.1 s, 2.4 pairs/min")
+
+
+def test_calls_that_judged_nothing_live_show_no_rate():
+    summary = {**_SUMMARY, "pairs_per_minute": None}
+    assert format_time_line(summary).endswith("41 calls avg 9.8 s slowest 28.1 s")

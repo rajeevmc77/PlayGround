@@ -1,10 +1,11 @@
 """Judge, with a multimodal LLM (DSPy), the PDF/web image pairs the perceptual hash cannot
 settle, and write a report of every image with its verdict, tokens and cost.
 
-    python src/build_llm_comparison.py --dry-run       # counts + estimated tokens/cost, no API call
-    python src/build_llm_comparison.py --limit 10      # try 10 pairs first
-    python src/build_llm_comparison.py --calibrate 24  # choose max_edge / batch size by evidence
-    python src/build_llm_comparison.py                 # the full run (resumable, cached)
+    python src/build_llm_comparison.py --dry-run       # counts + estimated tokens/cost/time
+    python src/build_llm_comparison.py --calibrate 24  # optional: max_edge / batch size, no report
+    python src/build_llm_comparison.py --limit 10      # try 10 pairs first (writes the report)
+    python src/build_llm_comparison.py                 # the full run (resumable; writes the report)
+    open output/llm_image_report.html                  # only a normal run writes the report
 
 GEMINI_API_KEY and GEMINI_MODEL come from the environment or .env; other settings from
 llm_compare_config.toml (see llm_compare_config.example.toml). Inputs are read from
@@ -49,11 +50,15 @@ from llm_compare.config import (  # noqa: E402
     parse_dotenv,
 )
 from llm_compare.output.cache import VerdictCache  # noqa: E402
-from llm_compare.output.report import build_report, write_report  # noqa: E402
+from llm_compare.output.report import build_report, format_time_line, write_report  # noqa: E402
 from llm_compare.parsing.pair_source import build_pairs  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INPUT_FILES = ("bcbc_pdf.json", "bcbc_web.json", "comparison.json")
+CALIBRATE_NOTE = (
+    "note: --calibrate does not build the HTML report; run without --calibrate "
+    "(add --limit N to try N pairs) to write llm_image_report.html"
+)
 
 
 def _non_negative_int(text: str) -> int:
@@ -88,7 +93,8 @@ def _parser() -> argparse.ArgumentParser:
         type=_positive_int,
         default=None,
         metavar="N",
-        help="judge N sample pairs under several settings and recommend max_edge",
+        help="judge N sample pairs under several settings and recommend max_edge "
+        "(prints a table and writes llm_compare/calibration.json; no HTML report)",
     )
     return parser
 
@@ -161,15 +167,22 @@ def _check_credentials(config: LlmCompareConfig, judge) -> str | None:
     return None
 
 
-def _finish(outcome: RunOutcome, config, source_dir, output_dir, now) -> None:
-    report = build_report(
+def _report_for(outcome: RunOutcome, config, now) -> dict:
+    return build_report(
         outcome.records,
         calls=outcome.calls,
         wasted=outcome.wasted,
         model=config.model,
         prompt_version=PROMPT_VERSION,
         generated_at=now or datetime.now(UTC).isoformat(timespec="seconds"),
+        scoring_seconds=outcome.scoring_seconds,
+        judging_seconds=outcome.judging_seconds,
+        call_seconds=outcome.call_seconds,
     )
+
+
+def _finish(outcome: RunOutcome, config, source_dir, output_dir, now) -> None:
+    report = _report_for(outcome, config, now)
     _, html_path = write_report(report, output_dir, _asset_prefix(source_dir, output_dir))
     _print_summary(html_path, report["summary"])
 
@@ -185,6 +198,7 @@ def _print_summary(html_path: Path, summary: dict) -> None:
         f"all judged verdicts: tokens {summary['cumulative_total_tokens']:,}, "
         f"cost {summary['cumulative_cost']}"
     )
+    print(format_time_line(summary))
 
 
 @contextmanager
@@ -220,7 +234,7 @@ def _judged_run(args, config, pairs, cache, judge, now) -> int:
     return 130 if outcome.interrupted else 0
 
 
-def _save_calibration(results: list[VariantResult], output_dir: Path) -> None:
+def _save_calibration(results: list[VariantResult], output_dir: Path) -> Path:
     saved = [
         {
             "variant": result.variant.name,
@@ -229,12 +243,15 @@ def _save_calibration(results: list[VariantResult], output_dir: Path) -> None:
             "output_tokens": result.output_tokens,
             "cost": result.cost,
             "first_error": result.first_error,
+            "elapsed_seconds": result.elapsed_seconds,
             "verdicts": {key: verdict.value for key, verdict in result.verdicts.items()},
         }
         for result in results
     ]
-    (output_dir / "llm_compare").mkdir(parents=True, exist_ok=True)
-    (output_dir / "llm_compare" / "calibration.json").write_text(json.dumps(saved, indent=2))
+    path = output_dir / "llm_compare" / "calibration.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(saved, indent=2))
+    return path
 
 
 def _calibrate(count: int, args, config, pairs, judge) -> int:
@@ -252,7 +269,8 @@ def _calibrate(count: int, args, config, pairs, judge) -> int:
     variants = default_variants(config.max_edge, config.max_pairs_per_call)
     results = asyncio.run(run_variants(sample_evenly(routed, count), variants, config, make_deps))
     print(format_calibration(results, config.token_scale))
-    _save_calibration(results, args.output_dir or args.source_dir)
+    print(f"saved: {_save_calibration(results, args.output_dir or args.source_dir)}")
+    print(CALIBRATE_NOTE)
     return 0
 
 
