@@ -70,16 +70,30 @@ def litellm_model(model: str) -> str:
     return model if not model or "/" in model else f"gemini/{model}"
 
 
-def _coerce(name: str, value):
-    if name in _INT_KEYS and (isinstance(value, bool) or not isinstance(value, int)):
+def _require_int(name: str, value) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(f"{name} must be a whole number")
-    if name in _FLOAT_KEYS:
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            raise ConfigError(f"{name} must be a number")
-        return float(value)
-    if name == "model" and not isinstance(value, str):
-        raise ConfigError("model must be text")
     return value
+
+
+def _require_number(name: str, value) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ConfigError(f"{name} must be a number")
+    return float(value)
+
+
+def _require_text(name: str, value) -> str:
+    if not isinstance(value, str):
+        raise ConfigError(f"{name} must be text")
+    return value
+
+
+def _coerce(name: str, value):
+    if name in _INT_KEYS:
+        return _require_int(name, value)
+    if name in _FLOAT_KEYS:
+        return _require_number(name, value)
+    return _require_text(name, value)
 
 
 def _read_values(toml_text: str) -> dict:

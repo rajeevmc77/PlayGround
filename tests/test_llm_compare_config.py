@@ -48,6 +48,20 @@ def test_out_of_range_values_are_rejected(text):
         load_config(text, {})
 
 
+@pytest.mark.parametrize(
+    "text, message",
+    [
+        ("model = 5", "model must be text"),
+        ('retry_base_delay = "x"', "retry_base_delay must be a number"),
+        ("token_scale = true", "token_scale must be a number"),
+        ("rpm = 1.5", "rpm must be a whole number"),
+    ],
+)
+def test_wrong_value_types_name_the_setting(text, message):
+    with pytest.raises(ConfigError, match=message):
+        load_config(text, {})
+
+
 @pytest.mark.parametrize("text", ["nonsense = 1", 'rpm = "ten"', "rpm = true", "= broken"])
 def test_unknown_keys_wrong_types_and_bad_toml_are_rejected(text):
     with pytest.raises(ConfigError):
