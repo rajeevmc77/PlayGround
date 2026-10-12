@@ -326,15 +326,14 @@ N sample pairs under several settings (this spends tokens) and prints the recomm
 estimated vs actual input tokens with the implied `token_scale`, and suggests the `token_scale`
 to configure when the estimate is more than 15% off. When a setting judged fewer pairs than the
 sample, a `<setting>: first error: ...` line gives its first error message (the API key
-scrubbed, cut to ~200 characters), so a run where every call fails says why. When a setting judged fewer pairs than the
-sample, a `<setting>: first error: ...` line gives its first error message (the API key
 scrubbed, cut to ~200 characters), so a run where every call fails says why.
 
 Rate limits (429), server errors (5xx), timeouts and dropped connections are retried with
 exponential backoff; a provider's `retry_after` hint is honoured up to `retry_max_delay`.
 Each request is cut off after `request_timeout_seconds` (default 120): the library's own wait
-is 600 s, which once left a run hanging on one request for about 18 minutes, while a thinking
-answer took up to ~30 s in practice. A timed-out request is retried like any other. Other
+is 600 s, which once left a run hanging on one request for about 18 minutes, while single-pair
+calls took 5-28 s in the 5-pair trial. A timed-out request is retried like any other, and the
+provider may still bill the one that timed out. Other
 errors (bad request, bad key, billing) fail that call's pairs as ERROR rows at once.
 
 Exit codes: 0 success, 2 bad configuration or missing/malformed input, 130 interrupted with
@@ -370,8 +369,9 @@ from the output directory.
   macOS Python: run that Python's `Install Certificates.command`, or run with
   `SSL_CERT_FILE="$(python3 -c 'import certifi; print(certifi.where())')"`.
 - On gemini-3.8-flash, input tokens were billed flat per image (about 2,850 input tokens per pair
-  whatever `max_edge` was), so scaling images down did not cut tokens; `max_edge` mainly keeps
-  uploads small. Output (thinking) tokens dominated the cost.
+  whatever `max_edge` was), so scaling images down did not cut tokens: `max_edge` did not change
+  token counts in the trial; it also bounds upload size. Output (thinking) tokens dominated the
+  cost.
 - Batching several pairs per call cut input by about 18% and output by about 40% in a 5-pair
   trial, but one verdict in five flipped (single-pair re-runs also flip occasionally). That is
   too few pairs to judge a larger `max_pairs_per_call`: calibrate with more before trusting it.

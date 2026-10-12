@@ -21,7 +21,7 @@ class LlmCompareConfig:
     max_input_tokens: int = 60_000
     call_overhead_tokens: int = 700
     # Thinking tokens are billed as output: gemini-3.8-flash used 450-1,640 per single pair
-    # (3,374-5,967 for 5 pairs), so 150 under-estimated cost ~2-3x and under-reserved the TPM.
+    # (3,374-5,967 for 5 pairs); the old default 150 under-estimated output tokens several-fold.
     output_tokens_per_pair: int = 800
     max_output_tokens: int = 8192
     token_scale: float = 1.0
@@ -32,8 +32,8 @@ class LlmCompareConfig:
     retry_attempts: int = 5
     retry_base_delay: float = 1.0
     retry_max_delay: float = 60.0
-    # dspy 3.4's native transport otherwise waits up to 600 s for a reply; a thinking answer
-    # took up to ~30 s in practice, so this bounds a stuck request, which is then retried.
+    # dspy 3.4's native transport otherwise waits up to 600 s for a reply; single-pair calls
+    # took 5-28 s in the 5-pair trial, so this bounds a stuck request, which is then retried.
     request_timeout_seconds: float = 120.0
     input_price_per_million: float | None = None
     output_price_per_million: float | None = None

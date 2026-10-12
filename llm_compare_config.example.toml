@@ -10,12 +10,13 @@ max_output_tokens = 8192     # output cap per call, thinking included; must cove
 # output_tokens_per_pair = 800    # estimate used by --dry-run and the TPM reservation; thinking
                                   # tokens are billed as output: gemini-3.8-flash used 450-1,640
                                   # per single pair (3,374-5,967 for 5 pairs)
-# token_scale = 1.0  # --calibrate suggests a value; actual input tokens were ~1.29x the tiling estimate on gemini-3.8-flash
-rpm = 30                    # provider requests per minute
+# token_scale = 1.0  # --calibrate suggests a value; actual input tokens were ~1.29x the
+                     # tiling estimate on gemini-3.8-flash
+rpm = 30                     # provider requests per minute
 tpm = 250000                 # provider tokens per minute
 workers = 4                  # concurrent calls
-request_timeout_seconds = 120  # per request; a stuck one is cut off and retried. Thinking
-                             # answers took up to ~30 s in practice (the library's own wait
+request_timeout_seconds = 120  # per request; a stuck one is cut off and retried. Single-pair
+                             # calls took 5-28 s in the 5-pair trial (the library's own wait
                              # is 600 s, which once stalled a run for ~18 minutes)
 # input_price_per_million = 0.0   # USD per 1M tokens; only needed when LiteLLM has no price
 # output_price_per_million = 0.0
