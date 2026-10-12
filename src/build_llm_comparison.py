@@ -72,6 +72,13 @@ def _non_negative_int(text: str) -> int:
     return value
 
 
+def _positive_int(text: str) -> int:
+    value = _non_negative_int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return value
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--source-dir", type=Path, default=PROJECT_ROOT / "output")
@@ -84,7 +91,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--calibrate",
-        type=int,
+        type=_positive_int,
         default=None,
         metavar="N",
         help="judge N sample pairs under several settings and recommend max_edge",
@@ -229,7 +236,7 @@ def main(argv=None, env: Mapping[str, str] = os.environ, judge=None, now: str | 
     if problem:
         print(f"error: {problem}", file=sys.stderr)
         return 2
-    if args.calibrate:
+    if args.calibrate is not None:
         return _calibrate(args.calibrate, args, config, pairs, judge)
     return _judged_run(args, config, pairs, cache, judge, now)
 

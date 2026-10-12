@@ -7,6 +7,7 @@ from llm_compare.analysis.calibration import (
     agreement,
     default_variants,
     format_calibration,
+    judged_count,
     recommend,
     run_variants,
     sample_evenly,
@@ -100,3 +101,94 @@ def test_run_variants_judges_the_same_sample_once_per_variant_with_fresh_caches(
     assert [r.variant.max_pairs_per_call for r in results] == [1, 1, 1, 6]
     assert all(r.verdicts == {"pdf:images/a.png": Verdict.IDENTICAL} for r in results)
     assert all(r.input_tokens == 10 for r in results)
+
+
+def _twenty(verdict, judged=20):
+    keys = [f"k{n}" for n in range(20)]
+    return {k: (verdict if n < judged else Verdict.ERROR) for n, k in enumerate(keys)}
+
+
+def test_a_candidate_that_errors_on_most_pairs_does_not_win_on_the_one_it_judged():
+    results = [
+        _result("orig", ORIGINAL_EDGE, 1, 9000, _twenty(Verdict.IDENTICAL)),
+        _result("768", 768, 1, 100, _twenty(Verdict.IDENTICAL, judged=1)),
+        _result("1024", 1024, 1, 5000, _twenty(Verdict.IDENTICAL)),
+    ]
+    assert recommend(results) == 1024
+    assert "1/20" in format_calibration(results)
+    assert "20/20" in format_calibration(results)
+
+
+def test_a_candidate_must_judge_every_pair_the_baseline_judged():
+    results = [
+        _result("orig", ORIGINAL_EDGE, 1, 9000, {"a": Verdict.IDENTICAL}),
+        _result("768", 768, 1, 100, {"a": Verdict.ERROR}),
+    ]
+    assert recommend(results) is None
+
+
+def test_an_all_error_baseline_gives_no_recommendation_and_says_why():
+    errors = {"a": Verdict.ERROR, "b": Verdict.ERROR}
+    results = [_result("orig", ORIGINAL_EDGE, 1, 9, errors), _result("768", 768, 1, 3, errors)]
+    assert recommend(results) is None
+    last = format_calibration(results).splitlines()[-1]
+    assert "baseline produced no verdicts" in last and "check the API errors first" in last
+
+
+def test_an_empty_sample_says_nothing_was_routed_to_the_llm():
+    assert recommend([]) is None
+    results = [_result("orig", ORIGINAL_EDGE, 1, 0, {})]
+    assert recommend(results) is None
+    for shown in (results, []):
+        text = format_calibration(shown)
+        assert text.splitlines()[-1] == "no pairs were routed to the LLM: nothing to calibrate"
+
+
+def test_no_smaller_cap_keeping_the_verdicts_says_to_keep_original_size():
+    base = {"a": Verdict.IDENTICAL}
+    results = [
+        _result("o", ORIGINAL_EDGE, 1, 9, base),
+        _result("768", 768, 1, 3, {"a": Verdict.DIFFERENT}),
+    ]
+    last = format_calibration(results).splitlines()[-1]
+    assert last == "none of the smaller caps kept every verdict: keep original size"
+
+
+def test_ties_on_input_tokens_keep_list_order():
+    same = {"a": Verdict.IDENTICAL}
+    results = [
+        _result("o", ORIGINAL_EDGE, 1, 9, same),
+        _result("1024", 1024, 1, 5, same),
+        _result("768", 768, 1, 5, same),
+    ]
+    assert recommend(results) == 1024
+
+
+def test_judged_count_counts_only_real_verdicts():
+    verdicts = {"a": Verdict.IDENTICAL, "b": Verdict.DIFFERENT, "c": Verdict.ERROR}
+    assert judged_count(verdicts) == 2
+    assert judged_count({}) == 0
+
+
+def test_batching_is_compared_directly_with_the_same_edge_single_variant():
+    single = {"a": Verdict.IDENTICAL, "b": Verdict.DIFFERENT}
+    batched = {"a": Verdict.IDENTICAL, "b": Verdict.IDENTICAL}
+    results = [
+        _result("o", ORIGINAL_EDGE, 1, 9, single),
+        _result("1024", 1024, 1, 5, single),
+        _result("1024x6", 1024, 6, 4, batched),
+    ]
+    assert "batched (6 per call) vs same-edge single: 50%" in format_calibration(results)
+
+
+def test_a_batched_variant_without_a_same_edge_single_says_so():
+    same = {"a": Verdict.IDENTICAL}
+    results = [_result("o", ORIGINAL_EDGE, 1, 9, same), _result("512x4", 512, 4, 4, same)]
+    assert "batched (4 per call): no same-edge single variant to compare" in format_calibration(
+        results
+    )
+
+
+def test_sampling_zero_or_fewer_gives_nothing():
+    assert sample_evenly([1, 2, 3], 0) == []
+    assert sample_evenly([1, 2, 3], -2) == []

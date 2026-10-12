@@ -39,6 +39,8 @@ def default_variants(default_edge: int, default_batch: int) -> list[Variant]:
 
 
 def sample_evenly(items: Sequence, count: int) -> list:
+    if count <= 0:
+        return []
     if count >= len(items):
         return list(items)
     step = len(items) / count
@@ -84,29 +86,84 @@ async def run_variants(
     return [await _run_one(scored, variant, config, make_deps) for variant in variants]
 
 
+def judged_count(verdicts: dict[str, Verdict]) -> int:
+    return sum(verdict in LLM_VERDICTS for verdict in verdicts.values())
+
+
+def _keeps_every_verdict(baseline: dict[str, Verdict], result: VariantResult) -> bool:
+    judged_keys = [key for key, verdict in baseline.items() if verdict in LLM_VERDICTS]
+    if any(result.verdicts.get(key) not in LLM_VERDICTS for key in judged_keys):
+        return False
+    return agreement(baseline, result.verdicts) == 1.0
+
+
+def _has_baseline(results: list[VariantResult]) -> bool:
+    return bool(results) and judged_count(results[0].verdicts) > 0
+
+
 def recommend(results: list[VariantResult]) -> int | None:
+    if not _has_baseline(results):
+        return None
     baseline = results[0].verdicts
     keeps = [
         result
         for result in results[1:]
-        if result.variant.max_pairs_per_call == 1 and agreement(baseline, result.verdicts) == 1.0
+        if result.variant.max_pairs_per_call == 1 and _keeps_every_verdict(baseline, result)
     ]
-    if not keeps:
-        return None
-    return min(keeps, key=lambda result: result.input_tokens).variant.max_edge
+    best = min(keeps, key=lambda result: result.input_tokens, default=None)
+    return None if best is None else best.variant.max_edge
+
+
+def _same_edge_single(results: list[VariantResult], batched: VariantResult):
+    return next(
+        (
+            result
+            for result in results
+            if result.variant.max_pairs_per_call == 1
+            and result.variant.max_edge == batched.variant.max_edge
+        ),
+        None,
+    )
+
+
+def _batching_line(results: list[VariantResult], batched: VariantResult) -> str:
+    label = f"batched ({batched.variant.max_pairs_per_call} per call)"
+    single = _same_edge_single(results, batched)
+    if single is None:
+        return f"{label}: no same-edge single variant to compare"
+    return f"{label} vs same-edge single: {agreement(single.verdicts, batched.verdicts):.0%}"
+
+
+def _batching_lines(results: list[VariantResult]) -> list[str]:
+    return [
+        _batching_line(results, result)
+        for result in results[1:]
+        if result.variant.max_pairs_per_call > 1
+    ]
+
+
+def _verdict_line(results: list[VariantResult]) -> str:
+    if not results or not results[0].verdicts:
+        return "no pairs were routed to the LLM: nothing to calibrate"
+    if judged_count(results[0].verdicts) == 0:
+        return (
+            "the original-size baseline produced no verdicts (errors?): "
+            "cannot recommend - check the API errors first"
+        )
+    best = recommend(results)
+    if best is None:
+        return "none of the smaller caps kept every verdict: keep original size"
+    return f"recommended max_edge: {best}"
 
 
 def format_calibration(results: list[VariantResult]) -> str:
-    baseline = results[0].verdicts
-    lines = ["variant                      input tok  output tok  agreement with original"]
+    total = len(results[0].verdicts) if results else 0
+    lines = ["variant                      input tok  output tok  judged  agreement with original"]
     for result in results:
-        share = agreement(baseline, result.verdicts)
+        share = agreement(results[0].verdicts, result.verdicts)
+        judged = f"{judged_count(result.verdicts)}/{total}"
         lines.append(
             f"{result.variant.name:<28} {result.input_tokens:>9,} {result.output_tokens:>11,}"
-            f"  {share:>9.0%}"
+            f"  {judged:>6}  {share:>9.0%}"
         )
-    best = recommend(results)
-    lines.append(
-        f"recommended max_edge: {best if best is not None else 'none (keep original size)'}"
-    )
-    return "\n".join(lines)
+    return "\n".join([*lines, *_batching_lines(results), _verdict_line(results)])

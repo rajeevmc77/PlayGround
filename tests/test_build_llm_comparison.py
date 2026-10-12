@@ -194,4 +194,16 @@ def test_calibrate_prints_a_recommendation_and_saves_the_variants(tmp_path, monk
     assert "recommended max_edge" in capsys.readouterr().out
     saved = json.loads((source / "llm_compare" / "calibration.json").read_text())
     assert saved[0]["variant"].startswith("original size")
+    assert saved[0]["verdicts"] == {"pdf:images/a.png": "IDENTICAL"}
     assert not (source / "llm_image_report.html").exists()
+    assert not (source / "llm_compare" / "cache.json").exists()
+
+
+@pytest.mark.parametrize("value", ["0", "-3", "many"])
+def test_an_invalid_calibrate_count_is_rejected_before_any_work(tmp_path, value):
+    source = _source(tmp_path)
+    judge = AllIdentical()
+    with pytest.raises(SystemExit) as raised:
+        main(_args(source, "--calibrate", value), env=ENV, judge=judge)
+    assert raised.value.code == 2 and judge.calls == 0
+    assert not (source / "llm_compare").exists()
