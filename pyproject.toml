@@ -7,7 +7,9 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.vulture]
 # http.server/socketserver read these handler hooks and settings by name.
-ignore_names = ["do_GET", "log_message", "daemon_threads"]
+# llm_compare's PairRecord.sent_pdf / sent_web are set through _record(**extra) and read as
+# row["sent_pdf"] / row["sent_web"] from the dataclass's asdict() in the report, never as attributes.
+ignore_names = ["do_GET", "log_message", "daemon_threads", "sent_pdf", "sent_web"]
 
 [tool.pytest.ini_options]
 addopts = "-q -m \"not slow\""

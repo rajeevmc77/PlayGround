@@ -19,7 +19,7 @@ def _setup():
     for key, png in zip(keys, (FIRST, FIRST, SECOND), strict=True):
         files[f"images/{key}.png"] = files[f"web_images/{key}.png"] = png
     scores = {"hi": 95.0, "lo1": 10.0, "lo2": 20.0}
-    return pairs, files.get, (lambda pair, a, b: scores[pair.key])
+    return pairs, files.get, (lambda pair, _a, _b: scores[pair.key])
 
 
 def test_the_plan_counts_routes_calls_and_estimates_tokens_and_cost():
@@ -57,7 +57,7 @@ def test_zero_pairs_for_the_llm_plans_zero_calls_and_zero_cost():
         VerdictCache(),
         "v1",
         Prices(1.0, 2.0),
-        lambda p, a, b: 100.0,
+        lambda _p, _a, _b: 100.0,
     )
     assert (plan.to_llm, plan.calls, plan.input_tokens, plan.output_tokens) == (0, 0, 0, 0)
     assert plan.cost == 0.0
