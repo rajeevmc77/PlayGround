@@ -123,12 +123,16 @@ def _check_ints(config: LlmCompareConfig) -> None:
             raise ConfigError(f"{name} must be at least {minimum}")
 
 
-def _check_floats(config: LlmCompareConfig) -> None:
-    if not 0 < config.hash_match_percent <= 100:
-        raise ConfigError("hash_match_percent must be above 0 and at most 100")
+def _check_positive_finite(config: LlmCompareConfig) -> None:
     for name in ("token_scale", "request_timeout_seconds"):
         if not 0 < getattr(config, name) < math.inf:
             raise ConfigError(f"{name} must be above 0 and finite")
+
+
+def _check_floats(config: LlmCompareConfig) -> None:
+    if not 0 < config.hash_match_percent <= 100:
+        raise ConfigError("hash_match_percent must be above 0 and at most 100")
+    _check_positive_finite(config)
     for name in _FLOAT_KEYS:
         value = getattr(config, name)
         if value is not None and value < 0:

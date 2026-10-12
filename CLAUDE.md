@@ -109,7 +109,8 @@ and prints which path works and why.
    multimodal Gemini model through DSPy (async, rate-limited by RPM/TPM; 429s, 5xx, timeouts and
    dropped connections - dspy 3.4's `LMRateLimitError`/`LMServerError`/`LMTimeoutError`/
    `LMTransportError`, mapped in `map_litellm_error` - back off and retry, a provider
-   `retry_after` capped at `retry_max_delay`) as IDENTICAL / DIFFERENT with reasons, and cached
+   `retry_after` capped at `retry_max_delay`; each request is bounded by
+   `request_timeout_seconds`, default 120, since dspy's own wait is 600 s) as IDENTICAL / DIFFERENT with reasons, and cached
    in `llm_compare/cache.json` so a re-run makes no calls. Output per call is capped by
    `max_output_tokens` (thinking included; must cover `output_tokens_per_pair` x
    `max_pairs_per_call` plus thinking headroom), and the tokens of an answer that fails to parse
@@ -120,7 +121,8 @@ and prints which path works and why.
    `--dry-run` prints the plan with no API call, `--limit N` tries N pairs, `--calibrate N`
    prints the recommended `max_edge` (put it in `llm_compare_config.toml` yourself) and the
    estimated vs actual input tokens with a suggested `token_scale` when the estimate is more
-   than 15% off; `--source-dir`/`--env-file` let a worktree read the main checkout's
+   than 15% off (a setting that judged too few pairs also prints its first, key-scrubbed error);
+   `--source-dir`/`--env-file` let a worktree read the main checkout's
    `output/` and `.env`. `GEMINI_API_KEY`/`GEMINI_MODEL` come from the environment or `.env`;
    other settings from `llm_compare_config.toml` (see `llm_compare_config.example.toml`); both
    files are git-ignored. Spec `docs/superpowers/specs/2026-10-12-llm-image-compare-design.md`,
@@ -226,8 +228,8 @@ only if/when they're actually touched, not retroactively.
 
 ## Working notes
 - A real test suite (1011 tests — 993 by default plus 18 `slow` — before the LLM image
-  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 256:
-  255 by default plus 1 `slow`) covers `src/mo_toc/`,
+  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 274:
+  273 by default plus 1 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, `src/llm_compare/`, the
   `build_*.py`/`serve_mo_toc.py` scripts and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). WARNING:

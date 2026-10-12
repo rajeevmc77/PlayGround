@@ -68,7 +68,11 @@ def _total_cost(records) -> float | None:
 
 def _first_error(records) -> str:
     return next(
-        (record.message for record in records if record.verdict is Verdict.ERROR and record.message),
+        (
+            record.message
+            for record in records
+            if record.verdict is Verdict.ERROR and record.message
+        ),
         "",
     )
 
