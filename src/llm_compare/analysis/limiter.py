@@ -52,7 +52,8 @@ class RateLimiter:
 def _delay(error, attempt, base_delay, max_delay, jitter) -> float:
     retry_after = getattr(error, "retry_after", None)
     if retry_after is not None:
-        return retry_after
+        # A provider's hint is honoured, but never beyond our own ceiling.
+        return min(retry_after, max_delay)
     return min(max_delay, base_delay * 2**attempt) * (0.5 + 0.5 * jitter())
 
 

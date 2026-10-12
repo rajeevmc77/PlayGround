@@ -128,9 +128,19 @@ def test_jitter_scales_the_delay_between_half_and_full():
     assert fake.sleeps == [0.5]
 
 
-def test_retry_after_is_honoured_over_the_backoff():
+def test_retry_after_below_the_cap_is_honoured_over_the_backoff():
+    _, fake = _retry(_flaky([RateLimited("429", retry_after=2.5)]))
+    assert fake.sleeps == [2.5]
+
+
+def test_retry_after_above_the_cap_is_capped_at_the_max_delay():
     _, fake = _retry(_flaky([RateLimited("429", retry_after=7.0)]))
-    assert fake.sleeps == [7.0]
+    assert fake.sleeps == [3.0]
+
+
+def test_a_rate_limit_without_retry_after_backs_off_like_a_transient_error():
+    _, fake = _retry(_flaky([RateLimited("429")] * 2))
+    assert fake.sleeps == [1.0, 2.0]
 
 
 def test_permanent_errors_are_not_retried():
