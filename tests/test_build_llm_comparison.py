@@ -4,6 +4,7 @@ import os
 import re
 import signal
 import time
+from pathlib import Path
 
 import pytest
 
@@ -594,9 +595,20 @@ def test_calibrate_ends_by_saying_where_it_saved_and_that_it_writes_no_html_repo
     assert not (out / "llm_image_report.html").exists()
 
 
+def test_calibrate_prints_the_resolved_absolute_path_it_saved_to(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    _source(tmp_path / "src")
+    monkeypatch.chdir(tmp_path)
+    args = _args(Path("src"), "--calibrate", "1", out=Path("out"))
+    assert main(args, env=ENV, judge=AllIdentical()) == 0
+    saved = capsys.readouterr().out.splitlines()[-2]
+    assert saved == f"saved: {(tmp_path / 'out').resolve() / 'llm_compare' / 'calibration.json'}"
+    assert Path(saved.removeprefix("saved: ")).is_absolute()
+
+
 def test_calibrate_shows_and_saves_how_long_each_variant_took(tmp_path, monkeypatch, capsys):
     out, lines = _calibrated(tmp_path, monkeypatch, capsys)
-    assert lines[0].endswith("agreement with original  elapsed")
+    assert "agreement with original" in lines[0] and lines[0].endswith("elapsed")
     saved = json.loads((out / "llm_compare" / "calibration.json").read_text())
     assert len(saved) == 4 and all(entry["elapsed_seconds"] >= 0 for entry in saved)
 

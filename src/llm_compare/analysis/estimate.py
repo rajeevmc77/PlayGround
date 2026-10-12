@@ -82,7 +82,8 @@ def _rough_time_line(plan: RunPlan) -> list[str]:
     shown = f"{seconds} s" if seconds < 60 else f"{math.ceil(seconds / 60)} min"
     return [
         f"rough time: ~{shown} (calls / workers x ~{ROUGH_SECONDS_PER_CALL} s per call; "
-        "measured 5-28 s single-pair calls with default thinking)"
+        'measured 5-28 s per single-pair call with reasoning_effort = "" (default thinking); '
+        'about 4-8 s with the "low" default)'
     ]
 
 

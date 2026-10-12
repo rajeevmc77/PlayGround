@@ -226,7 +226,8 @@ def _error_lines(results: list[VariantResult]) -> list[str]:
 
 
 _TABLE_HEADER = (
-    "variant                      input tok  output tok  judged  agreement with original  elapsed"
+    "variant                      input tok  output tok  judged  "
+    f"{'agreement with original':>23}  {'elapsed':>10}"
 )
 
 
@@ -237,7 +238,7 @@ def _table_lines(results: list[VariantResult], total: int) -> list[str]:
         judged = f"{judged_count(result.verdicts)}/{total}"
         lines.append(
             f"{result.variant.name:<28} {result.input_tokens:>9,} {result.output_tokens:>11,}"
-            f"  {judged:>6}  {share:>9.0%}  {format_duration(result.elapsed_seconds):>10}"
+            f"  {judged:>6}  {share:>23.0%}  {format_duration(result.elapsed_seconds):>10}"
         )
     return lines
 

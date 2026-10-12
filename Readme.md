@@ -329,12 +329,14 @@ open output/llm_image_report.html                  # 5. look at it
 `--dry-run` makes no API call and no network request (it makes litellm use its bundled price
 map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). Besides the counts and
 the estimated tokens and cost it prints a `rough time:` line: the number of calls divided by
-the workers, times a guessed 10 s per call (single-pair calls took 5-28 s with default thinking).
+the workers, times a guessed 10 s per call (single-pair calls took 5-28 s with
+`reasoning_effort = ""`, the model's default thinking, and about 4-8 s with the `"low"` default).
 That is a guess, not a measurement; the real time is printed after a run. `--calibrate N` judges
 N sample pairs under several settings (this spends tokens) and prints the recommended
 `max_edge` - put it in `llm_compare_config.toml` yourself. It does not write the HTML report:
-it prints a table (with an `elapsed` column, how long each setting took) and ends with
-`saved: <output-dir>/llm_compare/calibration.json` and a note saying so. It also prints, per setting, the
+it prints a table (with an `elapsed` column, how long each setting took, including any wait for
+the rate limiter) and ends with `saved: <absolute path>/llm_compare/calibration.json` and a note
+saying so. It also prints, per setting, the
 estimated vs actual input tokens with the implied `token_scale`, and suggests the `token_scale`
 to configure when the estimate is more than 15% off. When a setting judged fewer pairs than the
 sample, a `<setting>: first error: ...` line gives its first error message (the API key
@@ -383,6 +385,10 @@ in the report's header cards and in the JSON `summary`. What is measured, with a
   time, shown beside the batch number in the report's Tokens / cost cell and as `call_seconds`
   in the JSON row; a pair re-asked alone shows that retry's time. Cached rows have no call time.
   Calls run concurrently, so the calls' times add up to more than the judging time.
+
+The report's **LLM calls (attempts)** card counts every attempt, failed ones included, while
+**avg call** / **slowest call** and the terminal line's `N calls` count completed calls only, so
+the two can differ when calls failed and were retried.
 
 From a git worktree (whose own `output/` and `.env` are empty), read the main checkout's
 inputs and key with `--source-dir` and `--env-file`, and write somewhere else:

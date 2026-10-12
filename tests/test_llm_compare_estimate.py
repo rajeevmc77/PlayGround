@@ -92,7 +92,8 @@ def test_format_plan_names_the_cost_or_says_it_is_unavailable():
 # ---- rough time -------------------------------------------------------------------------
 
 ROUGH_NOTE = (
-    "(calls / workers x ~10 s per call; measured 5-28 s single-pair calls with default thinking)"
+    "(calls / workers x ~10 s per call; measured 5-28 s per single-pair call with "
+    'reasoning_effort = "" (default thinking); about 4-8 s with the "low" default)'
 )
 
 

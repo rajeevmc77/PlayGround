@@ -366,3 +366,13 @@ def test_the_table_has_an_elapsed_column_for_every_variant():
     lines = format_calibration([slow, quick]).splitlines()
     assert lines[0].endswith("elapsed")
     assert lines[1].endswith("4m 12s") and lines[2].endswith("38.4 s")
+
+
+def test_the_table_columns_line_up_under_their_headers():
+    base = {"a": Verdict.IDENTICAL}
+    slow = replace(_result("orig", ORIGINAL_EDGE, 1, 9000, base), elapsed_seconds=3785.0)
+    quick = replace(_result("768", 768, 1, 3000, base), elapsed_seconds=0.4)
+    header, *rows = format_calibration([slow, quick]).splitlines()[:3]
+    assert {len(header), *map(len, rows)} == {len(header)}
+    agreement_end = header.index("original") + len("original")
+    assert all(row[:agreement_end].endswith("%") for row in rows)

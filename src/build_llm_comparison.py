@@ -269,7 +269,8 @@ def _calibrate(count: int, args, config, pairs, judge) -> int:
     variants = default_variants(config.max_edge, config.max_pairs_per_call)
     results = asyncio.run(run_variants(sample_evenly(routed, count), variants, config, make_deps))
     print(format_calibration(results, config.token_scale))
-    print(f"saved: {_save_calibration(results, args.output_dir or args.source_dir)}")
+    saved = _save_calibration(results, args.output_dir or args.source_dir)
+    print(f"saved: {saved.resolve()}")
     print(CALIBRATE_NOTE)
     return 0
 

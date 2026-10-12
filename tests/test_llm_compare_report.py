@@ -346,16 +346,24 @@ def test_the_header_has_cards_for_the_run_time_and_its_parts():
         "<b>4m 12s</b><span>run time</span>",
         "<b>38 s</b><span>scoring</span>",
         "<b>3m 34s</b><span>judging (LLM)</span>",
-        "<b>15 s</b><span>avg call</span>",
-        "<b>20 s</b><span>slowest call</span>",
+        "<b>15 s</b><span>avg call (completed)</span>",
+        "<b>20 s</b><span>slowest call (completed)</span>",
     ):
         assert card in html
 
 
+def test_the_calls_card_says_it_counts_attempts_and_the_call_times_completed_calls():
+    html, _ = _timed_html()
+    assert (
+        "title='attempts, including failed ones'><b>2</b><span>LLM calls (attempts)</span>" in html
+    )
+    assert "title='completed calls only: failed attempts are not timed'><b>15 s</b>" in html
+
+
 def test_a_run_with_no_calls_shows_no_average_or_slowest_call():
     html, _ = _timed_html(call_seconds=(), judging_seconds=0.0)
-    assert "<b>n/a</b><span>avg call</span>" in html
-    assert "<b>n/a</b><span>slowest call</span>" in html
+    assert "<b>n/a</b><span>avg call (completed)</span>" in html
+    assert "<b>n/a</b><span>slowest call (completed)</span>" in html
     assert "<b>0 s</b><span>judging (LLM)</span>" in html
 
 

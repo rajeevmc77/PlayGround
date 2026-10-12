@@ -269,9 +269,22 @@ def _time_cards(summary: dict) -> list[tuple[str, str]]:
         ("run time", format_duration(summary["total_seconds"])),
         ("scoring", format_duration(summary["scoring_seconds"])),
         ("judging (LLM)", format_duration(summary["judging_seconds"])),
-        ("avg call", format_duration(summary["avg_call_seconds"])),
-        ("slowest call", format_duration(summary["slowest_call_seconds"])),
+        ("avg call (completed)", format_duration(summary["avg_call_seconds"])),
+        ("slowest call (completed)", format_duration(summary["slowest_call_seconds"])),
     ]
+
+
+_COMPLETED_ONLY = "completed calls only: failed attempts are not timed"
+_CARD_TITLES = {
+    "LLM calls (attempts)": "attempts, including failed ones",
+    "avg call (completed)": _COMPLETED_ONLY,
+    "slowest call (completed)": _COMPLETED_ONLY,
+}
+
+
+def _card(label: str, value: str) -> str:
+    title = f" title='{_CARD_TITLES[label]}'" if label in _CARD_TITLES else ""
+    return f"<div class='card'{title}><b>{value}</b><span>{label}</span></div>"
 
 
 def _cards(summary: dict) -> str:
@@ -280,7 +293,7 @@ def _cards(summary: dict) -> str:
         ("settled by hash (free)", f"{summary['settled_by_hash']:,}"),
         ("judged by LLM", f"{summary['judged_by_llm']:,}"),
         ("from cache", f"{summary['cached_hits']:,}"),
-        ("LLM calls", f"{summary['calls']:,}"),
+        ("LLM calls (attempts)", f"{summary['calls']:,}"),
         *_time_cards(summary),
         ("input tokens", f"{summary['input_tokens']:,}"),
         ("output tokens", f"{summary['output_tokens']:,}"),
@@ -291,9 +304,7 @@ def _cards(summary: dict) -> str:
         ("cost per judged pair", _money(summary["cost_per_judged_pair"])),
         ("est. saved by hash", _money(summary["estimated_saved_cost"])),
     ]
-    return "".join(
-        f"<div class='card'><b>{value}</b><span>{label}</span></div>" for label, value in cards
-    )
+    return "".join(_card(label, value) for label, value in cards)
 
 
 def _chips(counts: dict) -> str:
