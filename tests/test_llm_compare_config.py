@@ -14,6 +14,13 @@ def test_defaults_apply_when_nothing_is_configured():
     assert config.max_output_tokens == 8192
 
 
+def test_the_output_estimate_defaults_to_what_thinking_answers_measured_at():
+    config = load_config("", {})
+    assert config.output_tokens_per_pair == 800
+    # a 6-pair call's estimate must fit the output cap, thinking headroom included
+    assert config.output_tokens_per_pair * config.max_pairs_per_call < config.max_output_tokens
+
+
 def test_the_example_config_file_loads_and_documents_the_output_cap():
     example = Path(__file__).resolve().parent.parent / "llm_compare_config.example.toml"
     assert load_config(example.read_text(), {}).max_output_tokens == 8192

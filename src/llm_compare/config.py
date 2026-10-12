@@ -20,7 +20,9 @@ class LlmCompareConfig:
     max_pairs_per_call: int = 6
     max_input_tokens: int = 60_000
     call_overhead_tokens: int = 700
-    output_tokens_per_pair: int = 150
+    # Thinking tokens are billed as output: gemini-3.8-flash used 450-1,640 per single pair
+    # (3,374-5,967 for 5 pairs), so 150 under-estimated cost ~2-3x and under-reserved the TPM.
+    output_tokens_per_pair: int = 800
     max_output_tokens: int = 8192
     token_scale: float = 1.0
     rpm: int = 30

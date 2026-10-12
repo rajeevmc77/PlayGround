@@ -302,11 +302,13 @@ cp llm_compare_config.example.toml llm_compare_config.toml
 ```
 
 `max_output_tokens` (default 8192) caps each call's output, thinking tokens included, which
-Gemini-3-class models bill as output. It must cover `output_tokens_per_pair` x
-`max_pairs_per_call` plus room for the model's thinking: too low truncates the answer, which
-then fails to parse and its pairs are re-asked one at a time. Without a cap a looping answer
-would be billed in full on every re-ask; the tokens of an answer that fails to parse are
-still counted in the report.
+Gemini-3-class models bill as output. `output_tokens_per_pair` (default 800) is the estimate
+`--dry-run` and the token-per-minute reservation use; it is set from a measurement:
+gemini-3.8-flash used 450-1,640 output tokens for a single pair and 3,374-5,967 for five. The
+cap must cover `output_tokens_per_pair` x `max_pairs_per_call` plus room for the model's
+thinking: too low truncates the answer, which then fails to parse and its pairs are re-asked
+one at a time. Without a cap a looping answer would be billed in full on every re-ask; the
+tokens of an answer that fails to parse are still counted in the report.
 
 ### Run
 
