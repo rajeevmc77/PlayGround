@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from llm_compare.config import ConfigError, litellm_model, load_config, parse_dotenv
@@ -9,6 +11,20 @@ def test_defaults_apply_when_nothing_is_configured():
     assert config.max_edge == 1024
     assert config.api_key == ""
     assert config.input_price_per_million is None
+    assert config.max_output_tokens == 8192
+
+
+def test_the_example_config_file_loads_and_documents_the_output_cap():
+    example = Path(__file__).resolve().parent.parent / "llm_compare_config.example.toml"
+    assert load_config(example.read_text(), {}).max_output_tokens == 8192
+
+
+def test_max_output_tokens_is_a_whole_number_of_at_least_one():
+    assert load_config("max_output_tokens = 2048", {}).max_output_tokens == 2048
+    with pytest.raises(ConfigError, match="max_output_tokens must be at least 1"):
+        load_config("max_output_tokens = 0", {})
+    with pytest.raises(ConfigError, match="max_output_tokens must be a whole number"):
+        load_config("max_output_tokens = 1.5", {})
 
 
 def test_toml_values_override_defaults():

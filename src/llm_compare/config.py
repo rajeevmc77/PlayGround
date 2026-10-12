@@ -20,6 +20,7 @@ class LlmCompareConfig:
     max_input_tokens: int = 60_000
     call_overhead_tokens: int = 700
     output_tokens_per_pair: int = 150
+    max_output_tokens: int = 8192
     token_scale: float = 1.0
     rpm: int = 30
     tpm: int = 250_000
@@ -38,6 +39,7 @@ _INT_KEYS = (
     "max_input_tokens",
     "call_overhead_tokens",
     "output_tokens_per_pair",
+    "max_output_tokens",
     "rpm",
     "tpm",
     "workers",

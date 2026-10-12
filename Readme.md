@@ -301,6 +301,13 @@ template to the git-ignored `llm_compare_config.toml`:
 cp llm_compare_config.example.toml llm_compare_config.toml
 ```
 
+`max_output_tokens` (default 8192) caps each call's output, thinking tokens included, which
+Gemini-3-class models bill as output. It must cover `output_tokens_per_pair` x
+`max_pairs_per_call` plus room for the model's thinking: too low truncates the answer, which
+then fails to parse and its pairs are re-asked one at a time. Without a cap a looping answer
+would be billed in full on every re-ask; the tokens of an answer that fails to parse are
+still counted in the report.
+
 ### Run
 
 ```bash

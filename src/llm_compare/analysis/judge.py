@@ -7,6 +7,7 @@ from typing import Literal
 
 import dspy
 from dspy.utils.exceptions import AdapterParseError, LMRateLimitError, is_retryable_lm_error
+from dspy.utils.usage_tracker import track_usage
 from pydantic import BaseModel, Field
 
 from llm_compare.analysis.prompt import INSTRUCTIONS
@@ -99,8 +100,7 @@ def _token_sum(per_model: dict, key: str) -> int:
     return sum(int(model.get(key) or 0) for model in per_model.values())
 
 
-def _usage_of(prediction, prices: Prices | None) -> Usage:
-    per_model = prediction.get_lm_usage() or {}
+def _usage_of(per_model: dict, prices: Prices | None) -> Usage:
     prompt = _token_sum(per_model, "prompt_tokens")
     completion = _token_sum(per_model, "completion_tokens")
     total = _token_sum(per_model, "total_tokens")
@@ -130,6 +130,9 @@ class DspyPairJudge:
             litellm_model(config.model),
             api_key=config.api_key,
             temperature=0.0,
+            # Caps output (thinking included): a looping answer is the one that fails to
+            # parse and is re-queued, so an uncapped one would be billed again and again.
+            max_tokens=config.max_output_tokens,
             num_retries=0,
             cache=False,
         )
@@ -139,19 +142,23 @@ class DspyPairJudge:
 
     async def judge(self, pairs: Sequence[PreparedPair]) -> JudgeResult:
         images = [_to_image(side.png) for pair in pairs for side in (pair.pdf, pair.web)]
-        try:
-            with dspy.context(adapter=self._adapter, track_usage=True):
-                prediction = await self._predictor.acall(
-                    manifest=build_manifest(len(pairs)), images=images, lm=self._lm
-                )
-        except _PARSE_ERRORS:
-            return JudgeResult([], Usage())
-        except Exception as error:
-            raise map_litellm_error(error) from error
-        return self._result(prediction)
+        # Our own tracker: dspy books the LM's usage on it before the adapter parses the
+        # answer, so a call whose answer fails to parse still reports what it cost.
+        with track_usage() as tracker:
+            try:
+                with dspy.context(adapter=self._adapter, track_usage=True):
+                    prediction = await self._predictor.acall(
+                        manifest=build_manifest(len(pairs)), images=images, lm=self._lm
+                    )
+            except _PARSE_ERRORS:
+                prediction = None
+            except Exception as error:
+                raise map_litellm_error(error) from error
+        return self._result(prediction, _usage_of(tracker.get_total_tokens(), self._prices))
 
-    def _result(self, prediction) -> JudgeResult:
-        usage = _usage_of(prediction, self._prices)
+    def _result(self, prediction, usage: Usage) -> JudgeResult:
+        if prediction is None:
+            return JudgeResult([], usage)
         try:
             return JudgeResult(_verdicts_of(prediction), usage)
         except _PARSE_ERRORS:

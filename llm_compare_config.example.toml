@@ -4,6 +4,9 @@ hash_match_percent = 90      # a phash score at or above this is a match and is 
 max_edge = 1024              # longest side, px, images are scaled down to (set from --calibrate)
 max_pairs_per_call = 6       # image pairs per LLM call
 max_input_tokens = 60000     # input budget per call
+max_output_tokens = 8192     # output cap per call, thinking included; must cover
+                             # output_tokens_per_pair x max_pairs_per_call plus thinking
+                             # headroom - too low truncates answers (they fail to parse)
 rpm = 30                     # provider requests per minute
 tpm = 250000                 # provider tokens per minute
 workers = 4                  # concurrent calls

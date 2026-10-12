@@ -4,7 +4,9 @@ from dataclasses import replace
 
 import dspy
 import pytest
+from dspy import lm15
 from dspy.utils.exceptions import (
+    AdapterParseError,
     LMAuthError,
     LMBillingError,
     LMInvalidRequestError,
@@ -31,22 +33,30 @@ from llm_compare.domain.models import Prices, Verdict
 from tests.llm_compare_support import prepared_pair
 
 
-class FakePrediction:
-    def __init__(self, verdicts, usage):
-        self.verdicts = verdicts
-        self._usage = usage
+CALL_USAGE = {"prompt_tokens": 1000, "completion_tokens": 20, "total_tokens": 1100}
 
-    def get_lm_usage(self):
-        return self._usage
+
+class FakePrediction:
+    def __init__(self, verdicts, usage=None):
+        self.verdicts = verdicts
+        self.usage = usage  # what the LM call behind this prediction billed
 
 
 class FakePredictor:
-    def __init__(self, outcome):
+    """Stands in for dspy.Predict. Like dspy's own LM it books the call's usage on the usage
+    tracker in force before anything parses the answer, then returns the prediction or raises
+    the error (a parse failure after a billed call)."""
+
+    def __init__(self, outcome, usage=None):
         self.outcome = outcome
+        self.usage = usage if usage is not None else getattr(outcome, "usage", None)
         self.calls = []
 
     async def acall(self, **kwargs):
         self.calls.append(kwargs)
+        tracker = dspy.settings.usage_tracker
+        if self.usage and tracker is not None:
+            tracker.add_usage("gemini/gemini-x", dict(self.usage))
         if isinstance(self.outcome, Exception):
             raise self.outcome
         return self.outcome
@@ -55,9 +65,9 @@ class FakePredictor:
 PRICES = Prices(1.0, 2.0)
 
 
-def _judge(outcome, prices=PRICES):
+def _judge(outcome, prices=PRICES, usage=None):
     config = LlmCompareConfig(api_key="k", model="gemini-x")
-    predictor = FakePredictor(outcome)
+    predictor = FakePredictor(outcome, usage)
     return DspyPairJudge(config, prices, predictor=predictor, lm=object()), predictor
 
 
@@ -85,7 +95,7 @@ def test_a_batch_becomes_one_call_with_images_in_pdf_then_web_order():
             PairVerdictModel(pair_id=1, verdict="IDENTICAL", differences=[]),
             PairVerdictModel(pair_id=2, verdict="DIFFERENT", differences=["label X missing"]),
         ],
-        {"gemini/gemini-x": {"prompt_tokens": 1000, "completion_tokens": 20, "total_tokens": 1100}},
+        CALL_USAGE,
     )
     judge, predictor = _judge(prediction)
     result = _run(judge)
@@ -101,14 +111,14 @@ def test_a_batch_becomes_one_call_with_images_in_pdf_then_web_order():
 
 
 def test_verdicts_given_as_plain_dicts_are_accepted():
-    prediction = FakePrediction([{"pair_id": 1, "verdict": "IDENTICAL", "differences": []}], {})
+    prediction = FakePrediction([{"pair_id": 1, "verdict": "IDENTICAL", "differences": []}])
     result = _run(_judge(prediction)[0], count=1)
     assert result.verdicts[0].verdict is Verdict.IDENTICAL
-    assert result.usage.input_tokens == 0
+    assert result.usage.input_tokens == 0  # nothing was booked
 
 
 def test_unknown_price_leaves_cost_unknown():
-    prediction = FakePrediction([], {"m": {"prompt_tokens": 5, "total_tokens": 9}})
+    prediction = FakePrediction([], {"prompt_tokens": 5, "total_tokens": 9})
     result = _run(_judge(prediction, prices=None)[0])
     assert result.usage.cost is None and result.usage.output_tokens == 4
 
@@ -121,15 +131,127 @@ def test_unknown_price_leaves_cost_unknown():
         {"pair_id": "one", "verdict": "IDENTICAL", "differences": []},  # non-integer id
     ],
 )
-def test_a_malformed_verdict_counts_as_no_usable_answer_not_a_crash(bad):
-    prediction = FakePrediction([bad], {})
+def test_a_malformed_verdict_counts_as_no_usable_answer_but_its_spend_is_kept(bad):
+    prediction = FakePrediction([bad], CALL_USAGE)
     result = _run(_judge(prediction)[0])
-    assert result.verdicts == [] and result.usage.input_tokens == 0
+    assert result.verdicts == []
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (1000, 100)
 
 
-def test_a_parse_failure_inside_the_call_also_returns_no_verdicts():
-    judge, _ = _judge(ValueError("could not parse"))
-    assert _run(judge).verdicts == []
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ValueError("could not parse"),
+        AdapterParseError("ChatAdapter", build_signature(INSTRUCTIONS), "they look the same"),
+    ],
+)
+def test_a_parse_failure_inside_the_call_returns_no_verdicts_but_the_usage_it_spent(failure):
+    judge, _ = _judge(failure, usage=CALL_USAGE)
+    result = _run(judge)
+    assert result.verdicts == []
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (1000, 100)
+    assert result.usage.cost == pytest.approx((1000 * 1.0 + 100 * 2.0) / 1e6)
+
+
+def test_the_real_lm_caps_output_at_max_output_tokens():
+    config = LlmCompareConfig(api_key="k", model="gemini-x", max_output_tokens=4096)
+    assert DspyPairJudge(config, PRICES)._lm.kwargs["max_tokens"] == 4096
+
+
+# ---- the real DSPy pipeline, offline ----------------------------------------------------
+# dspy.LM accepts a custom engine (complete(Request) -> Response); this one returns a canned
+# completion with usage, or raises a dspy.lm15 error, so the real Predict + ChatAdapter +
+# usage tracking + error wrapping all run without a network call.
+
+
+class CannedEngine:
+    def __init__(self, text="", error=None):
+        self.text, self.error, self.requests = text, error, []
+
+    async def complete(self, request):
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        return lm15.Response(
+            id=None,
+            model="gemini-x",
+            message=lm15.Message.assistant([lm15.TextPart(self.text)]),
+            finish_reason="stop",
+            usage=lm15.Usage(input_tokens=1000, output_tokens=50, total_tokens=1200),
+        )
+
+    def stream(self, request):
+        raise NotImplementedError
+
+    async def aclose(self):
+        return None
+
+
+class NoSyncEngine:
+    def complete(self, request):
+        raise NotImplementedError
+
+    def stream(self, request):
+        raise NotImplementedError
+
+    def close(self):
+        return None
+
+
+def _real_pipeline(engine):
+    lm = dspy.LM(
+        "gemini/gemini-x",
+        engine=NoSyncEngine(),
+        async_engine=engine,
+        temperature=0.0,
+        max_tokens=8192,
+        num_retries=0,
+        cache=False,
+    )
+    config = LlmCompareConfig(api_key="k", model="gemini-x")
+    return DspyPairJudge(config, PRICES, lm=lm)
+
+
+GOOD_ANSWER = (
+    "[[ ## verdicts ## ]]\n"
+    '[{"pair_id": 1, "verdict": "IDENTICAL", "differences": []}, '
+    '{"pair_id": 2, "verdict": "DIFFERENT", "differences": ["label X missing"]}]\n\n'
+    "[[ ## completed ## ]]"
+)
+
+
+def test_the_real_pipeline_parses_a_canonical_answer_and_reports_its_usage():
+    engine = CannedEngine(GOOD_ANSWER)
+    result = _run(_real_pipeline(engine))
+    assert [(v.pair_id, v.verdict, v.differences) for v in result.verdicts] == [
+        (1, Verdict.IDENTICAL, ()),
+        (2, Verdict.DIFFERENT, ("label X missing",)),
+    ]
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (1000, 200)
+    (request,) = engine.requests
+    images = [part for message in request.messages for part in message.parts]
+    assert sum(type(part).__name__ == "ImagePart" for part in images) == 4
+    assert request.config.max_tokens == 8192
+
+
+def test_the_real_pipeline_keeps_the_usage_of_an_unparsable_answer():
+    result = _run(_real_pipeline(CannedEngine("I think they look the same")))
+    assert result.verdicts == []
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (1000, 200)
+    assert result.usage.cost == pytest.approx((1000 * 1.0 + 200 * 2.0) / 1e6)
+
+
+def test_the_real_pipeline_surfaces_a_provider_429_as_rate_limited():
+    error = lm15.RateLimitError("slow down", status=429, retry_after=7.0)
+    with pytest.raises(RateLimited) as raised:
+        _run(_real_pipeline(CannedEngine(error=error)))
+    assert raised.value.retry_after == 7.0
+
+
+def test_the_real_pipeline_surfaces_a_provider_503_as_transient():
+    error = lm15.ServerError("unavailable", status=503)
+    with pytest.raises(Transient):
+        _run(_real_pipeline(CannedEngine(error=error)))
 
 
 def _http(name, status=None, headers=None):
