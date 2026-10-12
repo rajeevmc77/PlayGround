@@ -185,3 +185,13 @@ def test_a_limit_of_zero_judges_nothing_and_skips_the_pairs_for_the_llm(tmp_path
     row = _report_rows(source)[0]
     assert judge.calls == 0 and row["verdict"] == "SKIPPED"
     assert "not judged: --limit reached" in row["message"]
+
+
+def test_calibrate_prints_a_recommendation_and_saves_the_variants(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    assert main(_args(source, "--calibrate", "1"), env=ENV, judge=AllIdentical()) == 0
+    assert "recommended max_edge" in capsys.readouterr().out
+    saved = json.loads((source / "llm_compare" / "calibration.json").read_text())
+    assert saved[0]["variant"].startswith("original size")
+    assert not (source / "llm_image_report.html").exists()

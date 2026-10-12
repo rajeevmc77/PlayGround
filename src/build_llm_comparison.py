@@ -22,12 +22,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from llm_compare.analysis.calibration import (  # noqa: E402
+    VariantResult,
+    default_variants,
+    format_calibration,
+    run_variants,
+    sample_evenly,
+)
 from llm_compare.analysis.estimate import format_plan, plan_run  # noqa: E402
 from llm_compare.analysis.hash_score import score_pair  # noqa: E402
 from llm_compare.analysis.limiter import RateLimiter  # noqa: E402
 from llm_compare.analysis.pricing import resolve_prices  # noqa: E402
 from llm_compare.analysis.prompt import PROMPT_VERSION  # noqa: E402
-from llm_compare.analysis.runner import JudgeDeps, RunOutcome, run_comparison  # noqa: E402
+from llm_compare.analysis.runner import (  # noqa: E402
+    JudgeDeps,
+    RunOutcome,
+    classify_pairs,
+    run_comparison,
+)
 from llm_compare.config import (  # noqa: E402
     ConfigError,
     LlmCompareConfig,
@@ -69,6 +81,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--limit", type=_non_negative_int, default=None, help="judge only the first N pairs"
+    )
+    parser.add_argument(
+        "--calibrate",
+        type=int,
+        default=None,
+        metavar="N",
+        help="judge N sample pairs under several settings and recommend max_edge",
     )
     return parser
 
@@ -159,6 +178,40 @@ def _judged_run(args, config, pairs, cache, judge, now) -> int:
     return 130 if interrupted else 0
 
 
+def _save_calibration(results: list[VariantResult], output_dir: Path) -> None:
+    saved = [
+        {
+            "variant": result.variant.name,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "cost": result.cost,
+            "verdicts": {key: verdict.value for key, verdict in result.verdicts.items()},
+        }
+        for result in results
+    ]
+    (output_dir / "llm_compare").mkdir(parents=True, exist_ok=True)
+    (output_dir / "llm_compare" / "calibration.json").write_text(json.dumps(saved, indent=2))
+
+
+def _calibrate(count: int, args, config, pairs, judge) -> int:
+    routed = classify_pairs(
+        pairs, _loader(args.source_dir), config.hash_match_percent, score_pair
+    ).to_llm
+    shared_judge = judge or _real_judge(config)
+    limiter = RateLimiter(config.rpm, config.tpm)
+
+    def make_deps(settings):
+        # A memory-only cache per variant, so each really calls the model and the real
+        # cache.json is never written.
+        return JudgeDeps(shared_judge, limiter, VerdictCache(), settings, PROMPT_VERSION)
+
+    variants = default_variants(config.max_edge, config.max_pairs_per_call)
+    results = asyncio.run(run_variants(sample_evenly(routed, count), variants, config, make_deps))
+    print(format_calibration(results))
+    _save_calibration(results, args.output_dir or args.source_dir)
+    return 0
+
+
 def main(argv=None, env: Mapping[str, str] = os.environ, judge=None, now: str | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -176,6 +229,8 @@ def main(argv=None, env: Mapping[str, str] = os.environ, judge=None, now: str | 
     if problem:
         print(f"error: {problem}", file=sys.stderr)
         return 2
+    if args.calibrate:
+        return _calibrate(args.calibrate, args, config, pairs, judge)
     return _judged_run(args, config, pairs, cache, judge, now)
 
 
