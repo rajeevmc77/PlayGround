@@ -114,14 +114,16 @@ class DspyPairJudge:
             cache=False,
         )
         self._predictor = predictor or dspy.Predict(build_signature(instructions))
-        dspy.configure(track_usage=True)
+        # No silent second (JSON) attempt: every billed call must go through our limiter.
+        self._adapter = dspy.ChatAdapter(use_json_adapter_fallback=False)
 
     async def judge(self, pairs: Sequence[PreparedPair]) -> JudgeResult:
         images = [_to_image(side.png) for pair in pairs for side in (pair.pdf, pair.web)]
         try:
-            prediction = await self._predictor.acall(
-                manifest=build_manifest(len(pairs)), images=images, lm=self._lm
-            )
+            with dspy.context(adapter=self._adapter, track_usage=True):
+                prediction = await self._predictor.acall(
+                    manifest=build_manifest(len(pairs)), images=images, lm=self._lm
+                )
         except _PARSE_ERRORS:
             return JudgeResult([], Usage())
         except Exception as error:

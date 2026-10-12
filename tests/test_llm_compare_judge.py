@@ -1,5 +1,8 @@
 import asyncio
+import base64
+from dataclasses import replace
 
+import dspy
 import pytest
 
 from llm_compare.analysis.judge import (
@@ -139,3 +142,53 @@ def test_errors_from_the_call_are_mapped_to_judge_errors():
     judge, _ = _judge(_http("RateLimitError", 429))
     with pytest.raises(RateLimited):
         _run(judge)
+
+
+def _tagged_pair(n):
+    base = prepared_pair(f"K{n}", pdf=f"images/{n}.png")
+    pdf = replace(base.pdf, png=f"pdf{n}".encode())
+    web = replace(base.web, png=f"web{n}".encode())
+    return replace(base, pdf=pdf, web=web)
+
+
+def test_the_call_gets_the_injected_lm_and_images_pdf_then_web_per_pair():
+    lm = object()
+    config = LlmCompareConfig(api_key="k", model="gemini-x")
+    predictor = FakePredictor(FakePrediction([], {}))
+    judge = DspyPairJudge(config, PRICES, predictor=predictor, lm=lm)
+    asyncio.run(judge.judge([_tagged_pair(0), _tagged_pair(1)]))
+    (call,) = predictor.calls
+    assert call["lm"] is lm
+    assert all(isinstance(image, dspy.Image) for image in call["images"])
+    prefix = "data:image/png;base64,"
+    decoded = []
+    for image in call["images"]:
+        assert image.url.startswith(prefix)
+        decoded.append(base64.b64decode(image.url[len(prefix) :]))
+    assert decoded == [b"pdf0", b"web0", b"pdf1", b"web1"]
+
+
+def test_constructing_a_judge_leaves_the_global_usage_tracking_setting_alone():
+    before = dspy.settings.track_usage
+    _judge(FakePrediction([], {}))
+    assert dspy.settings.track_usage == before
+
+
+class SettingsProbe(FakePredictor):
+    """Records the dspy settings in force while the call runs."""
+
+    async def acall(self, **kwargs):
+        self.seen = (dspy.settings.adapter, dspy.settings.track_usage)
+        return await super().acall(**kwargs)
+
+
+def test_the_call_runs_without_the_json_retry_and_with_usage_tracking_scoped_to_it():
+    before = dspy.settings.track_usage
+    config = LlmCompareConfig(api_key="k", model="gemini-x")
+    predictor = SettingsProbe(FakePrediction([], {}))
+    judge = DspyPairJudge(config, PRICES, predictor=predictor, lm=object())
+    _run(judge)
+    adapter, tracking = predictor.seen
+    assert isinstance(adapter, dspy.ChatAdapter) and adapter.use_json_adapter_fallback is False
+    assert tracking is True
+    assert dspy.settings.track_usage == before
