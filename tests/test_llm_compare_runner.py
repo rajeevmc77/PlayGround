@@ -1,6 +1,8 @@
 import asyncio
 import json
 import signal
+import time
+from dataclasses import replace
 
 import pytest
 from PIL import Image
@@ -17,7 +19,14 @@ from llm_compare.analysis.runner import (
 from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.errors import Permanent, Transient
 from llm_compare.domain.judge import JudgeResult
-from llm_compare.domain.models import ImagePair, PairVerdict, Usage, Verdict
+from llm_compare.domain.models import (
+    ImagePair,
+    PairVerdict,
+    PdfLocation,
+    Usage,
+    Verdict,
+    WebLocation,
+)
 from llm_compare.output.cache import VerdictCache, pair_cache_key
 from tests.llm_compare_support import image_pair, png_bytes, prepared_pair
 
@@ -392,3 +401,273 @@ def test_prepare_pairs_estimates_tokens_from_the_prepared_sizes():
     scored = [ScoredPair(_pair("a"), PNG, PNG, 10.0)]
     (prepared,) = prepare_pairs(scored, max_edge=1024, token_scale=1.0)
     assert prepared.tokens == 516 and (prepared.pdf.width, prepared.pdf.height) == (40, 30)
+
+
+# ---- timing -----------------------------------------------------------------------------
+
+
+class FakeClock:
+    """A clock that only moves when a test advances it (the judge, a scorer, a fake sleep)."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class TickingClock:
+    """Moves one second every time it is read, so a phase that reads it twice lasts 1 s."""
+
+    def __init__(self):
+        self.now = -1.0
+
+    def __call__(self):
+        self.now += 1.0
+        return self.now
+
+
+class TimedJudge(ScriptedJudge):
+    """Each call takes the next figure of `seconds` on the fake clock (the last one repeats);
+    a call that then fails still used its time."""
+
+    def __init__(self, clock, seconds=(5.0,), **kwargs):
+        super().__init__(**kwargs)
+        self.clock, self.seconds = clock, list(seconds)
+
+    async def judge(self, pairs):
+        self.clock.advance(self.seconds[min(len(self.batches), len(self.seconds) - 1)])
+        return await super().judge(pairs)
+
+
+def _timed(judge, clock, limiter=None, cache=None, **overrides):
+    deps = _deps(judge, cache, **overrides)
+    return replace(deps, clock=clock, limiter=limiter or deps.limiter)
+
+
+def test_each_completed_call_records_its_duration():
+    clock = FakeClock()
+    # one worker: calls running side by side would all see each other's fake-clock time
+    deps = _timed(TimedJudge(clock, seconds=(2.0, 4.0, 6.0)), clock, workers=1)
+    asyncio.run(judge_pairs(_prepared(*"ABCDEFG"), deps))
+    assert deps.stats.calls == 3 and sorted(deps.stats.call_seconds) == [2.0, 4.0, 6.0]
+
+
+def test_the_default_clock_is_the_monotonic_clock():
+    assert _deps(ScriptedJudge()).clock is time.monotonic
+
+
+def test_a_calls_duration_excludes_the_time_spent_waiting_for_the_rate_limiter():
+    clock = FakeClock()
+
+    async def waiting(seconds):
+        clock.advance(seconds)
+
+    limiter = RateLimiter(1, 10**9, clock=clock, sleep=waiting)
+    deps = _timed(TimedJudge(clock), clock, limiter, max_pairs_per_call=1, workers=1)
+    asyncio.run(judge_pairs(_prepared("A", "B"), deps))
+    assert deps.stats.call_seconds == [5.0, 5.0]
+    assert clock.now == 5.0 + 55.0 + 5.0  # the 55 s wait is on the clock but not in a call
+
+
+def test_a_failed_attempt_is_not_timed_but_the_retry_that_succeeds_is():
+    clock = FakeClock()
+    deps = _timed(TimedJudge(clock, fail_times=1), clock)
+    asyncio.run(judge_pairs(_prepared("A"), deps))
+    assert deps.stats.calls == 2 and deps.stats.call_seconds == [5.0]
+
+
+def test_a_call_that_fails_for_good_records_no_duration_and_its_rows_none():
+    clock = FakeClock()
+    deps = _timed(TimedJudge(clock, error=Permanent("bad")), clock)
+    records = asyncio.run(judge_pairs(_prepared("A"), deps))
+    assert deps.stats.call_seconds == []
+    assert records["pdf:images/A.png"].call_seconds is None
+
+
+def test_pairs_answered_by_one_call_share_its_duration_and_a_single_retry_has_its_own():
+    clock = FakeClock()
+    deps = _timed(TimedJudge(clock, seconds=(4.0, 9.0), drop_in_batches={"B"}), clock)
+    records = asyncio.run(judge_pairs(_prepared("A", "B", "C"), deps))
+    seconds = {r.key: r.call_seconds for r in records.values()}
+    assert seconds == {"A": 4.0, "B": 9.0, "C": 4.0}
+    assert deps.stats.call_seconds == [4.0, 9.0]
+
+
+def test_calls_that_answered_nothing_usable_are_timed_but_their_error_rows_are_not():
+    clock = FakeClock()
+    deps = _timed(TimedJudge(clock, seconds=(4.0, 1.0), drop_always={"B"}), clock)
+    records = asyncio.run(judge_pairs(_prepared("A", "B"), deps))
+    assert deps.stats.call_seconds == [4.0, 1.0, 1.0]
+    assert records["pdf:images/B.png"].verdict is Verdict.ERROR
+    assert records["pdf:images/B.png"].call_seconds is None
+
+
+def test_cached_rows_carry_no_duration_and_a_cached_run_times_no_calls():
+    cache, clock = VerdictCache(), FakeClock()
+    asyncio.run(judge_pairs(_prepared("A"), _timed(TimedJudge(clock), clock, cache=cache)))
+    again = _timed(TimedJudge(clock), clock, cache=cache)
+    records = asyncio.run(judge_pairs(_prepared("A"), again))
+    assert records["pdf:images/A.png"].cached and records["pdf:images/A.png"].call_seconds is None
+    assert again.stats.call_seconds == []
+
+
+def _scored_files(keys):
+    return _files(*[f"{d}/{k}.png" for k in keys for d in ("images", "web_images")])
+
+
+class SlowScorer:
+    """Scores every pair 10 (so the LLM judges it) and takes 3 s of the fake clock to do so."""
+
+    def __init__(self, clock):
+        self.clock = clock
+
+    def __call__(self, pair, pdf, web):
+        self.clock.advance(3.0)
+        return 10.0
+
+
+def test_a_run_times_scoring_and_judging_apart():
+    clock = FakeClock()
+    keys = ["a", "b"]
+    outcome = run_comparison(
+        [_pair(k) for k in keys],
+        _loader(_scored_files(keys)),
+        _timed(TimedJudge(clock, seconds=(5.0,)), clock),
+        scorer=SlowScorer(clock),
+    )
+    assert outcome.scoring_seconds == 6.0 and outcome.judging_seconds == 5.0
+    assert outcome.call_seconds == (5.0,) and outcome.calls == 1
+    assert [r.call_seconds for r in outcome.records] == [5.0, 5.0]
+
+
+def test_a_run_settled_by_the_hash_has_scoring_time_but_no_judging_or_calls():
+    clock = FakeClock()
+
+    def scorer(pair, pdf, web):
+        clock.advance(2.0)
+        return 100.0
+
+    outcome = run_comparison(
+        [_pair("a")], _loader(_scored_files(["a"])), _timed(ScriptedJudge(), clock), scorer=scorer
+    )
+    assert (outcome.scoring_seconds, outcome.judging_seconds) == (2.0, 0.0)
+    assert outcome.call_seconds == ()
+
+
+def test_a_run_answered_entirely_from_the_cache_still_measures_its_judging_phase():
+    cache, clock = VerdictCache(), FakeClock()
+    args = ([_pair("a")], _loader(_scored_files(["a"])))
+    run_comparison(*args, _timed(TimedJudge(clock), clock, cache=cache), scorer=_scores(a=10.0))
+    outcome = run_comparison(
+        *args, _timed(ScriptedJudge(), TickingClock(), cache=cache), scorer=_scores(a=10.0)
+    )
+    assert outcome.calls == 0 and outcome.call_seconds == ()
+    assert (outcome.scoring_seconds, outcome.judging_seconds) == (1.0, 1.0)
+    assert outcome.records[0].cached
+
+
+class TimedInterrupt(InterruptAfterFirst):
+    """The first call takes 5 s and is answered; the second runs 7 s, then Ctrl-C."""
+
+    def __init__(self, clock):
+        super().__init__()
+        self.clock = clock
+
+    async def judge(self, pairs):
+        self.clock.advance(7.0 if self.batches else 5.0)
+        return await super().judge(pairs)
+
+
+def test_an_interrupted_run_still_reports_its_timing_up_to_the_interrupt():
+    clock, keys = FakeClock(), ["a", "b", "c"]
+    files = {
+        f"{d}/{k}.png": png_bytes(box=(5 + n, 5, 40, 30))
+        for n, k in enumerate(keys)
+        for d in ("images", "web_images")
+    }
+    deps = _timed(TimedInterrupt(clock), clock, max_pairs_per_call=1, workers=1)
+    outcome = run_comparison(
+        [_pair(k) for k in keys], _loader(files), deps, scorer=_scores(a=1.0, b=1.0, c=1.0)
+    )
+    assert outcome.interrupted and outcome.judging_seconds == 12.0
+    assert outcome.call_seconds == (5.0,) and outcome.records[0].call_seconds == 5.0
+
+
+# ---- locations --------------------------------------------------------------------------
+
+PDF_AT = PdfLocation(3, 10.0, 20.0, 110.0, 70.0)
+WEB_AT = WebLocation("web_pages/p.html", "/html/body/main/img[1]", 1, 2, 3, 4, "nbc.a.fig1")
+
+
+def _located(key, **extra):
+    return replace(_pair(key), pdf_location=PDF_AT, web_location=WEB_AT, **extra)
+
+
+def _both_locations(record):
+    return (record.pdf_location, record.web_location) == (PDF_AT, WEB_AT)
+
+
+def test_every_kind_of_record_a_run_produces_carries_both_locations():
+    keys = ["hi", "lo", "extra", "gone"]
+    web_only = replace(_located("w"), row_id="web:w", pdf_path=None)
+    skipped = _located("s", skip_reason="no web counterpart")
+    pairs = [_located(k) for k in keys] + [web_only, skipped]
+    outcome = run_comparison(
+        pairs,
+        _loader(_scored_files(["hi", "lo", "extra"])),
+        _timed(ScriptedJudge(), FakeClock()),
+        limit=1,
+        scorer=_scores(hi=99.0, lo=10.0, extra=10.0),
+    )
+    verdicts = {r.key: r.verdict for r in outcome.records}
+    assert verdicts == {
+        "hi": Verdict.MATCH_PHASH,
+        "lo": Verdict.IDENTICAL,
+        "extra": Verdict.SKIPPED,  # past --limit
+        "gone": Verdict.SKIPPED,  # image file missing
+        "w": Verdict.WEB_ONLY,
+        "s": Verdict.SKIPPED,
+    }
+    assert all(_both_locations(r) for r in outcome.records)
+
+
+def _prepared_located(key):
+    prepared = prepared_pair(key, tokens=100, pdf=f"images/{key}.png")
+    return replace(prepared, pair=replace(prepared.pair, pdf_location=PDF_AT, web_location=WEB_AT))
+
+
+def test_cached_error_and_interrupted_records_carry_both_locations():
+    cache = VerdictCache()
+    asyncio.run(judge_pairs([_prepared_located("A")], _deps(ScriptedJudge(), cache)))
+    cached = asyncio.run(judge_pairs([_prepared_located("A")], _deps(ScriptedJudge(), cache)))
+    failed = asyncio.run(
+        judge_pairs([_prepared_located("B")], _deps(ScriptedJudge(error=Permanent("x"))))
+    )
+    assert cached["pdf:images/A.png"].cached and _both_locations(cached["pdf:images/A.png"])
+    assert failed["pdf:images/B.png"].verdict is Verdict.ERROR
+    assert _both_locations(failed["pdf:images/B.png"])
+
+
+def test_a_pair_never_answered_keeps_its_locations_on_its_error_row():
+    judge = ScriptedJudge(drop_always={"B"})
+    records = asyncio.run(judge_pairs([_prepared_located("B")], _deps(judge)))
+    assert "no usable verdict" in records["pdf:images/B.png"].message
+    assert _both_locations(records["pdf:images/B.png"])
+
+
+def test_an_interrupted_pair_keeps_its_locations_on_its_error_row():
+    clock, keys = FakeClock(), ["a", "b"]
+    files = {
+        f"{d}/{k}.png": png_bytes(box=(5 + n, 5, 40, 30))
+        for n, k in enumerate(keys)
+        for d in ("images", "web_images")
+    }
+    deps = _timed(TimedInterrupt(clock), clock, max_pairs_per_call=1, workers=1)
+    outcome = run_comparison(
+        [_located(k) for k in keys], _loader(files), deps, scorer=_scores(a=1.0, b=1.0)
+    )
+    assert outcome.records[1].message == INTERRUPTED and _both_locations(outcome.records[1])

@@ -301,10 +301,14 @@ template to the git-ignored `llm_compare_config.toml`:
 cp llm_compare_config.example.toml llm_compare_config.toml
 ```
 
-`max_output_tokens` (default 8192) caps each call's output, thinking tokens included, which
-Gemini-3-class models bill as output. `output_tokens_per_pair` (default 800) is the estimate
-`--dry-run` and the token-per-minute reservation use; it is set from a measurement:
-gemini-3.8-flash used 450-1,640 output tokens for a single pair and 3,374-5,967 for five. The
+`reasoning_effort` (default `"low"`) sets how much the model thinks; `""` sends nothing and
+restores the model's own default thinking. It is a file setting only (not an environment
+variable). `max_output_tokens` (default 8192) caps each call's output, thinking tokens included,
+which Gemini-3-class models bill as output. `output_tokens_per_pair` (default 300) is the
+estimate `--dry-run` and the token-per-minute reservation use; it is set from a measurement:
+with `"low"` gemini-3.8-flash used 35-567 output tokens for a single pair (mean about 200); with
+`reasoning_effort = ""` it used 450-1,640 for a single pair and 3,374-5,967 for five, so set
+`output_tokens_per_pair = 800` if you restore default thinking. The
 cap must cover `output_tokens_per_pair` x `max_pairs_per_call` plus room for the model's
 thinking: too low truncates the answer, which then fails to parse and its pairs are re-asked
 one at a time. Without a cap a looping answer would be billed in full on every re-ask; the
@@ -312,17 +316,27 @@ tokens of an answer that fails to parse are still counted in the report.
 
 ### Run
 
+In this order (calibrating is optional, and the report only comes from a normal run):
+
 ```bash
-python src/build_llm_comparison.py --dry-run       # counts + estimated tokens/cost, no API call
-python src/build_llm_comparison.py --limit 10      # try 10 pairs first
-python src/build_llm_comparison.py --calibrate 24  # choose max_edge / batch size by evidence
-python src/build_llm_comparison.py                 # the full run (resumable, cached)
+python src/build_llm_comparison.py --dry-run       # 1. counts + estimated tokens/cost/time, no API call
+python src/build_llm_comparison.py --calibrate 24  # 2. optional: choose max_edge / batch size (no report)
+python src/build_llm_comparison.py --limit 10      # 3. try 10 pairs first (writes the report)
+python src/build_llm_comparison.py                 # 4. the full run (resumable, cached; writes the report)
+open output/llm_image_report.html                  # 5. look at it
 ```
 
 `--dry-run` makes no API call and no network request (it makes litellm use its bundled price
-map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). `--calibrate N` judges
+map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). Besides the counts and
+the estimated tokens and cost it prints a `rough time:` line: the number of calls divided by
+the workers, times a guessed 10 s per call (single-pair calls took 5-28 s with
+`reasoning_effort = ""`, the model's default thinking, and about 4-8 s with the `"low"` default).
+That is a guess, not a measurement; the real time is printed after a run. `--calibrate N` judges
 N sample pairs under several settings (this spends tokens) and prints the recommended
-`max_edge` - put it in `llm_compare_config.toml` yourself. It also prints, per setting, the
+`max_edge` - put it in `llm_compare_config.toml` yourself. It does not write the HTML report:
+it prints a table (with an `elapsed` column, how long each setting took, including any wait for
+the rate limiter) and ends with `saved: <absolute path>/llm_compare/calibration.json` and a note
+saying so. It also prints, per setting, the
 estimated vs actual input tokens with the implied `token_scale`, and suggests the `token_scale`
 to configure when the estimate is more than 15% off. When a setting judged fewer pairs than the
 sample, a `<setting>: first error: ...` line gives its first error message (the API key
@@ -346,11 +360,57 @@ in flight when you press Ctrl-C may still be billed by the provider; its usage c
 
 Written to `--output-dir` (default: the same directory as `--source-dir`, i.e. `output/`):
 
-- `llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens and cost,
-  and a header summary (this run's tokens and cost, and the cumulative tokens and cost of every
-  LLM verdict shown, cached ones included); filter by verdict or search.
-- `llm_image_compare.json` — the same data for programs.
-- `llm_compare/cache.json` — the verdict cache; `llm_compare/calibration.json` after `--calibrate`.
+- `output/llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens,
+  cost and call time, and a header summary (this run's tokens, cost and time, and the cumulative
+  tokens and cost of every LLM verdict shown, cached ones included); filter by verdict or search.
+  Only a normal run writes it, not `--dry-run` or `--calibrate`.
+- `output/llm_image_compare.json` — the same data for programs.
+- `output/llm_compare/cache.json` — the verdict cache.
+- `output/llm_compare/calibration.json` — written by `--calibrate` only (variants, tokens,
+  verdicts and `elapsed_seconds`).
+
+#### Timing and the report
+
+Every normal run ends with a line like
+`time: total 4m 12s (scoring 38 s, judging 3m 34s), 41 calls avg 9.8 s slowest 28.1 s, 62 pairs/min`
+(or `..., no LLM calls` when the hash and the cache settled everything). The same figures are
+in the report's header cards and in the JSON `summary`. What is measured, with a monotonic clock:
+
+- **scoring** - hashing and trimming every pair, before any call is made.
+- **judging (LLM)** - the whole LLM phase, wall clock, including rate-limiter waits and retry
+  backoff; a run answered wholly from the cache still has a (tiny) judging time. `pairs/min` is
+  the pairs judged live in this run over that time.
+- **call** - the model's response time for one call only (the limiter's waits and the backoff
+  sleeps are excluded; a call that failed is not timed). A batch's pairs share their call's
+  time, shown beside the batch number in the report's Tokens / cost cell and as `call_seconds`
+  in the JSON row; a pair re-asked alone shows that retry's time. Cached rows have no call time.
+  Calls run concurrently, so the calls' times add up to more than the judging time.
+
+The report's **LLM calls (attempts)** card counts every attempt, failed ones included, while
+**avg call** / **slowest call** and the terminal line's `N calls` count completed calls only, so
+the two can differ when calls failed and were retried.
+
+#### Links in the report
+
+Under each image the report links to where it sits (the same data is in each JSON row as
+`pdf_location`, `web_location`, `pdf_href`, `web_href`, `web_anchor`, `web_anchor_exact`):
+
+- **PDF** - `PDF p. 40 ↗` opens the PDF at that page (browsers honour `#page=N`) and the box is
+  printed as text (`box x 91-481 · y 72-252 pt`), because a URL cannot pin a spot inside a
+  page. `--pdf PATH` says which file to link (default `data/MO Package BCBC MRK signed.pdf`,
+  linked relative to the report); when it is missing the run says
+  `PDF not found at ...: PDF links are omitted` and the rows keep their page and box text.
+- **Saved web page** - `saved page ↗` opens the saved page under `--source-dir` at the image's
+  element when the page has an element with the image's id (`exact element`), else at the nearest
+  enclosing element whose id is a dotted prefix of it (`nearest enclosing: table1.row2`, the
+  enclosing table, row or article); only if none exists does it open the page itself. Hover the
+  link for the xpath and the box in CSS px. On the real data all 594 web images resolve: 222
+  exactly and 372 to an enclosing element (none page-only), measured offline over the 17 saved
+  pages that hold them. Rows with no location, or whose saved page file is missing, show text
+  only, never a dead link.
+
+Links are computed by normal runs only (one read per distinct saved page), not by `--dry-run`
+or `--calibrate`.
 
 From a git worktree (whose own `output/` and `.env` are empty), read the main checkout's
 inputs and key with `--source-dir` and `--env-file`, and write somewhere else:
@@ -372,6 +432,12 @@ from the output directory.
   whatever `max_edge` was), so scaling images down did not cut tokens: `max_edge` did not change
   token counts in the trial; it also bounds upload size. Output (thinking) tokens dominated the
   cost.
+- Thinking can be cut, not switched off, on gemini-3.8-flash: `reasoning_effort = "minimal"` and
+  `"off"` are rejected by the model ("Thinking level MINIMAL is not supported for this model"),
+  while `"low"` is accepted. On one pair, default thinking took 1,173 output tokens, 13.7 s and
+  $0.0065; `"low"` took 35 tokens, 6.2 s and $0.0023. On 6 pairs the tree check fails, default
+  and `"low"` gave 6 of 6 matching verdicts with equivalent findings, using 2,878 vs 1,257 output
+  tokens, 44 s vs 33 s and $0.0234 vs $0.0174. That is a small trial, not proof of equal quality.
 - Batching several pairs per call cut input by about 18% and output by about 40% in a 5-pair
   trial, but one verdict in five flipped (single-pair re-runs also flip occasionally). That is
   too few pairs to judge a larger `max_pairs_per_call`: calibrate with more before trusting it.

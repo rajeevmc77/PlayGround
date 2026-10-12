@@ -175,6 +175,28 @@ def test_the_default_request_timeout_is_120_seconds_for_the_read_wait():
     assert timeouts_for(judge._lm.kwargs["timeout"]).read == 120.0
 
 
+def test_the_real_lm_sends_the_default_reasoning_effort_low():
+    judge = DspyPairJudge(LlmCompareConfig(api_key="k", model="gemini-x"), PRICES)
+    assert judge._lm.kwargs["reasoning_effort"] == "low"
+
+
+@pytest.mark.parametrize("effort", ["minimal", "medium", "high", "off"])
+def test_the_real_lm_sends_the_configured_reasoning_effort(effort):
+    config = LlmCompareConfig(api_key="k", model="gemini-x", reasoning_effort=effort)
+    assert DspyPairJudge(config, PRICES)._lm.kwargs["reasoning_effort"] == effort
+
+
+def test_an_empty_reasoning_effort_sends_no_reasoning_effort_at_all():
+    config = LlmCompareConfig(api_key="k", model="gemini-x", reasoning_effort="")
+    assert "reasoning_effort" not in DspyPairJudge(config, PRICES)._lm.kwargs
+
+
+def test_the_reasoning_effort_leaves_the_other_request_settings_unchanged():
+    lm = DspyPairJudge(LlmCompareConfig(api_key="k", model="gemini-x"), PRICES)._lm
+    assert (lm.kwargs["temperature"], lm.kwargs["max_tokens"]) == (0.0, 8192)
+    assert (lm.num_retries, lm.cache) == (0, False)
+
+
 def test_a_request_that_times_out_is_transient_so_the_limiter_retries_it():
     assert isinstance(map_litellm_error(LMTimeoutError("timed out after 120 s")), Transient)
 

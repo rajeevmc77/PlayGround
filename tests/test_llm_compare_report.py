@@ -1,10 +1,18 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from llm_compare.domain.models import PairRecord, Usage, Verdict
-from llm_compare.output.report import build_report, render_html, summarise, write_report
+from llm_compare.domain.models import PairRecord, PdfLocation, Usage, Verdict, WebLocation
+from llm_compare.output.links import RowLinks
+from llm_compare.output.report import (
+    build_report,
+    format_time_line,
+    render_html,
+    summarise,
+    write_report,
+)
 
 
 def _rec(key, verdict, **extra):
@@ -269,3 +277,306 @@ def test_write_report_writes_utf8_explicitly(tmp_path, monkeypatch):
     assert encodings == ["utf-8", "utf-8"]
     assert "—" in html_path.read_bytes().decode("utf-8")
     assert json.loads(json_path.read_bytes().decode("utf-8"))["rows"]
+
+
+# ---- timing -----------------------------------------------------------------------------
+
+_TIMING = {"scoring_seconds": 4.0, "judging_seconds": 60.0, "call_seconds": (10.0, 20.0)}
+
+
+def _timed_summary(records=None, **timing):
+    shown = {**_TIMING, **timing}
+    return summarise(records or _records(), 2, Usage(), **shown)
+
+
+def test_the_summary_totals_the_time_and_describes_the_calls():
+    summary = _timed_summary()
+    assert (summary["scoring_seconds"], summary["judging_seconds"]) == (4.0, 60.0)
+    assert summary["total_seconds"] == 64.0 and summary["calls_timed"] == 2
+    assert summary["avg_call_seconds"] == 15.0 and summary["slowest_call_seconds"] == 20.0
+    # two live LLM verdicts (the cached one is not this run's work) in a minute of judging
+    assert summary["pairs_per_minute"] == 2.0
+
+
+def test_a_run_without_timing_figures_reports_zero_time_and_nothing_to_average():
+    summary = summarise(_records(), calls=2, wasted=Usage())
+    assert (summary["scoring_seconds"], summary["judging_seconds"], summary["total_seconds"]) == (
+        0.0,
+        0.0,
+        0.0,
+    )
+    assert summary["calls_timed"] == 0
+    assert summary["avg_call_seconds"] is None and summary["slowest_call_seconds"] is None
+    assert summary["pairs_per_minute"] is None
+
+
+def test_an_all_cached_run_has_judging_time_but_no_calls_and_no_rate():
+    records = [_cached("A.Fig2", 0.001), _cached("A.Fig3", 0.003)]
+    summary = summarise(records, 0, Usage(), scoring_seconds=38.0, judging_seconds=0.4)
+    assert summary["total_seconds"] == pytest.approx(38.4) and summary["calls_timed"] == 0
+    assert summary["avg_call_seconds"] is None and summary["slowest_call_seconds"] is None
+    assert summary["pairs_per_minute"] is None
+
+
+def test_a_zero_length_judging_phase_gives_no_rate_instead_of_dividing_by_zero():
+    summary = _timed_summary(judging_seconds=0.0)
+    assert summary["pairs_per_minute"] is None and summary["total_seconds"] == 4.0
+
+
+def test_a_run_that_judged_nothing_live_has_no_rate_even_with_judging_time():
+    records = [_rec("A.Fig1", Verdict.MATCH_PHASH), _cached("A.Fig2", 0.001)]
+    assert _timed_summary(records)["pairs_per_minute"] is None
+
+
+def _timed_html(records=None, **timing):
+    report = build_report(
+        records or _records(),
+        calls=2,
+        wasted=Usage(),
+        model="m",
+        prompt_version="v",
+        generated_at="t",
+        **{**_TIMING, **timing},
+    )
+    return render_html(report), report
+
+
+def test_the_header_has_cards_for_the_run_time_and_its_parts():
+    html, report = _timed_html(scoring_seconds=38.0, judging_seconds=214.0)
+    assert report["summary"]["total_seconds"] == 252.0
+    for card in (
+        "<b>4m 12s</b><span>run time</span>",
+        "<b>38 s</b><span>scoring</span>",
+        "<b>3m 34s</b><span>judging (LLM)</span>",
+        "<b>15 s</b><span>avg call (completed)</span>",
+        "<b>20 s</b><span>slowest call (completed)</span>",
+    ):
+        assert card in html
+
+
+def test_the_calls_card_says_it_counts_attempts_and_the_call_times_completed_calls():
+    html, _ = _timed_html()
+    assert (
+        "title='attempts, including failed ones'><b>2</b><span>LLM calls (attempts)</span>" in html
+    )
+    assert "title='completed calls only: failed attempts are not timed'><b>15 s</b>" in html
+
+
+def test_a_run_with_no_calls_shows_no_average_or_slowest_call():
+    html, _ = _timed_html(call_seconds=(), judging_seconds=0.0)
+    assert "<b>n/a</b><span>avg call (completed)</span>" in html
+    assert "<b>n/a</b><span>slowest call (completed)</span>" in html
+    assert "<b>0 s</b><span>judging (LLM)</span>" in html
+
+
+def test_the_json_carries_the_timing_summary_and_each_rows_call_time(tmp_path):
+    live = _rec(
+        "A.Fig2",
+        Verdict.IDENTICAL,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+        batch_id=1,
+        call_seconds=12.4,
+    )
+    _, report = _timed_html([live, _cached("A.Fig3", 0.0), _rec("A.Fig1", Verdict.MATCH_PHASH)])
+    json_path, _ = write_report(report, tmp_path)
+    saved = json.loads(json_path.read_text())
+    assert saved["summary"]["total_seconds"] == 64.0 and saved["summary"]["calls_timed"] == 2
+    assert [row["call_seconds"] for row in saved["rows"]] == [12.4, None, None]
+
+
+def test_a_judged_row_shows_how_long_its_call_took_next_to_its_batch():
+    live = _rec(
+        "A.Fig2",
+        Verdict.IDENTICAL,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+        batch_id=3,
+        call_seconds=12.4,
+    )
+    html, _ = _html([live])
+    assert "<div class='cap'>batch 3 · 12.4 s</div>" in html
+
+
+def test_a_row_without_a_call_time_shows_only_its_batch_or_cached_note():
+    untimed = _rec(
+        "A.Fig2", Verdict.IDENTICAL, input_tokens=1, output_tokens=1, cost=0.0, batch_id=3
+    )
+    html, _ = _html([untimed, _cached("A.Fig3", 0.001)])
+    assert "<div class='cap'>batch 3</div>" in html
+    assert "<div class='cap'>earlier run · cached</div>" in html
+    assert "· n/a" not in html and " s</div>" not in html
+
+
+# ---- the terminal's time line -----------------------------------------------------------
+
+_SUMMARY = {
+    "scoring_seconds": 38.0,
+    "judging_seconds": 214.0,
+    "total_seconds": 252.0,
+    "calls_timed": 41,
+    "avg_call_seconds": 9.8,
+    "slowest_call_seconds": 28.1,
+    "pairs_per_minute": 62.4,
+}
+
+
+def test_the_time_line_gives_the_total_its_parts_the_calls_and_the_rate():
+    assert format_time_line(_SUMMARY) == (
+        "time: total 4m 12s (scoring 38 s, judging 3m 34s), "
+        "41 calls avg 9.8 s slowest 28.1 s, 62 pairs/min"
+    )
+
+
+def test_the_time_line_for_a_run_with_no_llm_calls_says_so():
+    quiet = {
+        **_SUMMARY,
+        "judging_seconds": 0.0,
+        "total_seconds": 38.0,
+        "calls_timed": 0,
+        "avg_call_seconds": None,
+        "slowest_call_seconds": None,
+        "pairs_per_minute": None,
+    }
+    assert format_time_line(quiet) == ("time: total 38 s (scoring 38 s, judging 0 s), no LLM calls")
+
+
+def test_one_call_is_not_plural_and_a_small_rate_keeps_a_decimal():
+    summary = {**_SUMMARY, "calls_timed": 1, "pairs_per_minute": 2.44}
+    assert format_time_line(summary).endswith("1 call avg 9.8 s slowest 28.1 s, 2.4 pairs/min")
+
+
+def test_calls_that_judged_nothing_live_show_no_rate():
+    summary = {**_SUMMARY, "pairs_per_minute": None}
+    assert format_time_line(summary).endswith("41 calls avg 9.8 s slowest 28.1 s")
+
+
+# ---- links to the exact location ---------------------------------------------------------
+
+PDF_AT = PdfLocation(40, 91.4, 72.0, 481.0, 252.2)
+WEB_AT = WebLocation(
+    "web_pages/nbc.html", "/html/body/main/div/main/img[1]", 488, 1530.45, 988, 1816.98, "nbc.a.fig"
+)
+PDF_HREF = "../data/MO%20Package.pdf#page=40"
+WEB_HREF = "../out/web_pages/nbc.html#nbc.a.table1.row2"
+
+
+def _located_record(**extra):
+    return _rec(
+        "A.Fig2",
+        Verdict.IDENTICAL,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+        batch_id=1,
+        pdf_location=PDF_AT,
+        web_location=WEB_AT,
+        **extra,
+    )
+
+
+def _linked_html(links, record=None):
+    record = record or _located_record()
+    report = build_report(
+        [record],
+        calls=1,
+        wasted=Usage(),
+        model="m",
+        prompt_version="v",
+        generated_at="t",
+        links={record.row_id: links},
+    )
+    return render_html(report), report
+
+
+_FULL = RowLinks(PDF_HREF, WEB_HREF, "nbc.a.table1.row2", False)
+
+
+def test_the_json_row_carries_the_locations_and_the_resolved_links():
+    _, report = _linked_html(_FULL)
+    row = report["rows"][0]
+    assert row["pdf_location"] == {"page": 40, "x0": 91.4, "y0": 72.0, "x1": 481.0, "y1": 252.2}
+    assert row["web_location"]["page_file"] == "web_pages/nbc.html"
+    assert row["web_location"]["element_id"] == "nbc.a.fig"
+    assert (row["pdf_href"], row["web_href"]) == (PDF_HREF, WEB_HREF)
+    assert (row["web_anchor"], row["web_anchor_exact"]) == ("nbc.a.table1.row2", False)
+
+
+def test_a_report_built_without_links_still_has_the_location_fields_empty_of_links():
+    _, report = _html([_located_record()])
+    row = report["rows"][0]
+    assert row["pdf_location"]["page"] == 40
+    assert (row["pdf_href"], row["web_href"], row["web_anchor"]) == (None, None, None)
+    assert row["web_anchor_exact"] is None
+
+
+def test_the_pdf_image_gets_a_link_to_its_page_and_the_box_in_points():
+    html, _ = _linked_html(_FULL)
+    assert f'<a href="{PDF_HREF}" target="_blank" rel="noopener">PDF p. 40 ↗</a>' in html
+    assert "box x 91-481 · y 72-252 pt" in html
+
+
+def test_the_web_image_gets_a_link_to_the_saved_page_with_the_xpath_and_box_as_tooltip():
+    html, _ = _linked_html(_FULL)
+    assert f'href="{WEB_HREF}" target="_blank" rel="noopener"' in html
+    assert ">saved page ↗</a>" in html
+    tooltip = 'title="/html/body/main/div/main/img[1] · x 488-988 · y 1530-1817 px"'
+    assert tooltip in html
+
+
+def test_an_exact_anchor_is_labelled_exact_and_a_nearer_one_names_its_trailing_segments():
+    exact, _ = _linked_html(RowLinks(PDF_HREF, WEB_HREF, "nbc.a.fig", True))
+    nearest, _ = _linked_html(_FULL)
+    assert "exact element" in exact and "nearest enclosing" not in exact
+    assert "nearest enclosing: table1.row2" in nearest and "exact element" not in nearest
+
+
+def test_a_page_without_any_enclosing_id_is_linked_as_page_only():
+    html, _ = _linked_html(RowLinks(PDF_HREF, "../out/web_pages/nbc.html", None, None))
+    assert 'href="../out/web_pages/nbc.html"' in html and "page only" in html
+
+
+def test_without_hrefs_the_location_is_text_with_no_dead_link():
+    html, _ = _linked_html(RowLinks())
+    assert "PDF p. 40" in html and "box x 91-481" in html
+    assert "saved page not found" in html
+    assert "↗" not in html and 'target="_blank" rel="noopener">PDF' not in html
+
+
+def test_a_row_without_locations_shows_no_location_text():
+    html, _ = _html([_rec("A.Fig1", Verdict.MATCH_PHASH)])
+    assert "PDF p." not in html and "saved page" not in html and "box x" not in html
+
+
+def test_a_web_only_row_shows_only_the_web_location():
+    record = PairRecord(
+        row_id="web:w",
+        key="W.Fig1",
+        verdict=Verdict.WEB_ONLY,
+        pdf_path=None,
+        web_path="web_images/w.jpg",
+        web_location=WEB_AT,
+    )
+    html, _ = _linked_html(RowLinks(None, WEB_HREF, "nbc.a.table1.row2", False), record)
+    assert "PDF p." not in html and ">saved page ↗</a>" in html
+
+
+def test_everything_interpolated_into_the_links_is_escaped():
+    hostile = WebLocation("p.html", '/x"><script>alert(2)</script>', 1, 2, 3, 4, "i")
+    record = _located_record()
+    record = replace(record, web_location=hostile)
+    links = RowLinks('x"><script>alert(1)</script>#page=1', 'y"><b>z</b>', '<i>.a"b', False)
+    html, _ = _linked_html(links, record)
+    for raw in ("<script>alert(1)</script>", "<script>alert(2)</script>", "<b>z</b>", "<i>"):
+        assert raw not in html
+    assert "&lt;script&gt;alert(2)&lt;/script&gt;" in html
+    assert "nearest enclosing: &lt;i&gt;.a&quot;b" in html
+
+
+def test_the_location_text_wraps_and_the_phone_width_layout_is_unchanged():
+    html, _ = _linked_html(_FULL)
+    assert ".loc{" in html and "overflow-wrap:anywhere" in html
+    assert "td img{max-width:260px;max-height:200px" in html
+    assert "name='viewport' content='width=device-width,initial-scale=1'" in html

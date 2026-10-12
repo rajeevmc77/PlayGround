@@ -4,12 +4,15 @@ every image (both sides, side by side), its verdict, and what the LLM check cost
 
 import json
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
+from llm_compare.domain.durations import format_duration
 from llm_compare.domain.models import LLM_VERDICTS, PairRecord, Usage, Verdict
+from llm_compare.output.links import RowLinks
 
 _ROUTE = {
     Verdict.MATCH_PHASH: "hash",
@@ -64,17 +67,82 @@ def _tally(records: list[PairRecord], judged: list[PairRecord]) -> dict:
     }
 
 
-def summarise(records: list[PairRecord], calls: int, wasted: Usage) -> dict:
+def _pairs_per_minute(live_pairs: int, judging_seconds: float) -> float | None:
+    if live_pairs == 0 or judging_seconds <= 0:
+        return None
+    return live_pairs / (judging_seconds / 60)
+
+
+def _timing(
+    judged: list[PairRecord], scoring: float, judging: float, call_seconds: Sequence[float]
+) -> dict:
+    """How long the run took: the two phases, and the model's response time per call (the
+    limiter's waits and the backoff sleeps are not part of a call)."""
+    live = sum(not record.cached for record in judged)
+    return {
+        "scoring_seconds": scoring,
+        "judging_seconds": judging,
+        "total_seconds": scoring + judging,
+        "calls_timed": len(call_seconds),
+        "avg_call_seconds": sum(call_seconds) / len(call_seconds) if call_seconds else None,
+        "slowest_call_seconds": max(call_seconds, default=None),
+        "pairs_per_minute": _pairs_per_minute(live, judging),
+    }
+
+
+def summarise(
+    records: list[PairRecord],
+    calls: int,
+    wasted: Usage,
+    scoring_seconds: float = 0.0,
+    judging_seconds: float = 0.0,
+    call_seconds: Sequence[float] = (),
+) -> dict:
     judged = [record for record in records if record.verdict in LLM_VERDICTS]
     tally = _tally(records, judged)
-    return {**tally, "calls": calls, **_spend(judged, wasted, tally["settled_by_hash"])}
+    return {
+        **tally,
+        "calls": calls,
+        **_spend(judged, wasted, tally["settled_by_hash"]),
+        **_timing(judged, scoring_seconds, judging_seconds, call_seconds),
+    }
 
 
-def _row(record: PairRecord) -> dict:
+def _rate_text(pairs_per_minute: float | None) -> str:
+    if pairs_per_minute is None:
+        return ""
+    shown = f"{pairs_per_minute:.0f}" if pairs_per_minute >= 10 else f"{pairs_per_minute:.1f}"
+    return f", {shown} pairs/min"
+
+
+def _calls_text(summary: dict) -> str:
+    count = summary["calls_timed"]
+    if count == 0:
+        return "no LLM calls"
+    noun = "call" if count == 1 else "calls"
+    return (
+        f"{count} {noun} avg {format_duration(summary['avg_call_seconds'])} "
+        f"slowest {format_duration(summary['slowest_call_seconds'])}"
+        f"{_rate_text(summary['pairs_per_minute'])}"
+    )
+
+
+def format_time_line(summary: dict) -> str:
+    """The one terminal line: the run's total, its two phases and what the calls looked like."""
+    phases = (
+        f"total {format_duration(summary['total_seconds'])} "
+        f"(scoring {format_duration(summary['scoring_seconds'])}, "
+        f"judging {format_duration(summary['judging_seconds'])})"
+    )
+    return f"time: {phases}, {_calls_text(summary)}"
+
+
+def _row(record: PairRecord, links: RowLinks) -> dict:
     row = asdict(record)
     row["verdict"] = record.verdict.value
     row["route"] = _ROUTE.get(record.verdict, "—")
     row["differences"] = list(record.differences)
+    row.update(asdict(links))
     return row
 
 
@@ -86,13 +154,20 @@ def build_report(
     model: str,
     prompt_version: str,
     generated_at: str,
+    scoring_seconds: float = 0.0,
+    judging_seconds: float = 0.0,
+    call_seconds: Sequence[float] = (),
+    links: Mapping[str, RowLinks] | None = None,
 ) -> dict:
+    links = links or {}
     return {
         "generated_at": generated_at,
         "model": model,
         "prompt_version": prompt_version,
-        "summary": summarise(records, calls, wasted),
-        "rows": [_row(record) for record in records],
+        "summary": summarise(
+            records, calls, wasted, scoring_seconds, judging_seconds, call_seconds
+        ),
+        "rows": [_row(record, links.get(record.row_id, RowLinks())) for record in records],
     }
 
 
@@ -122,6 +197,7 @@ border:1px solid currentColor}
 .v-MATCH_PHASH,.v-IDENTICAL{color:var(--ok)}.v-DIFFERENT,.v-ERROR{color:var(--bad)}
 .v-SKIPPED{color:var(--warn)}.v-WEB_ONLY{color:var(--info)}
 ul{margin:4px 0 0 18px;padding:0}.num{white-space:nowrap}
+.loc{margin-top:4px;color:var(--mute);font-size:12px;overflow-wrap:anywhere}.loc a{color:var(--info)}
 """
 
 _SCRIPT = """
@@ -153,6 +229,45 @@ def _image_cell(path: str | None, prefix: str, sent: list | None, label: str) ->
     )
 
 
+def _link(href: str, text: str, title: str = "") -> str:
+    tip = f' title="{escape(title, quote=True)}"' if title else ""
+    return f'<a href="{escape(href, quote=True)}" target="_blank" rel="noopener"{tip}>{text}</a>'
+
+
+def _span(low: float, high: float) -> str:
+    return f"{low:.0f}-{high:.0f}"
+
+
+def _pdf_where(row: dict) -> str:
+    where = row["pdf_location"]
+    if where is None:
+        return ""
+    label = f"PDF p. {where['page']}"
+    head = _link(row["pdf_href"], f"{label} ↗") if row["pdf_href"] else escape(label)
+    box = f"box x {_span(where['x0'], where['x1'])} · y {_span(where['y0'], where['y1'])} pt"
+    return f"<div class='loc'>{head}<br>{box}</div>"
+
+
+def _anchor_note(row: dict) -> str:
+    anchor = row["web_anchor"]
+    if anchor is None:
+        return "page only (no matching element id)"
+    if row["web_anchor_exact"]:
+        return "exact element"
+    return f"nearest enclosing: {escape('.'.join(anchor.split('.')[-2:]))}"
+
+
+def _web_where(row: dict) -> str:
+    where = row["web_location"]
+    if where is None:
+        return ""
+    box = f"x {_span(where['x0'], where['x1'])} · y {_span(where['y0'], where['y1'])} px"
+    tip = f"{where['xpath']} · {box}"
+    if not row["web_href"]:
+        return f"<div class='loc' title=\"{escape(tip, quote=True)}\">saved page not found</div>"
+    return f"<div class='loc'>{_link(row['web_href'], 'saved page ↗', tip)}<br>{_anchor_note(row)}</div>"
+
+
 def _details(row: dict) -> str:
     parts = []
     if row["score"] is not None:
@@ -170,9 +285,10 @@ def _usage(row: dict) -> str:
         return "<span class='none'>—</span>"
     cached = " · cached" if row["cached"] else ""
     batch = f"batch {row['batch_id']}" if row["batch_id"] is not None else "earlier run"
+    took = "" if row["call_seconds"] is None else f" · {format_duration(row['call_seconds'])}"
     return (
         f"{row['input_tokens']:,} in / {row['output_tokens']:,} out<br>"
-        f"{_money(row['cost'])}<div class='cap'>{batch}{cached}</div>"
+        f"{_money(row['cost'])}<div class='cap'>{batch}{took}{cached}</div>"
     )
 
 
@@ -183,13 +299,36 @@ def _row_html(row: dict, prefix: str) -> str:
     badge = f"<span class='badge v-{verdict}'>{verdict}</span><div class='cap'>{row['route']}</div>"
     cells = [
         f"<td class='key'>{escape(row['key'])}</td>",
-        f"<td>{_image_cell(row['pdf_path'], prefix, row['sent_pdf'], pdf_label)}</td>",
-        f"<td>{_image_cell(row['web_path'], prefix, row['sent_web'], web_label)}</td>",
+        f"<td>{_image_cell(row['pdf_path'], prefix, row['sent_pdf'], pdf_label)}{_pdf_where(row)}</td>",
+        f"<td>{_image_cell(row['web_path'], prefix, row['sent_web'], web_label)}{_web_where(row)}</td>",
         f"<td>{badge}</td>",
         f"<td>{_details(row)}</td>",
         f"<td class='num'>{_usage(row)}</td>",
     ]
     return f"<tr data-verdict='{verdict}' data-key='{key}'>{''.join(cells)}</tr>"
+
+
+def _time_cards(summary: dict) -> list[tuple[str, str]]:
+    return [
+        ("run time", format_duration(summary["total_seconds"])),
+        ("scoring", format_duration(summary["scoring_seconds"])),
+        ("judging (LLM)", format_duration(summary["judging_seconds"])),
+        ("avg call (completed)", format_duration(summary["avg_call_seconds"])),
+        ("slowest call (completed)", format_duration(summary["slowest_call_seconds"])),
+    ]
+
+
+_COMPLETED_ONLY = "completed calls only: failed attempts are not timed"
+_CARD_TITLES = {
+    "LLM calls (attempts)": "attempts, including failed ones",
+    "avg call (completed)": _COMPLETED_ONLY,
+    "slowest call (completed)": _COMPLETED_ONLY,
+}
+
+
+def _card(label: str, value: str) -> str:
+    title = f" title='{_CARD_TITLES[label]}'" if label in _CARD_TITLES else ""
+    return f"<div class='card'{title}><b>{value}</b><span>{label}</span></div>"
 
 
 def _cards(summary: dict) -> str:
@@ -198,7 +337,8 @@ def _cards(summary: dict) -> str:
         ("settled by hash (free)", f"{summary['settled_by_hash']:,}"),
         ("judged by LLM", f"{summary['judged_by_llm']:,}"),
         ("from cache", f"{summary['cached_hits']:,}"),
-        ("LLM calls", f"{summary['calls']:,}"),
+        ("LLM calls (attempts)", f"{summary['calls']:,}"),
+        *_time_cards(summary),
         ("input tokens", f"{summary['input_tokens']:,}"),
         ("output tokens", f"{summary['output_tokens']:,}"),
         ("total tokens", f"{summary['total_tokens']:,}"),
@@ -208,9 +348,7 @@ def _cards(summary: dict) -> str:
         ("cost per judged pair", _money(summary["cost_per_judged_pair"])),
         ("est. saved by hash", _money(summary["estimated_saved_cost"])),
     ]
-    return "".join(
-        f"<div class='card'><b>{value}</b><span>{label}</span></div>" for label, value in cards
-    )
+    return "".join(_card(label, value) for label, value in cards)
 
 
 def _chips(counts: dict) -> str:

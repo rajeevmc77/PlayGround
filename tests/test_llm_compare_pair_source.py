@@ -1,3 +1,6 @@
+import pytest
+
+from llm_compare.domain.models import PdfLocation, WebLocation
 from llm_compare.parsing.pair_source import build_pairs
 
 
@@ -79,3 +82,97 @@ def test_row_ids_are_unique_even_when_keys_repeat():
     web = [_web("A.Fig1", "web_images/1.jpg", "w1"), _web("Q.Fig1", "web_images/q.jpg")]
     ids = [p.row_id for p in build_pairs(pdf, web, {"A.Fig1": None})]
     assert len(ids) == len(set(ids))
+
+
+# ---- locations ----------------------------------------------------------------------------
+
+BOX = {"x0": 91.0, "y0": 72.5, "x1": 481.0, "y1": 252.0}
+WEB_LOCATION = {
+    "page_file": "web_pages/nbc.html",
+    "xpath": "/html/body/main/div/main/img[1]",
+    "bbox": {"x0": 488, "y0": 1530.45, "x1": 988, "y1": 1816.98},
+}
+
+
+def _located_pdf(number, path, page=40):
+    return {**_pdf(number, path), "page": page, "bbox": BOX}
+
+
+def _located_web(number, path, image_id="nbc.a.fig1"):
+    return {**_web(number, path, image_id), "location": WEB_LOCATION}
+
+
+def test_a_paired_row_carries_where_each_image_sits_in_the_pdf_and_the_saved_page():
+    (pair,) = build_pairs(
+        [_located_pdf("A.Fig1", "images/1.png")], [_located_web("A.Fig1", "web_images/1.jpg")], {}
+    )
+    assert pair.pdf_location == PdfLocation(40, 91.0, 72.5, 481.0, 252.0)
+    assert pair.web_location == WebLocation(
+        "web_pages/nbc.html",
+        "/html/body/main/div/main/img[1]",
+        488,
+        1530.45,
+        988,
+        1816.98,
+        "nbc.a.fig1",
+    )
+
+
+def test_a_pdf_only_skipped_row_keeps_its_pdf_location_only():
+    (pair,) = build_pairs([_located_pdf("A.Fig1", "images/1.png")], [], {})
+    assert pair.skip_reason and pair.web_location is None
+    assert pair.pdf_location.page == 40
+
+
+def test_a_pdf_image_without_a_number_still_has_its_location():
+    (pair,) = build_pairs([_located_pdf(None, "images/1.png", page=7)], [], {})
+    assert pair.skip_reason == "no unified number" and pair.pdf_location.page == 7
+
+
+def test_a_web_only_row_carries_its_web_location_only():
+    pairs = build_pairs([], [_located_web("A.Fig1", "web_images/1.jpg")], {})
+    assert pairs[0].pdf_location is None and pairs[0].web_location.element_id == "nbc.a.fig1"
+
+
+def test_a_web_image_without_a_local_file_keeps_both_locations():
+    web = {**_located_web("A.Fig1", ""), "local_path": ""}
+    (pair,) = build_pairs([_located_pdf("A.Fig1", "images/1.png")], [web], {})
+    assert pair.skip_reason and pair.pdf_location and pair.web_location
+
+
+def test_entries_without_a_location_have_none():
+    (pair,) = build_pairs(
+        [_pdf("A.Fig1", "images/1.png")], [_web("A.Fig1", "web_images/1.jpg")], {}
+    )
+    assert pair.pdf_location is None and pair.web_location is None
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {"page": 3},
+        {"bbox": BOX},
+        {"page": "x", "bbox": BOX},
+        {"page": 3, "bbox": {"x0": 1}},
+        {"page": 3, "bbox": "nope"},
+        {"page": True, "bbox": BOX},
+    ],
+)
+def test_a_malformed_pdf_location_is_dropped_not_fatal(broken):
+    (pair,) = build_pairs([{**_pdf("A.Fig1", "images/1.png"), **broken}], [], {})
+    assert pair.pdf_location is None
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        "nope",
+        {"page_file": "p.html"},
+        {"page_file": "p.html", "xpath": "/x", "bbox": {"x0": 1}},
+        {"page_file": "", "xpath": "/x", "bbox": WEB_LOCATION["bbox"]},
+    ],
+)
+def test_a_malformed_web_location_is_dropped_not_fatal(broken):
+    web = {**_web("A.Fig1", "web_images/1.jpg"), "location": broken}
+    (pair,) = build_pairs([], [web], {})
+    assert pair.web_location is None

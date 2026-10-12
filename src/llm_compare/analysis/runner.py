@@ -4,6 +4,7 @@ unusable answers one pair at a time, and remember every verdict."""
 
 import asyncio
 import random
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -16,7 +17,7 @@ from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.batching import estimate_call_tokens, estimate_image_tokens, pack
 from llm_compare.domain.costing import add_usage, split_usage
 from llm_compare.domain.errors import JudgeError
-from llm_compare.domain.judge import PairJudge
+from llm_compare.domain.judge import JudgeResult, PairJudge
 from llm_compare.domain.models import (
     LLM_VERDICTS,
     ImagePair,
@@ -48,6 +49,14 @@ class ScoredPair:
     score: float
 
 
+@dataclass(frozen=True)
+class TimedResult:
+    """A call's answer and how long the model took to give it."""
+
+    result: JudgeResult
+    seconds: float
+
+
 @dataclass
 class Classification:
     settled: dict[str, PairRecord]
@@ -60,6 +69,8 @@ class RunStats:
     wasted: Usage = field(default_factory=Usage)
     # What we estimated the answered calls' input would be, to check against their usage.
     estimated_input_tokens: int = 0
+    # How long each completed judge call took (the model's response time only).
+    call_seconds: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -72,6 +83,7 @@ class JudgeDeps:
     stats: RunStats = field(default_factory=RunStats)
     sleep: Callable = asyncio.sleep
     jitter: Callable[[], float] = random.random
+    clock: Callable[[], float] = time.monotonic
 
 
 @dataclass(frozen=True)
@@ -80,6 +92,9 @@ class RunOutcome:
     calls: int
     wasted: Usage
     interrupted: bool = False
+    scoring_seconds: float = 0.0
+    judging_seconds: float = 0.0
+    call_seconds: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -102,6 +117,8 @@ def _record(pair: ImagePair, verdict: Verdict, **extra) -> PairRecord:
         pdf_path=pair.pdf_path,
         web_path=pair.web_path,
         web_key=pair.web_key,
+        pdf_location=pair.pdf_location,
+        web_location=pair.web_location,
         **extra,
     )
 
@@ -168,7 +185,9 @@ def _sizes(pair: PreparedPair) -> dict:
     }
 
 
-def _judged_record(pair: PreparedPair, verdict: PairVerdict, usage: Usage, batch_id: int):
+def _judged_record(
+    pair: PreparedPair, verdict: PairVerdict, usage: Usage, batch_id: int, seconds: float
+):
     return _record(
         pair.pair,
         verdict.verdict,
@@ -178,6 +197,7 @@ def _judged_record(pair: PreparedPair, verdict: PairVerdict, usage: Usage, batch
         output_tokens=usage.output_tokens,
         cost=usage.cost,
         batch_id=batch_id,
+        call_seconds=seconds,
         **_sizes(pair),
     )
 
@@ -248,10 +268,13 @@ async def _call_judge(pairs: list[PreparedPair], deps: JudgeDeps):
     async def once():
         reservation = await deps.limiter.acquire(estimate)
         deps.stats.calls += 1
+        started = deps.clock()
         result = await deps.judge.judge(pairs)
+        seconds = deps.clock() - started
         deps.limiter.release(reservation, result.usage.input_tokens + result.usage.output_tokens)
         deps.stats.estimated_input_tokens += input_estimate
-        return result
+        deps.stats.call_seconds.append(seconds)
+        return TimedResult(result, seconds)
 
     return await call_with_retries(
         once,
@@ -263,20 +286,20 @@ async def _call_judge(pairs: list[PreparedPair], deps: JudgeDeps):
     )
 
 
-def _store(pair, verdict, usage, batch_id, deps, records) -> None:
-    records[pair.row_id] = _judged_record(pair, verdict, usage, batch_id)
+def _store(pair, verdict, usage, batch_id, seconds, deps, records) -> None:
+    records[pair.row_id] = _judged_record(pair, verdict, usage, batch_id, seconds)
     key = pair_cache_key(pair, deps.prompt_version, deps.config.model)
     deps.cache.put(key, _entry_for(verdict, usage))
 
 
-def _store_answers(pairs, result, good, batch_id, deps, records) -> None:
+def _store_answers(pairs, timed, good, batch_id, deps, records) -> None:
     """Record the verdicts a call gave, splitting its usage across the pairs it answered."""
-    answered = sorted(good)
+    result, answered = timed.result, sorted(good)
     if not answered:
         deps.stats.wasted = add_usage(deps.stats.wasted, result.usage)
     shares = split_usage(result.usage, [pairs[n - 1].tokens for n in answered])
     for number, share in zip(answered, shares, strict=True):
-        _store(pairs[number - 1], good[number], share, batch_id, deps, records)
+        _store(pairs[number - 1], good[number], share, batch_id, timed.seconds, deps, records)
 
 
 def _scrubbed(message: str, api_key: str) -> str:
@@ -287,14 +310,14 @@ def _scrubbed(message: str, api_key: str) -> str:
 async def _attempt(pairs, batch_id, deps, records) -> list[PreparedPair]:
     """One call for `pairs`; returns the pairs it gave no usable verdict for."""
     try:
-        result = await _call_judge(pairs, deps)
+        timed = await _call_judge(pairs, deps)
     except JudgeError as error:
         message = _scrubbed(str(error), deps.config.api_key)
         for pair in pairs:
             records[pair.row_id] = _error_record(pair, batch_id, message)
         return []
-    good, missing = validate_verdicts(len(pairs), result.verdicts)
-    _store_answers(pairs, result, good, batch_id, deps, records)
+    good, missing = validate_verdicts(len(pairs), timed.result.verdicts)
+    _store_answers(pairs, timed, good, batch_id, deps, records)
     return [pairs[n - 1] for n in missing]
 
 
@@ -362,14 +385,21 @@ def _plan(
 
 
 def _collect(
-    plan: ComparisonPlan, judged: dict[str, PairRecord], stats: RunStats, interrupted: bool
+    plan: ComparisonPlan,
+    judged: dict[str, PairRecord],
+    stats: RunStats,
+    interrupted: bool,
+    phases: tuple[float, float],
 ) -> RunOutcome:
     records = {**plan.settled, **judged}
     for pair in plan.prepared:
         if pair.row_id not in records:
             records[pair.row_id] = _error_record(pair, None, INTERRUPTED)
     ordered = [records[pair.row_id] for pair in plan.pairs]
-    return RunOutcome(ordered, stats.calls, stats.wasted, interrupted)
+    scoring, judging = phases
+    return RunOutcome(
+        ordered, stats.calls, stats.wasted, interrupted, scoring, judging, tuple(stats.call_seconds)
+    )
 
 
 def run_comparison(
@@ -384,10 +414,13 @@ def run_comparison(
     cancelled, the verdicts already given are kept as they are, the cache is saved, and
     every pair not yet judged becomes an ERROR row - without re-scoring, re-preparing or
     touching the rate limiter again. Call it from the main thread (it handles SIGINT)."""
+    started = deps.clock()
     plan = _plan(pairs, load, deps.config, limit=limit, scorer=scorer)
+    judging_started = deps.clock()
     judged: dict[str, PairRecord] = {}
     interrupted = _judge_interruptibly(plan.prepared, deps, judged)
-    return _collect(plan, judged, deps.stats, interrupted)
+    phases = (judging_started - started, deps.clock() - judging_started)
+    return _collect(plan, judged, deps.stats, interrupted, phases)
 
 
 async def _judge_watched(prepared, deps, judged, ctrl_c: CtrlC) -> None:

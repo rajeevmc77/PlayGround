@@ -20,9 +20,10 @@ class LlmCompareConfig:
     max_pairs_per_call: int = 6
     max_input_tokens: int = 60_000
     call_overhead_tokens: int = 700
-    # Thinking tokens are billed as output: gemini-3.8-flash used 450-1,640 per single pair
-    # (3,374-5,967 for 5 pairs); the old default 150 under-estimated output tokens several-fold.
-    output_tokens_per_pair: int = 800
+    # Thinking tokens are billed as output. With reasoning_effort "low" gemini-3.8-flash used
+    # 35-567 output tokens per single pair (mean about 200); with reasoning_effort "" (its default
+    # thinking) it needs about 800 (450-1,640 per single pair).
+    output_tokens_per_pair: int = 300
     max_output_tokens: int = 8192
     token_scale: float = 1.0
     rpm: int = 30
@@ -35,6 +36,8 @@ class LlmCompareConfig:
     # dspy 3.4's native transport otherwise waits up to 600 s for a reply; single-pair calls
     # took 5-28 s in the 5-pair trial, so this bounds a stuck request, which is then retried.
     request_timeout_seconds: float = 120.0
+    # How much the model "thinks" (billed as output); "" sends nothing: the model's own default.
+    reasoning_effort: str = "low"
     input_price_per_million: float | None = None
     output_price_per_million: float | None = None
 
@@ -61,6 +64,7 @@ _FLOAT_KEYS = (
     "input_price_per_million",
     "output_price_per_million",
 )
+_REASONING_EFFORTS = ("", "minimal", "low", "medium", "high", "off")
 _FILE_KEYS = {f.name for f in fields(LlmCompareConfig)} - {"api_key"}
 
 
@@ -139,6 +143,12 @@ def _check_floats(config: LlmCompareConfig) -> None:
             raise ConfigError(f"{name} must not be negative")
 
 
+def _check_reasoning_effort(config: LlmCompareConfig) -> None:
+    if config.reasoning_effort not in _REASONING_EFFORTS:
+        allowed = ", ".join(f'"{effort}"' for effort in _REASONING_EFFORTS)
+        raise ConfigError(f"reasoning_effort must be one of {allowed}")
+
+
 def load_config(
     toml_text: str, env: Mapping[str, str], dotenv: Mapping[str, str] | None = None
 ) -> LlmCompareConfig:
@@ -150,4 +160,5 @@ def load_config(
     config = LlmCompareConfig(api_key=api_key, model=model, **values)
     _check_ints(config)
     _check_floats(config)
+    _check_reasoning_effort(config)
     return config

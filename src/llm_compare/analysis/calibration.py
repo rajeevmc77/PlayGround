@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 
 from llm_compare.analysis.runner import JudgeDeps, ScoredPair, judge_pairs, prepare_pairs
 from llm_compare.config import LlmCompareConfig
+from llm_compare.domain.durations import format_duration
 from llm_compare.domain.models import LLM_VERDICTS, Verdict
 
 ORIGINAL_EDGE = 10**6
@@ -32,6 +33,8 @@ class VariantResult:
     estimated_input_tokens: int = 0
     # The first ERROR row's message (already scrubbed of the API key), "" when there was none.
     first_error: str = ""
+    # Wall time of this variant's judging (limiter waits and retries included).
+    elapsed_seconds: float = 0.0
 
 
 def default_variants(default_edge: int, default_batch: int) -> list[Variant]:
@@ -83,7 +86,9 @@ async def _run_one(scored, variant, config, make_deps) -> VariantResult:
     )
     deps = make_deps(settings)
     prepared = prepare_pairs(scored, settings.max_edge, settings.token_scale)
+    started = deps.clock()
     records = list((await judge_pairs(prepared, deps)).values())
+    elapsed = deps.clock() - started
     return VariantResult(
         variant,
         sum(record.input_tokens for record in records) + deps.stats.wasted.input_tokens,
@@ -92,6 +97,7 @@ async def _run_one(scored, variant, config, make_deps) -> VariantResult:
         {record.row_id: record.verdict for record in records},
         deps.stats.estimated_input_tokens,
         _first_error(records),
+        elapsed,
     )
 
 
@@ -219,19 +225,29 @@ def _error_lines(results: list[VariantResult]) -> list[str]:
     return lines
 
 
-def format_calibration(results: list[VariantResult], token_scale: float = 1.0) -> str:
-    total = len(results[0].verdicts) if results else 0
-    lines = ["variant                      input tok  output tok  judged  agreement with original"]
+_TABLE_HEADER = (
+    "variant                      input tok  output tok  judged  "
+    f"{'agreement with original':>23}  {'elapsed':>10}"
+)
+
+
+def _table_lines(results: list[VariantResult], total: int) -> list[str]:
+    lines = [_TABLE_HEADER]
     for result in results:
         share = agreement(results[0].verdicts, result.verdicts)
         judged = f"{judged_count(result.verdicts)}/{total}"
         lines.append(
             f"{result.variant.name:<28} {result.input_tokens:>9,} {result.output_tokens:>11,}"
-            f"  {judged:>6}  {share:>9.0%}"
+            f"  {judged:>6}  {share:>23.0%}  {format_duration(result.elapsed_seconds):>10}"
         )
+    return lines
+
+
+def format_calibration(results: list[VariantResult], token_scale: float = 1.0) -> str:
+    total = len(results[0].verdicts) if results else 0
     return "\n".join(
         [
-            *lines,
+            *_table_lines(results, total),
             *(_estimate_line(result) for result in results),
             *_batching_lines(results),
             *_error_lines(results),
