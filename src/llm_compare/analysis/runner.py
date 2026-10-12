@@ -17,6 +17,7 @@ from llm_compare.domain.costing import add_usage, split_usage
 from llm_compare.domain.errors import JudgeError
 from llm_compare.domain.judge import PairJudge
 from llm_compare.domain.models import (
+    LLM_VERDICTS,
     ImagePair,
     PairRecord,
     PairVerdict,
@@ -176,6 +177,26 @@ def _error_record(pair: PreparedPair, batch_id: int, message: str) -> PairRecord
     )
 
 
+def _is_count(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_cost(value) -> bool:
+    return value is None or (isinstance(value, int | float) and not isinstance(value, bool))
+
+
+def is_usable_entry(entry) -> bool:
+    """A cache entry as `_entry_for` writes it; anything else (hand-edited, from an older
+    version, truncated) is a miss, so the pair is judged again rather than crashing the run."""
+    if not isinstance(entry, dict) or entry.get("verdict") not in LLM_VERDICTS:
+        return False
+    differences = entry.get("differences")
+    if not isinstance(differences, list) or not all(isinstance(t, str) for t in differences):
+        return False
+    counts = _is_count(entry.get("input_tokens")) and _is_count(entry.get("output_tokens"))
+    return counts and _is_cost(entry.get("cost"))
+
+
 def _cached_record(pair: PreparedPair, entry: dict) -> PairRecord:
     return _record(
         pair.pair,
@@ -271,7 +292,7 @@ def _split_cached(prepared, deps) -> tuple[dict[str, PairRecord], list[PreparedP
     records, misses = {}, []
     for pair in prepared:
         entry = deps.cache.get(pair_cache_key(pair, deps.prompt_version, deps.config.model))
-        if entry is None:
+        if not is_usable_entry(entry):
             misses.append(pair)
         else:
             records[pair.row_id] = _cached_record(pair, entry)

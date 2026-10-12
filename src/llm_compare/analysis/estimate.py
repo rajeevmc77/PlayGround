@@ -4,7 +4,13 @@ from collections import Counter
 from dataclasses import dataclass
 
 from llm_compare.analysis.hash_score import score_pair
-from llm_compare.analysis.runner import LoadBytes, Scorer, classify_pairs, prepare_pairs
+from llm_compare.analysis.runner import (
+    LoadBytes,
+    Scorer,
+    classify_pairs,
+    is_usable_entry,
+    prepare_pairs,
+)
 from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.batching import pack
 from llm_compare.domain.costing import cost_of
@@ -40,7 +46,7 @@ def plan_run(
     misses = [
         pair
         for pair in prepared
-        if cache.get(pair_cache_key(pair, prompt_version, config.model)) is None
+        if not is_usable_entry(cache.get(pair_cache_key(pair, prompt_version, config.model)))
     ]
     batches = pack(
         misses, config.max_pairs_per_call, config.max_input_tokens, config.call_overhead_tokens

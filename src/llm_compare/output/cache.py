@@ -24,7 +24,9 @@ def _read(path: Path) -> dict:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    return {key: entry for key, entry in data.items() if isinstance(entry, dict)}
 
 
 class VerdictCache:

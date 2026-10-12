@@ -48,6 +48,14 @@ def test_a_missing_key_gives_none_and_a_memory_cache_never_writes(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_entries_that_are_not_objects_are_dropped_on_load(tmp_path):
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps({"good": {"x": 1}, "list": [1], "text": "IDENTICAL", "none": None}))
+    cache = VerdictCache(path)
+    assert cache.get("good") == {"x": 1}
+    assert [cache.get(key) for key in ("list", "text", "none")] == [None, None, None]
+
+
 def test_a_corrupt_file_loads_as_empty_and_is_overwritten_on_save(tmp_path):
     path = tmp_path / "cache.json"
     path.write_text("{not json")

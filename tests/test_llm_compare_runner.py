@@ -15,7 +15,7 @@ from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.errors import Permanent, Transient
 from llm_compare.domain.judge import JudgeResult
 from llm_compare.domain.models import ImagePair, PairVerdict, Usage, Verdict
-from llm_compare.output.cache import VerdictCache
+from llm_compare.output.cache import VerdictCache, pair_cache_key
 from tests.llm_compare_support import image_pair, png_bytes, prepared_pair
 
 PNG = png_bytes()
@@ -220,6 +220,49 @@ def test_a_second_run_is_served_from_the_cache_at_no_cost():
     assert second.batches == []
     assert all(r.cached and r.batch_id is None for r in records.values())
     assert sum(r.cost for r in records.values()) == pytest.approx(0.02)
+
+
+GOOD_ENTRY = {
+    "verdict": "IDENTICAL",
+    "differences": [],
+    "input_tokens": 10,
+    "output_tokens": 1,
+    "cost": 0.5,
+}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {key: value for key, value in GOOD_ENTRY.items() if key != "verdict"},
+        {key: value for key, value in GOOD_ENTRY.items() if key != "input_tokens"},
+        {**GOOD_ENTRY, "verdict": "MAYBE"},
+        {**GOOD_ENTRY, "verdict": "ERROR"},
+        {**GOOD_ENTRY, "differences": "not a list"},
+        {**GOOD_ENTRY, "differences": [1]},
+        {**GOOD_ENTRY, "output_tokens": "1"},
+        {**GOOD_ENTRY, "cost": "free"},
+        "IDENTICAL",
+    ],
+)
+def test_a_malformed_cache_entry_is_a_miss_and_the_pair_is_judged_again(entry):
+    pair = _prepared("A")[0]
+    cache = VerdictCache()
+    cache.put(pair_cache_key(pair, "v1", ""), entry)
+    judge = ScriptedJudge()
+    records = asyncio.run(judge_pairs([pair], _deps(judge, cache)))
+    assert judge.batches == [["A"]]
+    assert records[pair.row_id].verdict is Verdict.IDENTICAL and not records[pair.row_id].cached
+
+
+def test_a_well_formed_cache_entry_is_a_hit():
+    pair = _prepared("A")[0]
+    cache = VerdictCache()
+    cache.put(pair_cache_key(pair, "v1", ""), {**GOOD_ENTRY, "cost": None})
+    judge = ScriptedJudge()
+    records = asyncio.run(judge_pairs([pair], _deps(judge, cache)))
+    assert judge.batches == [] and records[pair.row_id].cached
+    assert records[pair.row_id].cost is None
 
 
 def test_errors_are_not_cached():

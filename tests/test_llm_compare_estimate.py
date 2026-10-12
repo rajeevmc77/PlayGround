@@ -9,6 +9,13 @@ FIRST, SECOND = (
     png_bytes(),
     png_bytes(box=(5, 5, 40, 30)),
 )  # different bytes -> different cache keys
+ENTRY = {
+    "verdict": "IDENTICAL",
+    "differences": [],
+    "input_tokens": 10,
+    "output_tokens": 1,
+    "cost": None,
+}
 
 
 def _setup():
@@ -43,9 +50,18 @@ def test_cached_pairs_are_not_planned_for_a_call():
     pairs, load, scorer = _setup()
     cache = VerdictCache()
     lo1 = prepare_pairs(classify_pairs(pairs, load, 90.0, scorer).to_llm[:1], 1024, 1.0)[0]
-    cache.put(pair_cache_key(lo1, "v1", "m"), {"verdict": "IDENTICAL"})
+    cache.put(pair_cache_key(lo1, "v1", "m"), ENTRY)
     plan = plan_run(pairs, load, LlmCompareConfig(model="m"), cache, "v1", None, scorer)
     assert (plan.cached, plan.calls, plan.to_llm) == (1, 1, 2) and plan.cost is None
+
+
+def test_a_malformed_cache_entry_is_planned_for_a_call_like_the_real_run_would():
+    pairs, load, scorer = _setup()
+    cache = VerdictCache()
+    lo1 = prepare_pairs(classify_pairs(pairs, load, 90.0, scorer).to_llm[:1], 1024, 1.0)[0]
+    cache.put(pair_cache_key(lo1, "v1", "m"), {"verdict": "IDENTICAL"})  # no tokens/cost
+    plan = plan_run(pairs, load, LlmCompareConfig(model="m"), cache, "v1", None, scorer)
+    assert (plan.cached, plan.to_llm) == (0, 2)
 
 
 def test_zero_pairs_for_the_llm_plans_zero_calls_and_zero_cost():
