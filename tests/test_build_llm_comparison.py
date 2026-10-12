@@ -620,3 +620,102 @@ def test_the_dry_run_gives_a_labelled_rough_time(tmp_path, monkeypatch, capsys):
     assert "rough time: ~10 s (calls / workers x ~10 s per call; measured" in (
         capsys.readouterr().out
     )
+
+
+# ---- links to the exact location --------------------------------------------------------
+
+WEB_ID = "nbc.a.table1.row2.fig"
+
+
+def _located_source(root):
+    """`_source` with where the image sits: PDF page 40 and a saved page whose nearest
+    enclosing element id is `nbc.a.table1`."""
+    _source(root)
+    pdf = json.loads((root / "bcbc_pdf.json").read_text())
+    pdf["images"][0].update(page=40, bbox={"x0": 91, "y0": 72, "x1": 481, "y1": 252})
+    web = json.loads((root / "bcbc_web.json").read_text())
+    web["images"][0]["id"] = WEB_ID
+    web["images"][0]["location"] = {
+        "page_file": "web_pages/nbc.html",
+        "xpath": "/html/body/main/div/main/img[1]",
+        "bbox": {"x0": 488, "y0": 1530, "x1": 988, "y1": 1817},
+    }
+    (root / "bcbc_pdf.json").write_text(json.dumps(pdf))
+    (root / "bcbc_web.json").write_text(json.dumps(web))
+    (root / "web_pages").mkdir(exist_ok=True)
+    (root / "web_pages" / "nbc.html").write_text('<main><table id="nbc.a.table1"></table></main>')
+    return root
+
+
+def _pdf_file(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"%PDF-1.4")
+    return path
+
+
+def test_the_pdf_option_defaults_to_the_mo_package_in_the_data_folder():
+    args = build_llm_comparison._parser().parse_args([])
+    assert args.pdf == build_llm_comparison.PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf"
+
+
+def test_an_overridden_pdf_is_linked_relative_to_the_report_with_its_page(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _located_source(tmp_path)
+    pdf = _pdf_file(tmp_path / "docs" / "My Doc.pdf")
+    args = _args(source, "--pdf", str(pdf))
+    assert main(args, env=ENV, judge=AllIdentical(), now="t") == 0
+    row = _report_rows(source)[0]
+    assert row["pdf_href"] == "docs/My%20Doc.pdf#page=40"
+    assert row["web_href"] == "web_pages/nbc.html#nbc.a.table1"
+    assert (row["web_anchor"], row["web_anchor_exact"]) == ("nbc.a.table1", False)
+    assert 'href="docs/My%20Doc.pdf#page=40"' in (source / "llm_image_report.html").read_text()
+
+
+def test_links_are_relative_to_the_output_directory_when_it_differs_from_the_source(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source, out = _located_source(tmp_path / "src"), tmp_path / "out"
+    pdf = _pdf_file(tmp_path / "data" / "My Doc.pdf")
+    args = _args(source, "--pdf", str(pdf), out=out)
+    assert main(args, env=ENV, judge=AllIdentical(), now="t") == 0
+    row = json.loads((out / "llm_image_compare.json").read_text())["rows"][0]
+    assert row["pdf_href"] == "../data/My%20Doc.pdf#page=40"
+    assert row["web_href"] == "../src/web_pages/nbc.html#nbc.a.table1"
+
+
+def test_a_missing_pdf_is_noted_once_and_only_its_links_are_omitted(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _located_source(tmp_path)
+    gone = tmp_path / "nowhere" / "x.pdf"
+    assert main(_args(source, "--pdf", str(gone)), env=ENV, judge=AllIdentical(), now="t") == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out.count(f"PDF not found at {gone}: PDF links are omitted") == 1
+    row = _report_rows(source)[0]
+    assert row["pdf_href"] is None and row["pdf_location"]["page"] == 40
+    assert row["web_href"] == "web_pages/nbc.html#nbc.a.table1"
+    html = (source / "llm_image_report.html").read_text()
+    assert "PDF p. 40" in html and "box x 91-481" in html
+
+
+def test_a_missing_saved_page_omits_only_the_web_link(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _located_source(tmp_path)
+    (source / "web_pages" / "nbc.html").unlink()
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    row = _report_rows(source)[0]
+    assert row["web_href"] is None and row["web_location"]["page_file"] == "web_pages/nbc.html"
+
+
+def test_dry_run_and_calibrate_compute_no_links(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("links are only for the report")
+
+    monkeypatch.setattr(build_llm_comparison, "resolve_links", boom)
+    source = _located_source(tmp_path)
+    missing = ["--pdf", str(tmp_path / "nope.pdf")]
+    assert main(_args(source, "--dry-run", *missing), env=ENV, judge=AllIdentical()) == 0
+    assert main(_args(source, "--calibrate", "1", *missing), env=ENV, judge=AllIdentical()) == 0
+    assert "PDF not found" not in capsys.readouterr().out

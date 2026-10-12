@@ -10,6 +10,7 @@ settle, and write a report of every image with its verdict, tokens and cost.
 GEMINI_API_KEY and GEMINI_MODEL come from the environment or .env; other settings from
 llm_compare_config.toml (see llm_compare_config.example.toml). Inputs are read from
 --source-dir (default output/); the report and cache go to --output-dir (default the same).
+The report links each image to its page in --pdf and to its element in the saved web pages.
 """
 
 import argparse
@@ -22,6 +23,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -50,10 +52,16 @@ from llm_compare.config import (  # noqa: E402
     parse_dotenv,
 )
 from llm_compare.output.cache import VerdictCache  # noqa: E402
-from llm_compare.output.report import build_report, format_time_line, write_report  # noqa: E402
+from llm_compare.output.links import resolve_links  # noqa: E402
+from llm_compare.output.report import (  # noqa: E402  # noqa: E402
+    build_report,
+    format_time_line,
+    write_report,
+)
 from llm_compare.parsing.pair_source import build_pairs  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PDF_PATH = PROJECT_ROOT / "data" / "MO Package BCBC MRK signed.pdf"
 INPUT_FILES = ("bcbc_pdf.json", "bcbc_web.json", "comparison.json")
 CALIBRATE_NOTE = (
     "note: --calibrate does not build the HTML report; run without --calibrate "
@@ -84,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--config", type=Path, default=PROJECT_ROOT / "llm_compare_config.toml")
     parser.add_argument("--env-file", type=Path, default=PROJECT_ROOT / ".env")
+    parser.add_argument(
+        "--pdf",
+        type=Path,
+        default=PDF_PATH,
+        help="the PDF the report's PDF links open (at the image's page)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--limit", type=_non_negative_int, default=None, help="judge only the first N pairs"
@@ -167,7 +181,32 @@ def _check_credentials(config: LlmCompareConfig, judge) -> str | None:
     return None
 
 
-def _report_for(outcome: RunOutcome, config, now) -> dict:
+def _page_reader(source_dir: Path):
+    def read(page_file: str) -> str | None:
+        path = source_dir / page_file
+        return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
+
+    return read
+
+
+def _pdf_href(pdf_path: Path, output_dir: Path) -> str | None:
+    """The PDF's url-quoted path relative to the report, None (with a note) when it is not there."""
+    if not pdf_path.is_file():
+        print(f"PDF not found at {pdf_path}: PDF links are omitted")
+        return None
+    return quote(Path(os.path.relpath(pdf_path, output_dir)).as_posix())
+
+
+def _links_for(outcome: RunOutcome, source_dir: Path, output_dir: Path, pdf_path: Path):
+    return resolve_links(
+        outcome.records,
+        read_page=_page_reader(source_dir),
+        pdf_href=_pdf_href(pdf_path, output_dir),
+        asset_prefix=_asset_prefix(source_dir, output_dir),
+    )
+
+
+def _report_for(outcome: RunOutcome, config, now, links) -> dict:
     return build_report(
         outcome.records,
         calls=outcome.calls,
@@ -178,11 +217,14 @@ def _report_for(outcome: RunOutcome, config, now) -> dict:
         scoring_seconds=outcome.scoring_seconds,
         judging_seconds=outcome.judging_seconds,
         call_seconds=outcome.call_seconds,
+        links=links,
     )
 
 
-def _finish(outcome: RunOutcome, config, source_dir, output_dir, now) -> None:
-    report = _report_for(outcome, config, now)
+def _finish(outcome: RunOutcome, config, source_dir, output_dir, now, pdf_path) -> None:
+    report = _report_for(
+        outcome, config, now, _links_for(outcome, source_dir, output_dir, pdf_path)
+    )
     _, html_path = write_report(report, output_dir, _asset_prefix(source_dir, output_dir))
     _print_summary(html_path, report["summary"])
 
@@ -230,7 +272,8 @@ def _judged_run(args, config, pairs, cache, judge, now) -> int:
         print("error: interrupted before any pair was judged; no report written", file=sys.stderr)
         return 130
     with _sigint_ignored():
-        _finish(outcome, config, args.source_dir, args.output_dir or args.source_dir, now)
+        output_dir = args.output_dir or args.source_dir
+        _finish(outcome, config, args.source_dir, output_dir, now, args.pdf)
     return 130 if outcome.interrupted else 0
 
 

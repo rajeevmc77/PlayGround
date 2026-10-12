@@ -390,6 +390,28 @@ The report's **LLM calls (attempts)** card counts every attempt, failed ones inc
 **avg call** / **slowest call** and the terminal line's `N calls` count completed calls only, so
 the two can differ when calls failed and were retried.
 
+#### Links in the report
+
+Under each image the report links to where it sits (the same data is in each JSON row as
+`pdf_location`, `web_location`, `pdf_href`, `web_href`, `web_anchor`, `web_anchor_exact`):
+
+- **PDF** - `PDF p. 40 ↗` opens the PDF at that page (browsers honour `#page=N`) and the box is
+  printed as text (`box x 91-481 · y 72-252 pt`), because a URL cannot pin a spot inside a
+  page. `--pdf PATH` says which file to link (default `data/MO Package BCBC MRK signed.pdf`,
+  linked relative to the report); when it is missing the run says
+  `PDF not found at ...: PDF links are omitted` and the rows keep their page and box text.
+- **Saved web page** - `saved page ↗` opens the saved page under `--source-dir` at the image's
+  element when the page has an element with the image's id (`exact element`), else at the nearest
+  enclosing element whose id is a dotted prefix of it (`nearest enclosing: table1.row2`, the
+  enclosing table, row or article); only if none exists does it open the page itself. Hover the
+  link for the xpath and the box in CSS px. On the real data all 594 web images resolve: 222
+  exactly and 372 to an enclosing element (none page-only), measured offline over the 17 saved
+  pages that hold them. Rows with no location, or whose saved page file is missing, show text
+  only, never a dead link.
+
+Links are computed by normal runs only (one read per distinct saved page), not by `--dry-run`
+or `--calibrate`.
+
 From a git worktree (whose own `output/` and `.env` are empty), read the main checkout's
 inputs and key with `--source-dir` and `--env-file`, and write somewhere else:
 
