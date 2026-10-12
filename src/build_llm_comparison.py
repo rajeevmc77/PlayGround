@@ -15,8 +15,10 @@ import argparse
 import asyncio
 import json
 import os
+import signal
 import sys
 from collections.abc import Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -46,20 +48,12 @@ from llm_compare.config import (  # noqa: E402
     load_config,
     parse_dotenv,
 )
-from llm_compare.domain.errors import Permanent  # noqa: E402
 from llm_compare.output.cache import VerdictCache  # noqa: E402
 from llm_compare.output.report import build_report, write_report  # noqa: E402
 from llm_compare.parsing.pair_source import build_pairs  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INPUT_FILES = ("bcbc_pdf.json", "bcbc_web.json", "comparison.json")
-
-
-class _RefusingJudge:
-    """Used after Ctrl-C: cached verdicts are kept, unfinished pairs become ERROR rows."""
-
-    async def judge(self, pairs):
-        raise Permanent("run interrupted before this pair was judged")
 
 
 def _non_negative_int(text: str) -> int:
@@ -161,16 +155,15 @@ def _finish(outcome: RunOutcome, config, source_dir, output_dir, now) -> None:
     )
 
 
-def _run(pairs, load, deps, limit) -> tuple[RunOutcome, bool]:
+@contextmanager
+def _sigint_ignored():
+    """Hold off Ctrl-C for the moment (well under a second) the report takes to write, so a
+    second press after an interrupt cannot lose it."""
+    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        return asyncio.run(run_comparison(pairs, load, deps, limit=limit, scorer=score_pair)), False
-    except KeyboardInterrupt:
-        # An asyncio.Lock binds to the first event loop it contends in, so the second
-        # asyncio.run needs a limiter of its own.
-        limiter = RateLimiter(deps.config.rpm, deps.config.tpm)
-        refusing = JudgeDeps(_RefusingJudge(), limiter, deps.cache, deps.config, PROMPT_VERSION)
-        outcome = asyncio.run(run_comparison(pairs, load, refusing, limit=limit, scorer=score_pair))
-        return outcome, True
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def _setup(args, env: Mapping[str, str]) -> tuple[LlmCompareConfig, list]:
@@ -182,9 +175,17 @@ def _setup(args, env: Mapping[str, str]) -> tuple[LlmCompareConfig, list]:
 def _judged_run(args, config, pairs, cache, judge, now) -> int:
     limiter = RateLimiter(config.rpm, config.tpm)
     deps = JudgeDeps(judge or _real_judge(config), limiter, cache, config, PROMPT_VERSION)
-    outcome, interrupted = _run(pairs, _loader(args.source_dir), deps, args.limit)
-    _finish(outcome, config, args.source_dir, args.output_dir or args.source_dir, now)
-    return 130 if interrupted else 0
+    try:
+        outcome = run_comparison(
+            pairs, _loader(args.source_dir), deps, limit=args.limit, scorer=score_pair
+        )
+    except KeyboardInterrupt:
+        # Only scoring/preparing (before any call) lets Ctrl-C through: nothing to report.
+        print("error: interrupted before any pair was judged; no report written", file=sys.stderr)
+        return 130
+    with _sigint_ignored():
+        _finish(outcome, config, args.source_dir, args.output_dir or args.source_dir, now)
+    return 130 if outcome.interrupted else 0
 
 
 def _save_calibration(results: list[VariantResult], output_dir: Path) -> None:

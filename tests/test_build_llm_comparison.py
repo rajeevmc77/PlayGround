@@ -1,5 +1,8 @@
+import asyncio
 import json
 import os
+import signal
+import time
 
 import pytest
 
@@ -160,7 +163,7 @@ def test_an_interrupted_run_still_reports_with_unfinished_pairs_as_errors(tmp_pa
     assert row["verdict"] == "ERROR" and "interrupted" in row["message"]
 
 
-def test_the_interrupted_rerun_uses_a_fresh_rate_limiter(tmp_path, monkeypatch):
+def test_an_interrupted_run_makes_no_second_pass_with_a_second_limiter(tmp_path, monkeypatch):
     monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
     made = []
 
@@ -172,7 +175,197 @@ def test_the_interrupted_rerun_uses_a_fresh_rate_limiter(tmp_path, monkeypatch):
     monkeypatch.setattr(build_llm_comparison, "RateLimiter", Spy)
     source = _source(tmp_path)
     assert main(_args(source), env=ENV, judge=Interrupting(), now="t") == 130
-    assert len(made) == 2 and made[0] is not made[1]
+    assert len(made) == 1
+
+
+KEYS = "ABCDE"
+
+
+def _many_sources(root):
+    """Five pairs with distinct images (so distinct cache keys), all routed to the LLM."""
+    _source(root)
+    pdf_images, web_images = [], []
+    for n, key in enumerate(KEYS):
+        png = png_bytes(box=(5 + n, 5, 40, 30))
+        (root / f"images/{key}.png").write_bytes(png)
+        (root / f"web_images/{key}.png").write_bytes(png)
+        pdf_images.append({"image_path": f"images/{key}.png", "unified_number": key})
+        web_images.append({"id": key, "unified_number": key, "local_path": f"web_images/{key}.png"})
+    (root / "bcbc_pdf.json").write_text(json.dumps({"images": pdf_images}))
+    (root / "bcbc_web.json").write_text(json.dumps({"images": web_images}))
+    (root / "settings.toml").write_text("max_pairs_per_call = 2\nworkers = 1\nsingle_retries = 1\n")
+    return root
+
+
+class CtrlCOnThirdCall:
+    """Call 1 ([A, B]) answers A only; call 2 (B alone) answers nothing (wasted); call 3
+    ([C, D]) is where the user presses Ctrl-C - a real SIGINT, `presses` times."""
+
+    def __init__(self, presses=1):
+        self.calls, self.presses, self.interrupted_at = 0, presses, None
+
+    async def judge(self, pairs):
+        self.calls += 1
+        if self.calls == 1:
+            return JudgeResult([PairVerdict(1, Verdict.IDENTICAL, ())], Usage(200, 20, 0.002))
+        if self.calls == 2:
+            return JudgeResult([], Usage(50, 5, 0.0005))
+        self.interrupted_at = time.monotonic()
+        for _ in range(self.presses):
+            signal.raise_signal(signal.SIGINT)
+        await asyncio.sleep(2)  # never finishes: the interrupt cancels it
+        return JudgeResult([PairVerdict(n, Verdict.IDENTICAL, ()) for n in (1, 2)], Usage())
+
+
+def _watch_limiter(monkeypatch, judge):
+    late = []
+
+    class Watched(RateLimiter):
+        async def acquire(self, tokens):
+            if judge.interrupted_at is not None:
+                late.append(tokens)
+            return await super().acquire(tokens)
+
+    monkeypatch.setattr(build_llm_comparison, "RateLimiter", Watched)
+    return late
+
+
+def _interrupted_main(tmp_path, monkeypatch, judge):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    late = _watch_limiter(monkeypatch, judge)
+    source = _many_sources(tmp_path)
+    args = _args(source)
+    args[args.index("--config") + 1] = str(source / "settings.toml")
+    code = main(args, env=ENV, judge=judge, now="t")
+    return code, source, late, time.monotonic() - judge.interrupted_at
+
+
+def test_ctrl_c_keeps_finished_verdicts_live_and_marks_only_unfinished_pairs(tmp_path, monkeypatch):
+    judge = CtrlCOnThirdCall()
+    code, source, late, seconds = _interrupted_main(tmp_path, monkeypatch, judge)
+    assert code == 130 and seconds < 1.0
+    assert late == []  # nothing waits on the rate limiter once interrupted
+    report = json.loads((source / "llm_image_compare.json").read_text())
+    rows = {row["key"]: row for row in report["rows"]}
+    a = rows["A"]
+    assert (a["verdict"], a["cached"], a["input_tokens"], a["output_tokens"]) == (
+        "IDENTICAL",
+        False,
+        200,
+        20,
+    )
+    assert a["cost"] == pytest.approx(0.002) and a["batch_id"] == 1
+    assert rows["B"]["verdict"] == "ERROR" and "no usable verdict" in rows["B"]["message"]
+    for key in "CDE":
+        assert rows[key]["verdict"] == "ERROR"
+        assert rows[key]["message"] == "run interrupted before this pair was judged"
+    summary = report["summary"]
+    assert summary["calls"] == 3 == judge.calls
+    assert (summary["input_tokens"], summary["output_tokens"]) == (250, 25)  # A + wasted B
+    cache = json.loads((source / "llm_compare" / "cache.json").read_text())
+    assert [entry["verdict"] for entry in cache.values()] == ["IDENTICAL"]
+
+
+def test_a_second_ctrl_c_still_gets_the_report(tmp_path, monkeypatch):
+    judge = CtrlCOnThirdCall(presses=2)
+    code, source, late, seconds = _interrupted_main(tmp_path, monkeypatch, judge)
+    assert code == 130 and seconds < 1.0 and late == []
+    rows = {row["key"]: row for row in _report_rows(source)}
+    assert rows["A"]["verdict"] == "IDENTICAL" and rows["E"]["verdict"] == "ERROR"
+    assert (source / "llm_compare" / "cache.json").exists()
+
+
+class AnswersThenCtrlCWhileWaiting:
+    """Answers at once; on the second call it arranges for the user to press Ctrl-C `presses`
+    times 0.1 s later, while the workers wait ~60 s on the rate limiter (rpm = 2)."""
+
+    def __init__(self, presses):
+        self.calls, self.presses, self.interrupted_at = 0, presses, None
+
+    def _press(self):
+        self.interrupted_at = time.monotonic()
+        for _ in range(self.presses):
+            signal.raise_signal(signal.SIGINT)
+
+    async def judge(self, pairs):
+        self.calls += 1
+        if self.calls == 2:
+            asyncio.get_running_loop().call_later(0.1, self._press)
+        verdicts = [PairVerdict(n, Verdict.IDENTICAL, ()) for n in range(1, len(pairs) + 1)]
+        return JudgeResult(verdicts, Usage(10, 1, 0.001))
+
+
+@pytest.mark.parametrize("presses", [1, 5])
+def test_ctrl_c_while_workers_wait_on_the_rate_limiter_reports_at_once(
+    tmp_path, monkeypatch, presses
+):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _many_sources(tmp_path)
+    (source / "settings.toml").write_text("max_pairs_per_call = 1\nworkers = 2\nrpm = 2\n")
+    args = _args(source)
+    args[args.index("--config") + 1] = str(source / "settings.toml")
+    judge = AnswersThenCtrlCWhileWaiting(presses)
+    assert main(args, env=ENV, judge=judge, now="t") == 130
+    assert time.monotonic() - judge.interrupted_at < 1.0
+    verdicts = [row["verdict"] for row in _report_rows(source)]
+    assert verdicts == ["IDENTICAL", "IDENTICAL", "ERROR", "ERROR", "ERROR"]
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+class PressesThroughTheHandler:
+    """Calls the SIGINT handler in force three times, as repeated presses would: a handler
+    that raises KeyboardInterrupt (asyncio.run's does from the second press) can land inside
+    asyncio's own code and hang or break the loop's teardown - seen with real signals."""
+
+    def __init__(self):
+        self.raised, self.interrupted_at = 0, None
+
+    async def judge(self, pairs):
+        handler = signal.getsignal(signal.SIGINT)
+        self.interrupted_at = time.monotonic()
+        for _ in range(3):
+            try:
+                handler(signal.SIGINT, None)
+            except KeyboardInterrupt:
+                self.raised += 1
+        await asyncio.sleep(2)  # cancelled by the first press
+        return JudgeResult([], Usage())
+
+
+def test_repeated_ctrl_c_presses_never_raise_inside_the_event_loop(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    judge = PressesThroughTheHandler()
+    assert main(_args(source), env=ENV, judge=judge, now="t") == 130
+    assert judge.raised == 0 and time.monotonic() - judge.interrupted_at < 1.0
+    assert _report_rows(source)[0]["message"] == "run interrupted before this pair was judged"
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+def test_ctrl_c_while_the_report_is_written_does_not_lose_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    real_write = build_llm_comparison.write_report
+
+    def write_while_interrupted(*args, **kwargs):
+        signal.raise_signal(signal.SIGINT)
+        return real_write(*args, **kwargs)
+
+    monkeypatch.setattr(build_llm_comparison, "write_report", write_while_interrupted)
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    assert _report_rows(source)[0]["verdict"] == "IDENTICAL"
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+def test_ctrl_c_before_any_pair_is_judged_exits_130_without_a_report(tmp_path, monkeypatch, capsys):
+    def interrupted_scorer(pair, pdf, web):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(build_llm_comparison, "score_pair", interrupted_scorer)
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 130
+    assert "interrupted" in capsys.readouterr().err
+    assert not (source / "llm_image_report.html").exists()
 
 
 def test_a_negative_limit_is_rejected_by_the_argument_parser_before_any_work(tmp_path, capsys):

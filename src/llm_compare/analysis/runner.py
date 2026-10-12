@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from PIL import Image
 
 from llm_compare.analysis.hash_score import score_pair
+from llm_compare.analysis.interrupt import CtrlC, handling_ctrl_c
 from llm_compare.analysis.limiter import RateLimiter, call_with_retries
 from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.batching import estimate_call_tokens, estimate_image_tokens, pack
@@ -76,6 +77,19 @@ class RunOutcome:
     records: list[PairRecord]
     calls: int
     wasted: Usage
+    interrupted: bool = False
+
+
+@dataclass(frozen=True)
+class ComparisonPlan:
+    """Every row in order, the rows settled without the LLM, and the pairs to judge."""
+
+    pairs: list[ImagePair]
+    settled: dict[str, PairRecord]
+    prepared: list[PreparedPair]
+
+
+INTERRUPTED = "run interrupted before this pair was judged"
 
 
 def _record(pair: ImagePair, verdict: Verdict, **extra) -> PairRecord:
@@ -166,7 +180,7 @@ def _judged_record(pair: PreparedPair, verdict: PairVerdict, usage: Usage, batch
     )
 
 
-def _error_record(pair: PreparedPair, batch_id: int, message: str) -> PairRecord:
+def _error_record(pair: PreparedPair, batch_id: int | None, message: str) -> PairRecord:
     return _record(
         pair.pair,
         Verdict.ERROR,
@@ -190,11 +204,12 @@ def is_usable_entry(entry) -> bool:
     version, truncated) is a miss, so the pair is judged again rather than crashing the run."""
     if not isinstance(entry, dict) or entry.get("verdict") not in LLM_VERDICTS:
         return False
-    differences = entry.get("differences")
-    if not isinstance(differences, list) or not all(isinstance(t, str) for t in differences):
-        return False
     counts = _is_count(entry.get("input_tokens")) and _is_count(entry.get("output_tokens"))
-    return counts and _is_cost(entry.get("cost"))
+    return counts and _is_texts(entry.get("differences")) and _is_cost(entry.get("cost"))
+
+
+def _is_texts(value) -> bool:
+    return isinstance(value, list) and all(isinstance(text, str) for text in value)
 
 
 def _cached_record(pair: PreparedPair, entry: dict) -> PairRecord:
@@ -286,12 +301,10 @@ async def _retry_single(pair, batch_id, deps, records) -> None:
     records[pair.row_id] = _error_record(pair, batch_id, "no usable verdict after retries")
 
 
-async def _process_batch(batch, batch_id, deps) -> dict[str, PairRecord]:
-    records: dict[str, PairRecord] = {}
+async def _process_batch(batch, batch_id, deps, records) -> None:
     for pair in await _attempt(batch, batch_id, deps, records):
         await _retry_single(pair, batch_id, deps, records)
     deps.cache.save()
-    return records
 
 
 def _split_cached(prepared, deps) -> tuple[dict[str, PairRecord], list[PreparedPair]]:
@@ -305,8 +318,14 @@ def _split_cached(prepared, deps) -> tuple[dict[str, PairRecord], list[PreparedP
     return records, misses
 
 
-async def judge_pairs(prepared: list[PreparedPair], deps: JudgeDeps) -> dict[str, PairRecord]:
-    records, misses = _split_cached(prepared, deps)
+async def judge_pairs(
+    prepared: list[PreparedPair], deps: JudgeDeps, records: dict | None = None
+) -> dict[str, PairRecord]:
+    """Judge `prepared`, writing each record into `records` as soon as it is known, so a
+    caller still holds every finished verdict if the run is cancelled part way."""
+    records = {} if records is None else records
+    cached, misses = _split_cached(prepared, deps)
+    records.update(cached)
     config = deps.config
     batches = pack(
         misses, config.max_pairs_per_call, config.max_input_tokens, config.call_overhead_tokens
@@ -315,15 +334,41 @@ async def judge_pairs(prepared: list[PreparedPair], deps: JudgeDeps) -> dict[str
 
     async def run(batch_id, batch):
         async with gate:
-            return await _process_batch(batch, batch_id, deps)
+            await _process_batch(batch, batch_id, deps, records)
 
-    parts = await asyncio.gather(*(run(n, b) for n, b in enumerate(batches, start=1)))
-    for part in parts:
-        records.update(part)
+    await asyncio.gather(*(run(n, b) for n, b in enumerate(batches, start=1)))
     return records
 
 
-async def run_comparison(
+def _plan(
+    pairs: list[ImagePair],
+    load: LoadBytes,
+    config: LlmCompareConfig,
+    *,
+    limit: int | None = None,
+    scorer: Scorer = score_pair,
+) -> ComparisonPlan:
+    classified = classify_pairs(pairs, load, config.hash_match_percent, scorer)
+    cut = len(classified.to_llm) if limit is None else limit
+    prepared = prepare_pairs(classified.to_llm[:cut], config.max_edge, config.token_scale)
+    settled = dict(classified.settled)
+    for item in classified.to_llm[cut:]:
+        settled[item.pair.row_id] = _skipped(item.pair, "not judged: --limit reached")
+    return ComparisonPlan(pairs, settled, prepared)
+
+
+def _collect(
+    plan: ComparisonPlan, judged: dict[str, PairRecord], stats: RunStats, interrupted: bool
+) -> RunOutcome:
+    records = {**plan.settled, **judged}
+    for pair in plan.prepared:
+        if pair.row_id not in records:
+            records[pair.row_id] = _error_record(pair, None, INTERRUPTED)
+    ordered = [records[pair.row_id] for pair in plan.pairs]
+    return RunOutcome(ordered, stats.calls, stats.wasted, interrupted)
+
+
+def run_comparison(
     pairs: list[ImagePair],
     load: LoadBytes,
     deps: JudgeDeps,
@@ -331,12 +376,29 @@ async def run_comparison(
     limit: int | None = None,
     scorer: Scorer = score_pair,
 ) -> RunOutcome:
-    config = deps.config
-    classified = classify_pairs(pairs, load, config.hash_match_percent, scorer)
-    cut = len(classified.to_llm) if limit is None else limit
-    prepared = prepare_pairs(classified.to_llm[:cut], config.max_edge, config.token_scale)
-    records = {**classified.settled, **await judge_pairs(prepared, deps)}
-    for item in classified.to_llm[cut:]:
-        records[item.pair.row_id] = _skipped(item.pair, "not judged: --limit reached")
-    ordered = [records[pair.row_id] for pair in pairs]
-    return RunOutcome(ordered, deps.stats.calls, deps.stats.wasted)
+    """The whole run, safe to interrupt: on Ctrl-C (any number of presses) the judging is
+    cancelled, the verdicts already given are kept as they are, the cache is saved, and
+    every pair not yet judged becomes an ERROR row - without re-scoring, re-preparing or
+    touching the rate limiter again. Call it from the main thread (it handles SIGINT)."""
+    plan = _plan(pairs, load, deps.config, limit=limit, scorer=scorer)
+    judged: dict[str, PairRecord] = {}
+    interrupted = _judge_interruptibly(plan.prepared, deps, judged)
+    return _collect(plan, judged, deps.stats, interrupted)
+
+
+async def _judge_watched(prepared, deps, judged, ctrl_c: CtrlC) -> None:
+    ctrl_c.watch(asyncio.get_running_loop(), asyncio.current_task())
+    await judge_pairs(prepared, deps, judged)
+
+
+def _judge_interruptibly(prepared, deps, judged) -> bool:
+    """Judge into `judged`; True when Ctrl-C (or a KeyboardInterrupt) cut the run short."""
+    ctrl_c = CtrlC()
+    with handling_ctrl_c(ctrl_c):
+        try:
+            asyncio.run(_judge_watched(prepared, deps, judged, ctrl_c))
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            return True
+        finally:
+            deps.cache.save()
+    return False

@@ -32,7 +32,6 @@ from llm_compare.domain.errors import Permanent, RateLimited, Transient
 from llm_compare.domain.models import Prices, Verdict
 from tests.llm_compare_support import prepared_pair
 
-
 CALL_USAGE = {"prompt_tokens": 1000, "completion_tokens": 20, "total_tokens": 1100}
 
 

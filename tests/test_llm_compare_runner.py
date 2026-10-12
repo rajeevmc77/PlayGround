@@ -1,10 +1,13 @@
 import asyncio
+import json
+import signal
 
 import pytest
 from PIL import Image
 
 from llm_compare.analysis.limiter import RateLimiter
 from llm_compare.analysis.runner import (
+    INTERRUPTED,
     JudgeDeps,
     classify_pairs,
     judge_pairs,
@@ -295,8 +298,8 @@ def test_a_whole_run_keeps_input_order_and_labels_every_row():
     pairs = [_pair(k) for k in keys]
     files = _files(*[f"{d}/{k}.png" for k in keys for d in ("images", "web_images")])
     deps = _deps(ScriptedJudge())
-    outcome = asyncio.run(
-        run_comparison(pairs, _loader(files), deps, scorer=_scores(hi=99.0, lo1=10.0, lo2=20.0))
+    outcome = run_comparison(
+        pairs, _loader(files), deps, scorer=_scores(hi=99.0, lo1=10.0, lo2=20.0)
     )
     assert [r.key for r in outcome.records] == keys
     assert [r.verdict for r in outcome.records] == [
@@ -304,15 +307,13 @@ def test_a_whole_run_keeps_input_order_and_labels_every_row():
         Verdict.IDENTICAL,
         Verdict.IDENTICAL,
     ]
-    assert outcome.calls == 1
+    assert outcome.calls == 1 and not outcome.interrupted
 
 
 def test_when_everything_is_settled_by_the_hash_no_call_is_made():
     files = _files("images/a.png", "web_images/a.png")
     judge = ScriptedJudge()
-    outcome = asyncio.run(
-        run_comparison([_pair("a")], _loader(files), _deps(judge), scorer=_scores(a=100.0))
-    )
+    outcome = run_comparison([_pair("a")], _loader(files), _deps(judge), scorer=_scores(a=100.0))
     assert judge.batches == [] and outcome.calls == 0
     assert [r.verdict for r in outcome.records] == [Verdict.MATCH_PHASH]
 
@@ -320,14 +321,12 @@ def test_when_everything_is_settled_by_the_hash_no_call_is_made():
 def test_the_limit_judges_the_first_n_and_marks_the_rest_not_judged():
     keys = ["a", "b", "c"]
     files = _files(*[f"{d}/{k}.png" for k in keys for d in ("images", "web_images")])
-    outcome = asyncio.run(
-        run_comparison(
-            [_pair(k) for k in keys],
-            _loader(files),
-            _deps(ScriptedJudge()),
-            limit=1,
-            scorer=_scores(a=1.0, b=1.0, c=1.0),
-        )
+    outcome = run_comparison(
+        [_pair(k) for k in keys],
+        _loader(files),
+        _deps(ScriptedJudge()),
+        limit=1,
+        scorer=_scores(a=1.0, b=1.0, c=1.0),
     )
     assert [r.verdict for r in outcome.records] == [
         Verdict.IDENTICAL,
@@ -335,6 +334,42 @@ def test_the_limit_judges_the_first_n_and_marks_the_rest_not_judged():
         Verdict.SKIPPED,
     ]
     assert "--limit" in outcome.records[1].message
+
+
+class InterruptAfterFirst(ScriptedJudge):
+    """Answers the first call, then the user presses Ctrl-C (a real SIGINT) during the second."""
+
+    async def judge(self, pairs):
+        if self.batches:
+            self.batches.append([p.key for p in pairs])
+            signal.raise_signal(signal.SIGINT)
+            await asyncio.sleep(2)  # cancelled by the interrupt, never returns
+        return await super().judge(pairs)
+
+
+def test_an_interrupted_run_keeps_what_finished_and_saves_the_cache(tmp_path):
+    keys = ["a", "b", "c"]
+    files = {
+        f"{d}/{k}.png": png_bytes(box=(5 + n, 5, 40, 30))
+        for n, k in enumerate(keys)
+        for d in ("images", "web_images")
+    }
+    cache = VerdictCache(tmp_path / "cache.json")
+    deps = _deps(InterruptAfterFirst(), cache, max_pairs_per_call=1, workers=1)
+    outcome = run_comparison(
+        [_pair(k) for k in keys], _loader(files), deps, scorer=_scores(a=1.0, b=1.0, c=1.0)
+    )
+    assert outcome.interrupted and outcome.calls == 2
+    first, *rest = outcome.records
+    assert first.verdict is Verdict.IDENTICAL and not first.cached and first.input_tokens == 100
+    assert [(r.verdict, r.message) for r in rest] == [(Verdict.ERROR, INTERRUPTED)] * 2
+    assert len(json.loads((tmp_path / "cache.json").read_text())) == 1
+
+
+def test_judge_pairs_writes_each_record_into_the_callers_dict():
+    records: dict = {}
+    returned = asyncio.run(judge_pairs(_prepared("A", "B"), _deps(ScriptedJudge()), records))
+    assert returned is records and set(records) == {"pdf:images/A.png", "pdf:images/B.png"}
 
 
 def test_prepare_pairs_estimates_tokens_from_the_prepared_sizes():
