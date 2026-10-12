@@ -364,6 +364,18 @@ python src/build_llm_comparison.py --source-dir /path/to/PlayGround/output \
 The report refers to images by a relative path back to `--source-dir`, so it opens correctly
 from the output directory.
 
+### Troubleshooting / what we measured
+
+- Every call fails with `CERTIFICATE_VERIFY_FAILED` (`--calibrate` now prints it) on a python.org
+  macOS Python: run that Python's `Install Certificates.command`, or run with
+  `SSL_CERT_FILE="$(python3 -c 'import certifi; print(certifi.where())')"`.
+- On gemini-3.8-flash, input tokens were billed flat per image (about 2,850 input tokens per pair
+  whatever `max_edge` was), so scaling images down did not cut tokens; `max_edge` mainly keeps
+  uploads small. Output (thinking) tokens dominated the cost.
+- Batching several pairs per call cut input by about 18% and output by about 40% in a 5-pair
+  trial, but one verdict in five flipped (single-pair re-runs also flip occasionally). That is
+  too few pairs to judge a larger `max_pairs_per_call`: calibrate with more before trusting it.
+
 ### Definition of done (for changes under `src/llm_compare/`, `src/build_llm_comparison.py`)
 
 ```bash
