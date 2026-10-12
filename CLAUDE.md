@@ -102,6 +102,21 @@ and prints which path works and why.
    JIRA; a real run records every created key in `output/jira_backlog_state.json`, so a re-run
    skips what exists (delete an entry to re-create that issue).
 
+4. **LLM visual image comparison** (`src/llm_compare/`, `src/build_llm_comparison.py`) — a second
+   opinion on the PDF/web image pairs the perceptual hash scores below 90% (`hash_match_percent`),
+   read from `output/` (`bcbc_pdf.json`, `bcbc_web.json`, `comparison.json`). Each pair is
+   flattened/trimmed/scaled down (`max_edge`), batched by pair count and token budget, judged by a
+   multimodal Gemini model through DSPy (async, rate-limited by RPM/TPM, 429/5xx backoff) as
+   IDENTICAL / DIFFERENT with reasons, and cached in `llm_compare/cache.json` so a re-run makes
+   no calls. Pairs the hash settles, skipped pairs and web-only images still get a row.
+   `output/llm_image_report.html` lists every image with its verdict, tokens and cost.
+   `--dry-run` prints the plan with no API call, `--limit N` tries N pairs, `--calibrate N` picks
+   `max_edge` by evidence; `--source-dir`/`--env-file` let a worktree read the main checkout's
+   `output/` and `.env`. `GEMINI_API_KEY`/`GEMINI_MODEL` come from the environment or `.env`;
+   other settings from `llm_compare_config.toml` (see `llm_compare_config.example.toml`); both
+   files are git-ignored. Spec `docs/superpowers/specs/2026-10-12-llm-image-compare-design.md`,
+   plan `docs/superpowers/plans/2026-10-12-llm-image-compare.md`.
+
 ## Folder structure
 - `app.py` — the FastAPI app; stays in the project root (its own entry point).
 - `src/` — Python modules and scripts. `mo_toc/` is the main indexing library (see item 2 above).
@@ -127,8 +142,9 @@ and prints which path works and why.
   2026-09-20 rewrite (`bcbc_mo_index.py`, `bcbc2024_index.py`, `extract_figures.py`,
   `extract_figures_2024.py`). Not imported by anything active — kept for historical
   reference only, per its name: do not import from or copy logic out of it into new work.
-- Root also holds: `credentials.json` / `token.json` (OAuth secrets — never commit these if
-  this ever becomes a git repo), `requirements.txt`, `Readme.md`.
+- Root also holds: `credentials.json` / `token.json` / `.env` / `llm_compare_config.toml` (OAuth
+  secrets and the Gemini key/settings — git-ignored, never commit these), `requirements.txt`,
+  `Readme.md`.
 
 ## Setup
 ```bash
@@ -181,7 +197,8 @@ Wired up via `pyproject.toml` (ruff config, pytest config with a `slow` marker f
 real-1685-page-PDF integration tests) and the `tests/` suite, scoped to the new work —
 `src/mo_toc/`, `src/build_mo_toc.py`, `src/serve_mo_toc.py`, `src/web_toc/`,
 `src/build_web_toc.py`, `src/build_web_pages.py`, `src/comparison/`, `src/build_comparison.py`,
-`src/shared/`, `src/jira_backlog/`, `src/create_jira_backlog.py`, and `tests/` (including
+`src/shared/`, `src/jira_backlog/`, `src/create_jira_backlog.py`, `src/llm_compare/`,
+`src/build_llm_comparison.py`, and `tests/` (including
 `tests/js/`, the viewer's pure JS helpers, run by `node --test` from `tests/test_viewer_js.py`)
 — not the whole
 repo: `app.py`, `src/check_directory_access.py`, and `Archive DO NOT Refer/` are legacy/

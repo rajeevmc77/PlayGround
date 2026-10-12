@@ -1,8 +1,9 @@
 # PlayGround
 
-A playground for Google Workspace/Drive APIs, PDF structural parsing and JIRA automation.
-Three independent tools live here: the Directory/Drive web app (§1), the BC Building Code
-PDF/web indexes and viewer (§2–4), and the AOT Pulse JIRA backlog creator (§5).
+A playground for Google Workspace/Drive APIs, PDF structural parsing, JIRA automation and
+LLM image comparison. Four independent tools live here: the Directory/Drive web app (§1), the
+BC Building Code PDF/web indexes and viewer (§2–4), the AOT Pulse JIRA backlog creator (§5)
+and the LLM image comparison (§6).
 
 ## 1. Directory/Drive web app (`app.py`)
 
@@ -272,6 +273,81 @@ issue, delete its entry from that file.
 New issues start in the project's default status, even though the epics document marks the
 stories "Shipped". The tool doesn't change ticket status.
 
+## 6. LLM image comparison (`src/build_llm_comparison.py`)
+
+The viewer's image comparison scores each PDF/web image pair with a perceptual hash. This tool
+gives a second opinion on the pairs the hash scores below 90%: a multimodal Gemini model, driven
+through [DSPy](https://dspy.ai), says whether the two images show the same thing (IDENTICAL) or
+not (DIFFERENT), with the differences it sees. Images are flattened, trimmed and scaled down,
+batched several pairs per call, and judged concurrently within the provider's request and token
+limits. Verdicts are cached, so a re-run costs nothing. It needs the built
+`bcbc_pdf.json`, `bcbc_web.json` and `comparison.json` (§2–3 and the comparison build) in
+`output/`.
+
+### Configuration
+
+The key and model come from the environment or a git-ignored `.env` in the project root, never
+from a config file:
+
+```
+GEMINI_API_KEY=...
+GEMINI_MODEL=...
+```
+
+Other settings (image size, batch size, rate limits, optional prices) are optional. Copy the
+template to the git-ignored `llm_compare_config.toml`:
+
+```bash
+cp llm_compare_config.example.toml llm_compare_config.toml
+```
+
+### Run
+
+```bash
+python src/build_llm_comparison.py --dry-run       # counts + estimated tokens/cost, no API call
+python src/build_llm_comparison.py --limit 10      # try 10 pairs first
+python src/build_llm_comparison.py --calibrate 24  # choose max_edge / batch size by evidence
+python src/build_llm_comparison.py                 # the full run (resumable, cached)
+```
+
+`--dry-run` makes no API call. `--calibrate N` judges N sample pairs under several settings
+(this spends tokens) and recommends `max_edge`; put it in `llm_compare_config.toml`. Exit codes:
+0 success, 2 bad configuration or missing input, 130 interrupted with Ctrl-C (cached verdicts
+are kept and unfinished pairs show as ERROR).
+
+### Results
+
+Written to `--output-dir` (default `output/`):
+
+- `llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens and cost,
+  and a header summary; filter by verdict or search.
+- `llm_image_compare.json` — the same data for programs.
+- `llm_compare/cache.json` — the verdict cache; `llm_compare/calibration.json` after `--calibrate`.
+
+From a git worktree (whose own `output/` and `.env` are empty), read the main checkout's
+inputs and key with `--source-dir` and `--env-file`, and write somewhere else:
+
+```bash
+python src/build_llm_comparison.py --source-dir /path/to/PlayGround/output \
+    --env-file /path/to/PlayGround/.env --output-dir /tmp/llm_out --dry-run
+```
+
+The report refers to images by a relative path back to `--source-dir`, so it opens correctly
+from the output directory.
+
+### Definition of done (for changes under `src/llm_compare/`, `src/build_llm_comparison.py`)
+
+```bash
+ruff check --fix src/llm_compare src/build_llm_comparison.py tests
+ruff format src/llm_compare src/build_llm_comparison.py tests
+radon cc -s -n B src/llm_compare src/build_llm_comparison.py
+vulture src/llm_compare src/build_llm_comparison.py tests
+pytest --cov=src/llm_compare --cov=src/build_llm_comparison --cov-branch
+```
+
+`tests/test_llm_compare_live.py` (marker `slow`) calls the real model on three pairs; it skips
+unless a key, a model and a built `output/` exist.
+
 ## Folder structure
 
 - `app.py` — the FastAPI directory/Drive app; stays in the project root as its own entry
@@ -288,6 +364,10 @@ stories "Shipped". The tool doesn't change ticket status.
     (REST client and issue fields), `output/` (Atlassian Document Format descriptions and the
     created-keys state file), `application/` (the publisher).
   - `create_jira_backlog.py` — CLI entry point that creates the backlog in JIRA (see §5).
+  - `llm_compare/` — the LLM image comparison library: `domain/` (records, batching, costing),
+    `parsing/` (pair source, image preprocessing), `analysis/` (DSPy judge, runner, rate
+    limiter, estimate, calibration), `output/` (verdict cache, HTML/JSON report).
+  - `build_llm_comparison.py` — CLI entry point for the LLM image comparison (see §6).
   - `shared/` — small pure-function helpers with no dependency on either indexing
     library, shared between `mo_toc/` and `web_toc/` (currently just the unified
     document-level numbering algorithm).
@@ -312,7 +392,9 @@ stories "Shipped". The tool doesn't change ticket status.
 - Root also holds `credentials.json` / `token.json` (OAuth secrets — never commit these),
   `jira_config.toml` (JIRA API token, ignored by git; template in `jira_config.example.toml`),
   `JIRA.postman_collection.json` (the JIRA API reference requests; it stores credentials,
-  so it is ignored by git too) and `requirements.txt`.
+  so it is ignored by git too), `.env` and `llm_compare_config.toml` (Gemini key/model and
+  settings for §6, ignored by git; template in `llm_compare_config.example.toml`) and
+  `requirements.txt`.
 
 ## Status
 
