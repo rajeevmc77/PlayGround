@@ -1,5 +1,6 @@
 """What a run would do and cost, worked out without calling the API (--dry-run)."""
 
+import math
 from collections import Counter
 from dataclasses import dataclass
 
@@ -30,6 +31,7 @@ class RunPlan:
     input_tokens: int
     output_tokens: int
     cost: float | None
+    workers: int = 1
 
 
 def plan_run(
@@ -65,7 +67,23 @@ def plan_run(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost_of(input_tokens, output_tokens, prices),
+        workers=config.workers,
     )
+
+
+# A guess, not a measurement: single-pair calls took 5-28 s in the trial with default thinking.
+ROUGH_SECONDS_PER_CALL = 10
+
+
+def _rough_time_line(plan: RunPlan) -> list[str]:
+    if plan.calls == 0:
+        return []
+    seconds = math.ceil(plan.calls / max(plan.workers, 1)) * ROUGH_SECONDS_PER_CALL
+    shown = f"{seconds} s" if seconds < 60 else f"{math.ceil(seconds / 60)} min"
+    return [
+        f"rough time: ~{shown} (calls / workers x ~{ROUGH_SECONDS_PER_CALL} s per call; "
+        "measured 5-28 s single-pair calls with default thinking)"
+    ]
 
 
 def format_plan(plan: RunPlan) -> str:
@@ -78,5 +96,6 @@ def format_plan(plan: RunPlan) -> str:
             f"LLM calls: {plan.calls}",
             f"estimated tokens: {plan.input_tokens:,} in / {plan.output_tokens:,} out",
             f"estimated cost: {cost}",
+            *_rough_time_line(plan),
         ]
     )

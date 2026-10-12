@@ -1,4 +1,6 @@
-from llm_compare.analysis.estimate import format_plan, plan_run
+import pytest
+
+from llm_compare.analysis.estimate import RunPlan, format_plan, plan_run
 from llm_compare.analysis.runner import classify_pairs, prepare_pairs
 from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.models import ImagePair, Prices
@@ -85,3 +87,58 @@ def test_format_plan_names_the_cost_or_says_it_is_unavailable():
     text = format_plan(plan)
     assert "cost unavailable" in text and "LLM calls: 1" in text
     assert "settled by hash (free): 1" in text
+
+
+# ---- rough time -------------------------------------------------------------------------
+
+ROUGH_NOTE = (
+    "(calls / workers x ~10 s per call; measured 5-28 s single-pair calls with default thinking)"
+)
+
+
+def _plan(calls, workers):
+    return RunPlan(
+        rows=10,
+        settled_by_hash=0,
+        web_only=0,
+        skipped=0,
+        to_llm=calls,
+        cached=0,
+        calls=calls,
+        input_tokens=0,
+        output_tokens=0,
+        cost=0.0,
+        workers=workers,
+    )
+
+
+def test_the_plan_remembers_the_worker_count_the_run_would_use():
+    pairs, load, scorer = _setup()
+    config = LlmCompareConfig(model="m", workers=3)
+    plan = plan_run(pairs, load, config, VerdictCache(), "v1", None, scorer)
+    assert plan.workers == 3
+
+
+@pytest.mark.parametrize(
+    ("calls", "workers", "shown"),
+    [
+        (1, 4, "~10 s"),  # one round of calls
+        (3, 2, "~20 s"),  # two rounds
+        (24, 4, "~1 min"),  # six rounds: exactly a minute
+        (41, 4, "~2 min"),  # eleven rounds: 110 s, rounded up to whole minutes
+        (5, 1, "~50 s"),  # under a minute stays in seconds
+        (7, 1, "~2 min"),  # 70 s
+    ],
+)
+def test_the_dry_run_gives_a_rough_time_labelled_as_such(calls, workers, shown):
+    lines = format_plan(_plan(calls, workers)).splitlines()
+    assert lines[-1] == f"rough time: {shown} {ROUGH_NOTE}"
+
+
+def test_a_plan_with_no_calls_has_no_rough_time():
+    text = format_plan(_plan(0, 4))
+    assert "rough time" not in text and text.splitlines()[-1].startswith("estimated cost")
+
+
+def test_a_zero_worker_plan_does_not_divide_by_zero():
+    assert "rough time: ~10 s" in format_plan(_plan(1, 0))
