@@ -269,3 +269,126 @@ def test_write_report_writes_utf8_explicitly(tmp_path, monkeypatch):
     assert encodings == ["utf-8", "utf-8"]
     assert "—" in html_path.read_bytes().decode("utf-8")
     assert json.loads(json_path.read_bytes().decode("utf-8"))["rows"]
+
+
+# ---- timing -----------------------------------------------------------------------------
+
+_TIMING = {"scoring_seconds": 4.0, "judging_seconds": 60.0, "call_seconds": (10.0, 20.0)}
+
+
+def _timed_summary(records=None, **timing):
+    shown = {**_TIMING, **timing}
+    return summarise(records or _records(), 2, Usage(), **shown)
+
+
+def test_the_summary_totals_the_time_and_describes_the_calls():
+    summary = _timed_summary()
+    assert (summary["scoring_seconds"], summary["judging_seconds"]) == (4.0, 60.0)
+    assert summary["total_seconds"] == 64.0 and summary["calls_timed"] == 2
+    assert summary["avg_call_seconds"] == 15.0 and summary["slowest_call_seconds"] == 20.0
+    # two live LLM verdicts (the cached one is not this run's work) in a minute of judging
+    assert summary["pairs_per_minute"] == 2.0
+
+
+def test_a_run_without_timing_figures_reports_zero_time_and_nothing_to_average():
+    summary = summarise(_records(), calls=2, wasted=Usage())
+    assert (summary["scoring_seconds"], summary["judging_seconds"], summary["total_seconds"]) == (
+        0.0,
+        0.0,
+        0.0,
+    )
+    assert summary["calls_timed"] == 0
+    assert summary["avg_call_seconds"] is None and summary["slowest_call_seconds"] is None
+    assert summary["pairs_per_minute"] is None
+
+
+def test_an_all_cached_run_has_judging_time_but_no_calls_and_no_rate():
+    records = [_cached("A.Fig2", 0.001), _cached("A.Fig3", 0.003)]
+    summary = summarise(records, 0, Usage(), scoring_seconds=38.0, judging_seconds=0.4)
+    assert summary["total_seconds"] == pytest.approx(38.4) and summary["calls_timed"] == 0
+    assert summary["avg_call_seconds"] is None and summary["slowest_call_seconds"] is None
+    assert summary["pairs_per_minute"] is None
+
+
+def test_a_zero_length_judging_phase_gives_no_rate_instead_of_dividing_by_zero():
+    summary = _timed_summary(judging_seconds=0.0)
+    assert summary["pairs_per_minute"] is None and summary["total_seconds"] == 4.0
+
+
+def test_a_run_that_judged_nothing_live_has_no_rate_even_with_judging_time():
+    records = [_rec("A.Fig1", Verdict.MATCH_PHASH), _cached("A.Fig2", 0.001)]
+    assert _timed_summary(records)["pairs_per_minute"] is None
+
+
+def _timed_html(records=None, **timing):
+    report = build_report(
+        records or _records(),
+        calls=2,
+        wasted=Usage(),
+        model="m",
+        prompt_version="v",
+        generated_at="t",
+        **{**_TIMING, **timing},
+    )
+    return render_html(report), report
+
+
+def test_the_header_has_cards_for_the_run_time_and_its_parts():
+    html, report = _timed_html(scoring_seconds=38.0, judging_seconds=214.0)
+    assert report["summary"]["total_seconds"] == 252.0
+    for card in (
+        "<b>4m 12s</b><span>run time</span>",
+        "<b>38 s</b><span>scoring</span>",
+        "<b>3m 34s</b><span>judging (LLM)</span>",
+        "<b>15 s</b><span>avg call</span>",
+        "<b>20 s</b><span>slowest call</span>",
+    ):
+        assert card in html
+
+
+def test_a_run_with_no_calls_shows_no_average_or_slowest_call():
+    html, _ = _timed_html(call_seconds=(), judging_seconds=0.0)
+    assert "<b>n/a</b><span>avg call</span>" in html
+    assert "<b>n/a</b><span>slowest call</span>" in html
+    assert "<b>0 s</b><span>judging (LLM)</span>" in html
+
+
+def test_the_json_carries_the_timing_summary_and_each_rows_call_time(tmp_path):
+    live = _rec(
+        "A.Fig2",
+        Verdict.IDENTICAL,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+        batch_id=1,
+        call_seconds=12.4,
+    )
+    _, report = _timed_html([live, _cached("A.Fig3", 0.0), _rec("A.Fig1", Verdict.MATCH_PHASH)])
+    json_path, _ = write_report(report, tmp_path)
+    saved = json.loads(json_path.read_text())
+    assert saved["summary"]["total_seconds"] == 64.0 and saved["summary"]["calls_timed"] == 2
+    assert [row["call_seconds"] for row in saved["rows"]] == [12.4, None, None]
+
+
+def test_a_judged_row_shows_how_long_its_call_took_next_to_its_batch():
+    live = _rec(
+        "A.Fig2",
+        Verdict.IDENTICAL,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+        batch_id=3,
+        call_seconds=12.4,
+    )
+    html, _ = _html([live])
+    assert "<div class='cap'>batch 3 · 12.4 s</div>" in html
+
+
+def test_a_row_without_a_call_time_shows_only_its_batch_or_cached_note():
+    untimed = _rec(
+        "A.Fig2", Verdict.IDENTICAL, input_tokens=1, output_tokens=1, cost=0.0, batch_id=3
+    )
+    html, _ = _html([untimed, _cached("A.Fig3", 0.001)])
+    assert "<div class='cap'>batch 3</div>" in html
+    assert "<div class='cap'>earlier run · cached</div>" in html
+    assert "· n/a" not in html and " s</div>" not in html

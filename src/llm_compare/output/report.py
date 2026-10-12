@@ -4,11 +4,13 @@ every image (both sides, side by side), its verdict, and what the LLM check cost
 
 import json
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import asdict
 from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
+from llm_compare.domain.durations import format_duration
 from llm_compare.domain.models import LLM_VERDICTS, PairRecord, Usage, Verdict
 
 _ROUTE = {
@@ -64,10 +66,45 @@ def _tally(records: list[PairRecord], judged: list[PairRecord]) -> dict:
     }
 
 
-def summarise(records: list[PairRecord], calls: int, wasted: Usage) -> dict:
+def _pairs_per_minute(live_pairs: int, judging_seconds: float) -> float | None:
+    if live_pairs == 0 or judging_seconds <= 0:
+        return None
+    return live_pairs / (judging_seconds / 60)
+
+
+def _timing(
+    judged: list[PairRecord], scoring: float, judging: float, call_seconds: Sequence[float]
+) -> dict:
+    """How long the run took: the two phases, and the model's response time per call (the
+    limiter's waits and the backoff sleeps are not part of a call)."""
+    live = sum(not record.cached for record in judged)
+    return {
+        "scoring_seconds": scoring,
+        "judging_seconds": judging,
+        "total_seconds": scoring + judging,
+        "calls_timed": len(call_seconds),
+        "avg_call_seconds": sum(call_seconds) / len(call_seconds) if call_seconds else None,
+        "slowest_call_seconds": max(call_seconds, default=None),
+        "pairs_per_minute": _pairs_per_minute(live, judging),
+    }
+
+
+def summarise(
+    records: list[PairRecord],
+    calls: int,
+    wasted: Usage,
+    scoring_seconds: float = 0.0,
+    judging_seconds: float = 0.0,
+    call_seconds: Sequence[float] = (),
+) -> dict:
     judged = [record for record in records if record.verdict in LLM_VERDICTS]
     tally = _tally(records, judged)
-    return {**tally, "calls": calls, **_spend(judged, wasted, tally["settled_by_hash"])}
+    return {
+        **tally,
+        "calls": calls,
+        **_spend(judged, wasted, tally["settled_by_hash"]),
+        **_timing(judged, scoring_seconds, judging_seconds, call_seconds),
+    }
 
 
 def _row(record: PairRecord) -> dict:
@@ -86,12 +123,17 @@ def build_report(
     model: str,
     prompt_version: str,
     generated_at: str,
+    scoring_seconds: float = 0.0,
+    judging_seconds: float = 0.0,
+    call_seconds: Sequence[float] = (),
 ) -> dict:
     return {
         "generated_at": generated_at,
         "model": model,
         "prompt_version": prompt_version,
-        "summary": summarise(records, calls, wasted),
+        "summary": summarise(
+            records, calls, wasted, scoring_seconds, judging_seconds, call_seconds
+        ),
         "rows": [_row(record) for record in records],
     }
 
@@ -170,9 +212,10 @@ def _usage(row: dict) -> str:
         return "<span class='none'>—</span>"
     cached = " · cached" if row["cached"] else ""
     batch = f"batch {row['batch_id']}" if row["batch_id"] is not None else "earlier run"
+    took = "" if row["call_seconds"] is None else f" · {format_duration(row['call_seconds'])}"
     return (
         f"{row['input_tokens']:,} in / {row['output_tokens']:,} out<br>"
-        f"{_money(row['cost'])}<div class='cap'>{batch}{cached}</div>"
+        f"{_money(row['cost'])}<div class='cap'>{batch}{took}{cached}</div>"
     )
 
 
@@ -192,6 +235,16 @@ def _row_html(row: dict, prefix: str) -> str:
     return f"<tr data-verdict='{verdict}' data-key='{key}'>{''.join(cells)}</tr>"
 
 
+def _time_cards(summary: dict) -> list[tuple[str, str]]:
+    return [
+        ("run time", format_duration(summary["total_seconds"])),
+        ("scoring", format_duration(summary["scoring_seconds"])),
+        ("judging (LLM)", format_duration(summary["judging_seconds"])),
+        ("avg call", format_duration(summary["avg_call_seconds"])),
+        ("slowest call", format_duration(summary["slowest_call_seconds"])),
+    ]
+
+
 def _cards(summary: dict) -> str:
     cards = [
         ("images", f"{summary['total_rows']:,}"),
@@ -199,6 +252,7 @@ def _cards(summary: dict) -> str:
         ("judged by LLM", f"{summary['judged_by_llm']:,}"),
         ("from cache", f"{summary['cached_hits']:,}"),
         ("LLM calls", f"{summary['calls']:,}"),
+        *_time_cards(summary),
         ("input tokens", f"{summary['input_tokens']:,}"),
         ("output tokens", f"{summary['output_tokens']:,}"),
         ("total tokens", f"{summary['total_tokens']:,}"),
