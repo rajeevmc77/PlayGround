@@ -146,12 +146,19 @@ def _finish(outcome: RunOutcome, config, source_dir, output_dir, now) -> None:
         generated_at=now or datetime.now(UTC).isoformat(timespec="seconds"),
     )
     _, html_path = write_report(report, output_dir, _asset_prefix(source_dir, output_dir))
-    summary = report["summary"]
+    _print_summary(html_path, report["summary"])
+
+
+def _print_summary(html_path: Path, summary: dict) -> None:
     print(f"report: {html_path}")
     print(f"verdicts: {summary['counts']}")
     print(
         f"calls {summary['calls']}, tokens {summary['input_tokens']:,} in / "
         f"{summary['output_tokens']:,} out, cost {summary['cost']}"
+    )
+    print(
+        f"all judged verdicts: tokens {summary['cumulative_total_tokens']:,}, "
+        f"cost {summary['cumulative_cost']}"
     )
 
 

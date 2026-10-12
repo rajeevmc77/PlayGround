@@ -82,8 +82,47 @@ def test_summary_counts_every_verdict_and_totals_only_this_runs_spend():
     assert summary["calls"] == 2
     assert (summary["input_tokens"], summary["output_tokens"]) == (3100, 155)
     assert summary["cost"] == pytest.approx(0.0065)
-    assert summary["cost_per_judged_pair"] == pytest.approx(0.0065 / 2)
-    assert summary["estimated_saved_cost"] == pytest.approx(0.0065 / 2)
+    # every LLM-judged verdict, the cached one included, plus this run's wasted calls
+    assert (summary["cumulative_input_tokens"], summary["cumulative_output_tokens"]) == (
+        3600,
+        165,
+    )
+    assert summary["cumulative_total_tokens"] == 3765
+    assert summary["cumulative_cost"] == pytest.approx(0.0075)
+    assert summary["cost_per_judged_pair"] == pytest.approx(0.0075 / 3)
+    assert summary["estimated_saved_cost"] == pytest.approx(0.0075 / 3)
+
+
+def _cached(key, cost):
+    return _rec(key, Verdict.IDENTICAL, input_tokens=100, output_tokens=10, cost=cost, cached=True)
+
+
+def test_an_all_cached_run_spent_nothing_now_but_still_states_the_total_and_per_pair_cost():
+    records = [
+        _cached("A.Fig2", 0.001),
+        _cached("A.Fig3", 0.003),
+        _rec("A.Fig1", Verdict.MATCH_PHASH),
+    ]
+    summary = summarise(records, calls=0, wasted=Usage())
+    assert (summary["input_tokens"], summary["cost"]) == (0, 0)
+    assert (summary["cumulative_total_tokens"], summary["cumulative_cost"]) == (220, 0.004)
+    assert summary["cost_per_judged_pair"] == pytest.approx(0.002)
+    assert summary["estimated_saved_cost"] == pytest.approx(0.002)
+
+
+def test_one_judged_row_of_unknown_cost_makes_the_total_unknown_but_not_this_runs():
+    live = _rec("A.Fig2", Verdict.IDENTICAL, input_tokens=10, output_tokens=1, cost=0.5, batch_id=1)
+    summary = summarise([live, _cached("A.Fig3", None)], calls=1, wasted=Usage())
+    assert summary["cost"] == 0.5
+    assert summary["cumulative_cost"] is None and summary["cumulative_total_tokens"] == 121
+    assert summary["cost_per_judged_pair"] is None and summary["estimated_saved_cost"] is None
+
+
+def test_the_header_has_cards_for_every_judged_verdicts_tokens_and_cost():
+    html, report = _html()
+    assert report["summary"]["cumulative_total_tokens"] == 3660
+    assert "all judged verdicts: tokens" in html and "3,660" in html
+    assert "all judged verdicts: cost" in html and "$0.00700" in html
 
 
 def test_unknown_cost_stays_unknown_everywhere():
@@ -92,6 +131,7 @@ def test_unknown_cost_stays_unknown_everywhere():
     ]
     summary = summarise(records, calls=1, wasted=Usage())
     assert summary["cost"] is None and summary["cost_per_judged_pair"] is None
+    assert summary["cumulative_cost"] is None
     assert "cost unavailable" in render_html(
         build_report(
             records, calls=1, wasted=Usage(), model="m", prompt_version="v", generated_at="t"

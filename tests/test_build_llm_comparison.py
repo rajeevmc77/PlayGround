@@ -86,6 +86,17 @@ def test_a_pair_the_hash_cannot_settle_is_judged_and_cached(tmp_path, monkeypatc
     assert judge.calls == 1  # the second run is served from the cache
 
 
+def test_a_cached_rerun_still_prints_what_all_the_verdicts_cost(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(build_llm_comparison, "score_pair", lambda pair, pdf, web: 10.0)
+    source = _source(tmp_path)
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    capsys.readouterr()
+    assert main(_args(source), env=ENV, judge=AllIdentical(), now="t") == 0
+    out = capsys.readouterr().out
+    assert "calls 0, tokens 0 in / 0 out, cost 0" in out
+    assert "all judged verdicts: tokens 11, cost 0.001" in out
+
+
 def test_the_report_references_images_relative_to_the_output_directory(tmp_path):
     source = _source(tmp_path / "src")
     out = tmp_path / "out"

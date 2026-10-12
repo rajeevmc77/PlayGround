@@ -19,24 +19,35 @@ _ROUTE = {
 }
 
 
-def _total_cost(live: list[PairRecord], wasted: Usage) -> float | None:
-    costs = [record.cost for record in live]
+def _total_cost(rows: list[PairRecord], wasted: Usage) -> float | None:
+    costs = [record.cost for record in rows]
     if wasted.input_tokens or wasted.output_tokens:
         costs.append(wasted.cost)
     return None if any(cost is None for cost in costs) else sum(costs)
 
 
-def _spend(live: list[PairRecord], wasted: Usage, settled: int) -> dict:
-    """Tokens and cost of the pairs judged this run plus the wasted calls."""
-    cost = _total_cost(live, wasted)
-    per_pair = cost / len(live) if cost is not None and live else None
-    input_tokens = sum(r.input_tokens for r in live) + wasted.input_tokens
-    output_tokens = sum(r.output_tokens for r in live) + wasted.output_tokens
+def _usage_totals(rows: list[PairRecord], wasted: Usage, prefix: str = "") -> dict:
+    input_tokens = sum(r.input_tokens for r in rows) + wasted.input_tokens
+    output_tokens = sum(r.output_tokens for r in rows) + wasted.output_tokens
     return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": input_tokens + output_tokens,
-        "cost": cost,
+        f"{prefix}input_tokens": input_tokens,
+        f"{prefix}output_tokens": output_tokens,
+        f"{prefix}total_tokens": input_tokens + output_tokens,
+        f"{prefix}cost": _total_cost(rows, wasted),
+    }
+
+
+def _spend(judged: list[PairRecord], wasted: Usage, settled: int) -> dict:
+    """This run's spend (pairs judged now plus wasted calls) and the cumulative spend of
+    every LLM verdict in the report, cached ones included; the per-pair cost and the hash's
+    saving are based on the cumulative figure, so they stay known when everything is cached."""
+    this_run = _usage_totals([r for r in judged if not r.cached], wasted)
+    overall = _usage_totals(judged, wasted, "cumulative_")
+    cost = overall["cumulative_cost"]
+    per_pair = cost / len(judged) if cost is not None and judged else None
+    return {
+        **this_run,
+        **overall,
         "cost_per_judged_pair": per_pair,
         "estimated_saved_cost": per_pair * settled if per_pair is not None else None,
     }
@@ -55,9 +66,8 @@ def _tally(records: list[PairRecord], judged: list[PairRecord]) -> dict:
 
 def summarise(records: list[PairRecord], calls: int, wasted: Usage) -> dict:
     judged = [record for record in records if record.verdict in LLM_VERDICTS]
-    live = [record for record in judged if not record.cached]
     tally = _tally(records, judged)
-    return {**tally, "calls": calls, **_spend(live, wasted, tally["settled_by_hash"])}
+    return {**tally, "calls": calls, **_spend(judged, wasted, tally["settled_by_hash"])}
 
 
 def _row(record: PairRecord) -> dict:
@@ -193,6 +203,8 @@ def _cards(summary: dict) -> str:
         ("output tokens", f"{summary['output_tokens']:,}"),
         ("total tokens", f"{summary['total_tokens']:,}"),
         ("cost this run", _money(summary["cost"])),
+        ("all judged verdicts: tokens", f"{summary['cumulative_total_tokens']:,}"),
+        ("all judged verdicts: cost", _money(summary["cumulative_cost"])),
         ("cost per judged pair", _money(summary["cost_per_judged_pair"])),
         ("est. saved by hash", _money(summary["estimated_saved_cost"])),
     ]
