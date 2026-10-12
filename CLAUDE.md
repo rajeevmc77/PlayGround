@@ -219,7 +219,9 @@ only if/when they're actually touched, not retroactively.
 - A real test suite (1011 tests — 993 by default plus 18 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, the `build_*.py`/`serve_mo_toc.py` scripts
   and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
-  `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). The OLD
+  `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). WARNING:
+  `tests/test_llm_compare_live.py` is slow-marked too - with `GEMINI_API_KEY`/`GEMINI_MODEL` and a
+  built `output/` present, both of those commands spend real API money. The OLD
   exploratory scripts
   (`app.py`, `src/check_directory_access.py`) predate that and were built as ad hoc work,
   verified by direct execution (`py_compile`, sample runs on page/data subsets before a full

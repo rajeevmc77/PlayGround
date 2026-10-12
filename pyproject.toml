@@ -15,5 +15,5 @@ ignore_names = ["do_GET", "log_message", "daemon_threads", "sent_pdf", "sent_web
 addopts = "-q -m \"not slow\""
 testpaths = ["tests"]
 markers = [
-    "slow: exercises the full 1685-page PDF or the real BC Building Code website; skipped unless -m slow is passed",
+    "slow: exercises the full 1685-page PDF or the real BC Building Code website; skipped unless -m slow is passed. tests/test_llm_compare_live.py is also slow-marked: with GEMINI_API_KEY/GEMINI_MODEL set and a built output/, selecting slow tests spends real API money",
 ]

@@ -35,6 +35,8 @@ def test_three_real_pairs_get_real_verdicts_and_usage():
     web = json.loads((SOURCE / "bcbc_web.json").read_text())["images"]
     counterparts = json.loads((SOURCE / "comparison.json").read_text())["counterparts"]
     scored = classify_pairs(build_pairs(pdf, web, counterparts), _load_bytes, 90.0).to_llm[:3]
+    if len(scored) < 3:
+        pytest.skip("needs at least 3 pairs the hash cannot settle")
     prepared = prepare_pairs(scored, config.max_edge, config.token_scale)
     judge = DspyPairJudge(config, resolve_prices(config))
     result = asyncio.run(judge.judge(prepared))

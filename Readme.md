@@ -310,14 +310,15 @@ python src/build_llm_comparison.py --calibrate 24  # choose max_edge / batch siz
 python src/build_llm_comparison.py                 # the full run (resumable, cached)
 ```
 
-`--dry-run` makes no API call. `--calibrate N` judges N sample pairs under several settings
+`--dry-run` makes no API call and no network request (it makes litellm use its bundled price
+map; set `LITELLM_LOCAL_MODEL_COST_MAP=False` to fetch the current one). `--calibrate N` judges N sample pairs under several settings
 (this spends tokens) and recommends `max_edge`; put it in `llm_compare_config.toml`. Exit codes:
 0 success, 2 bad configuration or missing input, 130 interrupted with Ctrl-C (cached verdicts
 are kept and unfinished pairs show as ERROR).
 
 ### Results
 
-Written to `--output-dir` (default `output/`):
+Written to `--output-dir` (default: the same directory as `--source-dir`, i.e. `output/`):
 
 - `llm_image_report.html` — every PDF and web image with its verdict, reasons, tokens and cost,
   and a header summary; filter by verdict or search.
