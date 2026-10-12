@@ -301,10 +301,14 @@ template to the git-ignored `llm_compare_config.toml`:
 cp llm_compare_config.example.toml llm_compare_config.toml
 ```
 
-`max_output_tokens` (default 8192) caps each call's output, thinking tokens included, which
-Gemini-3-class models bill as output. `output_tokens_per_pair` (default 800) is the estimate
-`--dry-run` and the token-per-minute reservation use; it is set from a measurement:
-gemini-3.8-flash used 450-1,640 output tokens for a single pair and 3,374-5,967 for five. The
+`reasoning_effort` (default `"low"`) sets how much the model thinks; `""` sends nothing and
+restores the model's own default thinking. It is a file setting only (not an environment
+variable). `max_output_tokens` (default 8192) caps each call's output, thinking tokens included,
+which Gemini-3-class models bill as output. `output_tokens_per_pair` (default 300) is the
+estimate `--dry-run` and the token-per-minute reservation use; it is set from a measurement:
+with `"low"` gemini-3.8-flash used 35-567 output tokens for a single pair (mean about 200); with
+`reasoning_effort = ""` it used 450-1,640 for a single pair and 3,374-5,967 for five, so set
+`output_tokens_per_pair = 800` if you restore default thinking. The
 cap must cover `output_tokens_per_pair` x `max_pairs_per_call` plus room for the model's
 thinking: too low truncates the answer, which then fails to parse and its pairs are re-asked
 one at a time. Without a cap a looping answer would be billed in full on every re-ask; the
@@ -372,6 +376,12 @@ from the output directory.
   whatever `max_edge` was), so scaling images down did not cut tokens: `max_edge` did not change
   token counts in the trial; it also bounds upload size. Output (thinking) tokens dominated the
   cost.
+- Thinking can be cut, not switched off, on gemini-3.8-flash: `reasoning_effort = "minimal"` and
+  `"off"` are rejected by the model ("Thinking level MINIMAL is not supported for this model"),
+  while `"low"` is accepted. On one pair, default thinking took 1,173 output tokens, 13.7 s and
+  $0.0065; `"low"` took 35 tokens, 6.2 s and $0.0023. On 6 pairs the tree check fails, default
+  and `"low"` gave 6 of 6 matching verdicts with equivalent findings, using 2,878 vs 1,257 output
+  tokens, 44 s vs 33 s and $0.0234 vs $0.0174. That is a small trial, not proof of equal quality.
 - Batching several pairs per call cut input by about 18% and output by about 40% in a 5-pair
   trial, but one verdict in five flipped (single-pair re-runs also flip occasionally). That is
   too few pairs to judge a larger `max_pairs_per_call`: calibrate with more before trusting it.

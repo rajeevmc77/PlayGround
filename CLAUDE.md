@@ -113,7 +113,9 @@ and prints which path works and why.
    `request_timeout_seconds`, default 120, since dspy's own wait is 600 s) as IDENTICAL / DIFFERENT with reasons, and cached
    in `llm_compare/cache.json` so a re-run makes no calls. Output per call is capped by
    `max_output_tokens` (thinking included; must cover `output_tokens_per_pair` x
-   `max_pairs_per_call` plus thinking headroom), and the tokens of an answer that fails to parse
+   `max_pairs_per_call` plus thinking headroom; `reasoning_effort`, default `"low"`, cuts the
+   model's thinking - gemini-3.8-flash rejects `"minimal"`/`"off"`, `""` restores its default
+   thinking), and the tokens of an answer that fails to parse
    are still counted. Pairs the hash settles, skipped pairs and web-only images still get a row.
    `output/llm_image_report.html` lists every image with its verdict, tokens and cost (this run's
    and the cumulative cost of every verdict, cached ones included). Ctrl-C cancels in place:
@@ -228,8 +230,8 @@ only if/when they're actually touched, not retroactively.
 
 ## Working notes
 - A real test suite (1011 tests — 993 by default plus 18 `slow` — before the LLM image
-  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 274:
-  273 by default plus 1 `slow`) covers `src/mo_toc/`,
+  comparison, whose `tests/test_llm_compare_*.py` + `tests/test_build_llm_comparison.py` add 298:
+  297 by default plus 1 `slow`) covers `src/mo_toc/`,
   `src/web_toc/`, `src/comparison/`, `src/shared/`, `src/llm_compare/`, the
   `build_*.py`/`serve_mo_toc.py` scripts and the viewer's JS. `pytest -q` skips the slow real-PDF tests (`addopts` deselects them);
   `pytest -m slow` runs only them, `pytest -o addopts="" -q` runs everything (~6 min). WARNING:
