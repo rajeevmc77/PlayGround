@@ -30,9 +30,12 @@ def _spend(live: list[PairRecord], wasted: Usage, settled: int) -> dict:
     """Tokens and cost of the pairs judged this run plus the wasted calls."""
     cost = _total_cost(live, wasted)
     per_pair = cost / len(live) if cost is not None and live else None
+    input_tokens = sum(r.input_tokens for r in live) + wasted.input_tokens
+    output_tokens = sum(r.output_tokens for r in live) + wasted.output_tokens
     return {
-        "input_tokens": sum(r.input_tokens for r in live) + wasted.input_tokens,
-        "output_tokens": sum(r.output_tokens for r in live) + wasted.output_tokens,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
         "cost": cost,
         "cost_per_judged_pair": per_pair,
         "estimated_saved_cost": per_pair * settled if per_pair is not None else None,
@@ -128,14 +131,15 @@ def _src(path: str, prefix: str) -> str:
     return escape(prefix + quote(path), quote=True)
 
 
-def _image_cell(path: str | None, prefix: str, sent: list | None) -> str:
+def _image_cell(path: str | None, prefix: str, sent: list | None, label: str) -> str:
     if not path:
         return "<span class='none'>—</span>"
     caption = f"<div class='cap'>sent {sent[0]}×{sent[1]}</div>" if sent else ""
     source = _src(path, prefix)
+    alt = escape(label, quote=True)
     return (
         f'<a href="{source}" target="_blank" rel="noopener">'
-        f'<img loading="lazy" src="{source}" alt=""></a>{caption}'
+        f'<img loading="lazy" src="{source}" alt="{alt}"></a>{caption}'
     )
 
 
@@ -165,11 +169,12 @@ def _usage(row: dict) -> str:
 def _row_html(row: dict, prefix: str) -> str:
     verdict = row["verdict"]
     key = escape(row["key"].lower(), quote=True)
+    pdf_label, web_label = (f"{side} image {row['key']}" for side in ("PDF", "Web"))
     badge = f"<span class='badge v-{verdict}'>{verdict}</span><div class='cap'>{row['route']}</div>"
     cells = [
         f"<td class='key'>{escape(row['key'])}</td>",
-        f"<td>{_image_cell(row['pdf_path'], prefix, row['sent_pdf'])}</td>",
-        f"<td>{_image_cell(row['web_path'], prefix, row['sent_web'])}</td>",
+        f"<td>{_image_cell(row['pdf_path'], prefix, row['sent_pdf'], pdf_label)}</td>",
+        f"<td>{_image_cell(row['web_path'], prefix, row['sent_web'], web_label)}</td>",
         f"<td>{badge}</td>",
         f"<td>{_details(row)}</td>",
         f"<td class='num'>{_usage(row)}</td>",
@@ -186,6 +191,7 @@ def _cards(summary: dict) -> str:
         ("LLM calls", f"{summary['calls']:,}"),
         ("input tokens", f"{summary['input_tokens']:,}"),
         ("output tokens", f"{summary['output_tokens']:,}"),
+        ("total tokens", f"{summary['total_tokens']:,}"),
         ("cost this run", _money(summary["cost"])),
         ("cost per judged pair", _money(summary["cost_per_judged_pair"])),
         ("est. saved by hash", _money(summary["estimated_saved_cost"])),
@@ -193,6 +199,11 @@ def _cards(summary: dict) -> str:
     return "".join(
         f"<div class='card'><b>{value}</b><span>{label}</span></div>" for label, value in cards
     )
+
+
+def _chips(counts: dict) -> str:
+    chips = "".join(f"<span class='badge v-{v}'>{v} {n}</span>" for v, n in counts.items())
+    return f"<div class='cards'>{chips}</div>"
 
 
 def _verdict_options(counts: dict) -> str:
@@ -213,8 +224,9 @@ def render_html(report: dict, asset_prefix: str = "") -> str:
         f"prompt {escape(report['prompt_version'])} · {escape(report['generated_at'])}</div>"
     )
     tools = (
-        f"<div class='tools'><select id='verdict'>{_verdict_options(summary['counts'])}</select>"
-        "<input id='q' type='search' placeholder='Search unified number'></div>"
+        f"<div class='tools'><select id='verdict' aria-label='Filter by verdict'>{_verdict_options(summary['counts'])}</select>"
+        "<input id='q' type='search' aria-label='Search by unified number' "
+        "placeholder='Search unified number'></div>"
     )
     table = (
         "<div class='wrap'><table><thead><tr><th>Unified number</th><th>PDF image</th>"
@@ -222,13 +234,13 @@ def render_html(report: dict, asset_prefix: str = "") -> str:
         f"<tbody>{body}</tbody></table></div>"
     )
     cards = f"<div class='cards'>{_cards(summary)}</div>"
-    return f"{head}{title}{cards}{tools}{table}<script>{_SCRIPT}</script></body></html>"
+    return f"{head}{title}{cards}{_chips(summary['counts'])}{tools}{table}<script>{_SCRIPT}</script></body></html>"
 
 
 def write_report(report: dict, output_dir: Path, asset_prefix: str = "") -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "llm_image_compare.json"
     html_path = output_dir / "llm_image_report.html"
-    json_path.write_text(json.dumps(report, indent=2))
-    html_path.write_text(render_html(report, asset_prefix))
+    json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    html_path.write_text(render_html(report, asset_prefix), encoding="utf-8")
     return json_path, html_path

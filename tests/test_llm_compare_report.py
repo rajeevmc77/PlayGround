@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -172,3 +173,59 @@ def test_write_report_creates_both_files(tmp_path):
     json_path, html_path = write_report(report, tmp_path, asset_prefix="")
     assert json.loads(json_path.read_text())["summary"]["total_rows"] == 7
     assert html_path.name == "llm_image_report.html" and "<table" in html_path.read_text()
+
+
+def test_summary_total_tokens_is_input_plus_output_including_wasted():
+    summary = summarise(_records(), calls=2, wasted=Usage(100, 5, 0.0005))
+    assert summary["total_tokens"] == 3255 == summary["input_tokens"] + summary["output_tokens"]
+
+
+def test_the_header_shows_total_tokens_and_a_chip_for_every_verdict_even_zero():
+    report = build_report(
+        _records(),
+        calls=2,
+        wasted=Usage(100, 5, 0.0005),
+        model="m",
+        prompt_version="v",
+        generated_at="t",
+    )
+    html = render_html(report)
+    assert "3,255" in html and "total tokens" in html
+    for verdict, count in report["summary"]["counts"].items():
+        assert f"<span class='badge v-{verdict}'>{verdict} {count}</span>" in html
+    empty = render_html(
+        build_report([], calls=0, wasted=Usage(), model="m", prompt_version="v", generated_at="t")
+    )
+    assert "<span class='badge v-DIFFERENT'>DIFFERENT 0</span>" in empty
+
+
+def test_images_have_alt_text_naming_side_and_escaped_key():
+    nasty = _rec(
+        "A.Fig <&>", Verdict.IDENTICAL, input_tokens=1, output_tokens=1, cost=0.0, batch_id=1
+    )
+    html, _ = _html([nasty])
+    assert 'alt="PDF image A.Fig &lt;&amp;&gt;"' in html
+    assert 'alt="Web image A.Fig &lt;&amp;&gt;"' in html
+    assert 'alt=""' not in html
+
+
+def test_the_filter_controls_have_accessible_names():
+    html, _ = _html()
+    assert "id='verdict' aria-label='Filter by verdict'" in html
+    assert "aria-label='Search by unified number'" in html
+
+
+def test_write_report_writes_utf8_explicitly(tmp_path, monkeypatch):
+    encodings = []
+    real_write_text = Path.write_text
+
+    def spy(self, data, *args, **kwargs):
+        encodings.append(kwargs.get("encoding"))
+        return real_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", spy)
+    _, report = _html()
+    json_path, html_path = write_report(report, tmp_path)
+    assert encodings == ["utf-8", "utf-8"]
+    assert "—" in html_path.read_bytes().decode("utf-8")
+    assert json.loads(json_path.read_bytes().decode("utf-8"))["rows"]
