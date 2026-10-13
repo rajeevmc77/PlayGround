@@ -108,16 +108,9 @@ async def _row_counts(tab: Page, expected: dict[str, int]) -> dict[str, list[int
 
 
 class PlaywrightPageSource:
-    def __init__(
-        self,
-        ready_timeout_ms: int = 30000,
-        growth_timeout_ms: int = 10000,
-        device_scale_factor: float = 1,
-    ):
+    def __init__(self, ready_timeout_ms: int = 30000, growth_timeout_ms: int = 10000):
         self._ready_timeout_ms = ready_timeout_ms
         self._growth_timeout_ms = growth_timeout_ms
-        # Only screenshots see it: CSS px (and so every bbox) are unchanged.
-        self._device_scale_factor = device_scale_factor
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
@@ -126,10 +119,7 @@ class PlaywrightPageSource:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch()
         # Desktop width, so the site renders its desktop layout.
-        self._context = await self._browser.new_context(
-            viewport={"width": 1500, "height": 950},
-            device_scale_factor=self._device_scale_factor,
-        )
+        self._context = await self._browser.new_context(viewport={"width": 1500, "height": 950})
         return self
 
     async def __aexit__(
