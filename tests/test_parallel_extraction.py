@@ -121,3 +121,22 @@ def test_parallel_extraction_matches_sequential_extraction_on_the_real_document(
     assert {(img.page, img.bbox) for img in parallel_images} == {
         (img.page, img.bbox) for img in sequential_images
     }
+
+
+def test_an_images_structure_alt_survives_the_trip_back_from_a_worker_process():
+    import pickle
+
+    from mo_toc.parsing.image_extractor import RawImage
+
+    image = RawImage(
+        page=505,
+        bbox=(1, 2, 3, 4),
+        width=3,
+        height=2,
+        data=b"",
+        ext="png",
+        phash=None,
+        alt="EQUATION",
+    )
+
+    assert pickle.loads(pickle.dumps(image)) == image

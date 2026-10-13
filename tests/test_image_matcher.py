@@ -1,3 +1,7 @@
+import dataclasses
+
+import pytest
+
 from mo_toc.domain.models import BBox, Caption, ImageAsset, Node
 from mo_toc.parsing.image_matcher import match_images
 
@@ -315,3 +319,41 @@ def test_image_title_is_empty_when_no_caption_matched():
     image = _image(page=11, y0=100, y1=150)
     result = match_images([image], [], volume)
     assert result[0].title == ""
+
+
+def _tagged(image, alt="EQUATION"):
+    return dataclasses.replace(image, alt=alt)
+
+
+def test_a_tagged_equation_never_takes_a_caption():
+    volume = _tree()
+    formula = _tagged(_image(page=11, y0=100, y1=156, x0=109, x1=255))  # 146 x 56 pt
+    caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=160, y1=172)
+
+    [result] = match_images([formula], [caption], volume)
+
+    assert (result.caption_kind, result.caption_identifier, result.title) == (None, None, "")
+
+
+def test_a_figure_caption_passes_over_a_tagged_equation_to_the_next_image():
+    # B.4.1.6.12.(3): the 146 x 56 pt formula above "Figure 4.1.6.12." is
+    # nearer the caption than the figure below it, and comes first.
+    volume = _tree()
+    formula = _tagged(_image(page=11, y0=228, y1=284, x0=109, x1=255))
+    figure = _image(page=11, y0=330, y1=600, x0=109, x1=375)
+    caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=300, y1=312)
+
+    result = match_images([formula, figure], [caption], volume)
+
+    assert [r.caption_identifier for r in result] == [None, "A-1.1.1.1.-A"]
+
+
+@pytest.mark.parametrize("alt", ["", "equation", "C:/figs/fig-4.1.6.12.eps"])
+def test_an_image_with_any_other_alt_still_takes_its_caption(alt):
+    volume = _tree()
+    figure = _tagged(_image(page=11, y0=100, y1=156, x0=109, x1=255), alt=alt)
+    caption = _caption("Figure", "A-1.1.1.1.-A", page=11, y0=160, y1=172)
+
+    [result] = match_images([figure], [caption], volume)
+
+    assert result.caption_identifier == "A-1.1.1.1.-A"

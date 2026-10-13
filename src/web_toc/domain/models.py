@@ -35,12 +35,35 @@ class WebImage:
 
 
 @dataclass
+class EquationSource:
+    """One equation's real source, as the content JSON carries it - mathml
+    is MathJax-ready markup; latex is the fallback for the rare node that
+    has no mathml."""
+
+    latex: str
+    mathml: str | None = None
+
+
+@dataclass
+class MarkedEquation:
+    """One `.equation-block` tagged on a saved page: `key` is its unique
+    per-occurrence id (see equation_script.py), `node_id` is the content-
+    JSON node id it was rendered from - the lookup key into a
+    {node_id: EquationSource} map."""
+
+    key: str
+    node_id: str
+
+
+@dataclass
 class EquationCapture:
-    """A saved page with each MathJax-rendered equation swapped for an <img>
-    of itself, plus those images as PNG bytes keyed by equation key."""
+    """A saved page with each MathJax equation-block tagged and swapped for
+    an <img> of itself. The images themselves are rendered separately, once
+    per equation key, from its node's own latex/mathml (see
+    equation_renderer.py) - not screenshotted per page."""
 
     html: str
-    images: dict[str, bytes]
+    marked: list[MarkedEquation]
 
 
 @dataclass

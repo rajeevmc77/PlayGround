@@ -21,6 +21,16 @@ MAX_NOISE_AREA = 1600.0  # pt^2 - equivalent to a 40x40pt icon
 # figures, 116-194pt) and the Division C form's logo and panels (72pt+) are
 # taller than any.
 MAX_EQUATION_HEIGHT = 70.0  # pt
+# The /Alt text a tagged PDF gives every formula image (the MO Package PDF's
+# MathType export tags all 129 of its formulas so, and nothing else).
+EQUATION_ALT = "EQUATION"
+
+
+def is_tagged_equation(alt: str | None) -> bool:
+    """Whether the PDF itself tags the image as a formula - exactly
+    "EQUATION" once trimmed; any other alt (an .eps path, an auto-generated
+    description, an empty one) or none says nothing either way."""
+    return alt is not None and alt.strip() == EQUATION_ALT
 
 
 def is_decorative(width: float, height: float) -> bool:

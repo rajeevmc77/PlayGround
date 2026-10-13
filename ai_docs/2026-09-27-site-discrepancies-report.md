@@ -249,8 +249,10 @@ and adds periods after some section numbers.
 
 ## Figures and equations
 
-The PDF has 588 numbered images: 485 figures and 103 equations. 448 match the site's (395 figures,
-53 equations). Figures are compared by their drawing, allowing for the marked-up PDF's heavier line
+The PDF has 609 numbered images: 478 figures and 131 equations. 451 match the site's (395 figures,
+56 equations). Before 2026-10-13, when equations were told apart by shape rather than by the PDF's
+`EQUATION` tag, it had 588 (485 figures, 103 equations), of which 448 matched (395 figures, 53
+equations). Figures are compared by their drawing, allowing for the marked-up PDF's heavier line
 weight, its green revision frames and its smaller embedded copies. Equations are compared by their
 image, and, where OCR can read the PDF's formula, by its text against the site's formula text.
 
@@ -273,11 +275,33 @@ PDF equation now fails, because what the site shows is not the PDF's formula.
 these equations. In most of them the rest of the formula is intact; in the 4.1.8. group the whole
 formula has been lost and needs its source restored.
 
+### Formulas on one side only (6 formulas: 4 on the site only, 2 in the PDF only)
+
+Equations pair by their number within the provision, so a formula only one side shows as an
+equation moves the numbers of the ones after it. Since 2026-10-13 the PDF's equations are the 129
+images it tags `EQUATION` (131 with two untagged ones), and 129 of their numbers are on the site too.
+These are the rest:
+
+| Where | PDF | Site | Effect |
+|---|---|---|---|
+| Appendix C (C-2 snow loads, C-3 rain) | `S_s = smooth normalized SL + bZ` and `height of water, mm = DRWP/10, Pa` are body text | the same two lines as MathJax formulas | the site's Eq1/Eq2 are these; the PDF's Eq1 (`q = ½ρV²`) and Eq2 (`V_1/n = …`) are the site's Eq3/Eq4. AppC.Eq1/Eq2 compare different formulas, and AppC.Eq3/Eq4 are site-only |
+| 4.1.8.2.(1) | `N̄` and `s̄_u` once each | each a second time in the sentence (`[f][a] N̂`, `[f][a] ŝ_u`) | 4.1.8.2.Eq3/Eq4 are site-only |
+| Note A-9.23.3.1.(2) | `S_adj = S_table × (D_red/D_table)²` and `N_adj = N_table × (D_table/D_red)²` as images | nothing: "…using the following equation:where" | A-9.23.3.1.(2).Eq1/Eq2 are PDF-only |
+
+The site's data has both A-9.23.3.1.(2) formulas, as latex, but with an empty id, and the site draws
+no formula without one. Thirteen id-less worked-example lines in the A-9.36.2. notes (e.g.
+`36.74 W/K – 35.32 W/K = 1.42 W/K`) are in the same position. That one does not appear anywhere on
+the site's page.
+
+**Suggested fix:** give these formula entries ids so the site renders them. Show the two Appendix C
+lines as text, as the PDF does, or tag them as equations in the PDF.
+
 ### Other image differences
 
 - **Different drawing or formula at the same place.** A few images are genuinely different:
-  9.23.13.7.'s house diagrams where the PDF shades another storey, A-9.23.13.7.(3)'s braced-wall
-  figures, and AppC's second equation. They are in the viewer with "image differs".
+  9.23.13.7.'s house diagrams where the PDF shades another storey, and A-9.23.13.7.(3)'s braced-wall
+  figures. They are in the viewer with "image differs". (AppC's second equation, listed here before,
+  is the Appendix C shift above.)
 - **Figures in the PDF only.** Division C's form graphics (28) and the front and back matter's logos
   have no counterpart on the site. This is expected.
 

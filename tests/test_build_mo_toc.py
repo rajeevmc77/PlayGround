@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from mo_toc.domain.models import BBox, ImageAsset, Node
 from mo_toc.parsing.image_extractor import RawImage
 from mo_toc.parsing.numbering_config import MO_TOC_RULES, MO_TOC_SCOPE_TYPES, mo_toc_position
 from mo_toc.parsing.table_extractor import TableAnchor, TableRegion
+from shared.numbering import number_images
 
 
 def test_run_writes_bcbc_pdf_json_not_mo_toc_json(tmp_path):
@@ -224,7 +226,7 @@ def test_drop_images_over_tables_keeps_non_overlapping_image_on_a_table_page():
     assert kept == [non_overlapping_image]
 
 
-def _image_asset(page, bbox, caption_kind=None, decorative=False):
+def _image_asset(page, bbox, caption_kind=None, decorative=False, alt=None, source_kind="raster"):
     return ImageAsset(
         page=page,
         bbox=bbox,
@@ -234,6 +236,8 @@ def _image_asset(page, bbox, caption_kind=None, decorative=False):
         image_path="images/x.png",
         caption_kind=caption_kind,
         decorative=decorative,
+        alt=alt,
+        source_kind=source_kind,
     )
 
 
@@ -287,6 +291,88 @@ def test_partition_equations_keeps_table_embedded_wide_image_as_a_figure():
 
     assert equations == []
     assert figures == [embedded]
+
+
+def _table_on_page_527():
+    table_regions_by_page = [[] for _ in range(527)]
+    table_regions_by_page[526] = [_table_region_on_page(526, BBox(90.0, 90.0, 310.0, 310.0))]
+    return table_regions_by_page
+
+
+@pytest.mark.parametrize(
+    "tagged",
+    [
+        # B.4.1.8.1's N-bar: a 7 x 9 pt glyph, as small and square as an icon.
+        _image_asset(page=534, bbox=BBox(324.0, 469.0, 331.0, 478.0), decorative=True),
+        # B.4.1.6.12.(3)'s formula, had it kept the Figure caption below it.
+        _image_asset(page=505, bbox=BBox(109.0, 228.0, 255.0, 284.0), caption_kind="Figure"),
+        # B.4.1.6.5.(3)'s stacked C_a0 pair: 61 x 73 pt, square-ish and over MAX_EQUATION_HEIGHT.
+        _image_asset(page=495, bbox=BBox(109.0, 173.0, 170.0, 246.0)),
+        # A Table 4.1.6.10. cell formula.
+        _image_asset(page=527, bbox=BBox(100.0, 100.0, 240.0, 126.0)),
+    ],
+    ids=["decorative", "captioned", "too-tall-and-square", "in-a-table"],
+)
+def test_partition_equations_puts_every_tagged_equation_in_equations(tagged):
+    tagged = dataclasses.replace(tagged, alt="EQUATION")
+
+    equations, figures = partition_equations([tagged], _table_on_page_527())
+
+    assert (equations, figures) == ([tagged], [])
+
+
+def test_partition_equations_leaves_an_equation_shaped_vector_crop_unkeyed():
+    # BM.Eq1-8 & co.: wide, short vector crops of table rows and form fields.
+    # No formula in the PDF is vector-drawn, and before the EQUATION tag they
+    # were keyed Eq, never Fig: keying them FigN would shift every later figure.
+    crop = _image_asset(page=490, bbox=BBox(100.0, 100.0, 240.0, 126.0), source_kind="vector")
+
+    equations, figures = partition_equations([crop], table_regions_by_page=[])
+
+    assert (equations, figures) == ([], [])
+
+
+def test_an_unkeyed_vector_crop_does_not_shift_the_next_figures_key():
+    # p895: a 1pt rule ahead of B.9.23.13.7.'s figures took Fig19 and shifted 71 keys.
+    owner = {"owner_citation": "B-9.23.13.7."}
+    crop = _image_asset(page=895, bbox=BBox(100.0, 100.0, 240.0, 101.0), source_kind="vector")
+    figure = _image_asset(page=895, bbox=BBox(100.0, 200.0, 300.0, 400.0))
+    crop, figure = (dataclasses.replace(image, **owner) for image in (crop, figure))
+
+    _equations, figures = partition_equations([crop, figure], table_regions_by_page=[])
+    number_images(figures, {"B-9.23.13.7.": "B.9.23.13.7"}, skip=lambda image: image.decorative)
+
+    assert (crop.unified_number, figure.unified_number) == ("", "B.9.23.13.7.Fig1")
+
+
+@pytest.mark.parametrize(
+    "crop",
+    [
+        _image_asset(page=490, bbox=BBox(100.0, 100.0, 240.0, 126.0), caption_kind="Figure"),
+        _image_asset(page=490, bbox=BBox(100.0, 100.0, 300.0, 300.0)),  # a drawn diagram
+        _image_asset(page=490, bbox=BBox(100.0, 100.0, 300.0, 180.0)),  # wide but too tall
+        _image_asset(page=527, bbox=BBox(100.0, 100.0, 240.0, 126.0)),  # in a table
+    ],
+    ids=["captioned", "square", "too-tall", "in-a-table"],
+)
+def test_partition_equations_keeps_any_other_vector_crop_a_figure(crop):
+    crop = dataclasses.replace(crop, source_kind="vector")
+
+    equations, figures = partition_equations([crop], _table_on_page_527())
+
+    assert (equations, figures) == ([], [crop])
+
+
+@pytest.mark.parametrize("alt", [None, "", "equation", "C:/figs/x.eps", "automatically generated"])
+def test_partition_equations_judges_an_untagged_raster_by_its_shape_as_before(alt):
+    # B.A-9.23.13.2.(3)'s S_adj formula has an auto-generated alt: still an equation by shape.
+    wide = _image_asset(page=490, bbox=BBox(100.0, 100.0, 240.0, 126.0), alt=alt)
+    square = _image_asset(page=490, bbox=BBox(100.0, 100.0, 173.0, 173.0), alt=alt)
+    icon = _image_asset(page=490, bbox=BBox(100.0, 100.0, 107.0, 109.0), alt=alt, decorative=True)
+
+    equations, figures = partition_equations([wide, square, icon], table_regions_by_page=[])
+
+    assert (equations, figures) == ([wide], [square, icon])
 
 
 def test_main_exits_when_pdf_missing(tmp_path, monkeypatch):

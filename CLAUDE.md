@@ -43,7 +43,12 @@ independent tools live here:
    a row starts, not the positions a span covers). Images pair by `unified_number` within their
    provision, except where the two sides label a provision's non-table images differently
    (Fig vs Eq) and have as many: those pair in page order (`src/comparison/image_pairing.py`) -
-   never across provisions. `comparison.json`'s `counterparts` records
+   never across provisions. A PDF image is an equation (`…EqN`) when the tagged PDF's structure
+   tree gives it `/Alt (EQUATION)` (`PdfSource.page_image_alts`), whatever its size, caption or
+   table; the shape heuristic (`is_equation_shaped`) only decides for untagged rasters, and a
+   vector crop is never an equation - one that the shape rule would call a formula (a rule,
+   table row or form field) is left unkeyed, neither Eq nor Fig, so it shifts no figure's key.
+   `comparison.json`'s `counterparts` records
    every pairing that differs (null = no web counterpart) and the viewer's web highlight
    follows it (`webLocationFor` in `both_view.mjs`). Its `reasons` say why each failed text
    item or image differs - the differing stretches with context and their kind, or which
@@ -62,7 +67,8 @@ independent tools live here:
    exits non-zero if a table stays short), saves its `main.ui-ContentPanel` to
    `output/web_pages/<citation>.html`, mirrors every stylesheet/font/image under
    `output/web_pages/assets/` (plus `site-nav.css`), downloads figures to `output/web_images/`,
-   then serves the saved pages locally, screenshots every MathJax-rendered equation to a PNG
+   then renders every equation from the site's own mathml (latex as a fallback) cached in the
+   content JSON, through headless MathJax, to a PNG
    (`output/web_images/equations/` and `output/web_pages/assets/equations/`), rewrites each
    saved page to show those PNGs in place of MathJax, and measures the pages into
    `output/web_pages/<citation>.layout.json` (once the page's web fonts have loaded -
@@ -252,6 +258,38 @@ only if/when they're actually touched, not retroactively.
   The Workflow/Code standards/Definition of done above are the bar for new work going
   forward; they don't retroactively apply to what's already there unless it's being touched
   anyway.
+- `src/equation_export/` - an earlier, standalone LaTeX-export experiment that fetched the site's
+  `equation-map.json` directly and was never wired into `web_toc`/`comparison` - was retired once this
+  work found the same latex/mathml already sitting in the content JSON `build_web_pages.py` caches, and
+  ported the module's one load-bearing piece, MathJax headless rendering, into
+  `src/web_toc/parsing/equation_renderer.py` (see
+  `docs/superpowers/specs/2026-10-12-equation-image-extraction-design.md`). Its real-mathml slow test
+  moved to `tests/test_web_toc_equation_renderer.py`; `matplotlib` left `requirements.txt` with it.
+  Test count after the equation-image work (2026-10-13): 1562 collected - 1530 by default plus 32
+  `slow`. The 14 real-Chromium tests in `tests/test_web_toc_equation_renderer.py` are slow (they fetch
+  MathJax from cdnjs); `tests/test_web_toc_equation_renderer_wiring.py` covers the render wiring with
+  Playwright faked, in the default suite.
+- Equation images: on the web side each equation is rendered by headless MathJax from the content JSON's
+  mathml (then latex, then plainText) of its node, once per key `<owner>.<node id>`, mapped to the unified
+  `…EqN`; the PNG is of the padded target, not the inline `mjx-container`, which cut tall fractions.
+  On the PDF side the `/Alt (EQUATION)` tag decides (2026-10-13, on the same web inputs): PDF Eq
+  103 -> 131 (129 tagged + 2 untagged rasters), decorative 38 -> 0, keys in common with the web's
+  133 equations 84 -> 129 (web-only: AppC.Eq3/4, B.4.1.8.2.Eq3/4; PDF-only: B.A-9.23.3.1.(2).Eq1/2 -
+  see the discrepancies report). Equations passing 53 -> 56 of the PDF's (55 against fresh web
+  renders): of the 73 failures among the 129 shared keys, 51 are the site's "[f]" MathJax errors
+  (the other 2 of the 75 are the PDF-only pair). The 17 vector crops the shape rule had keyed Eq
+  are left unkeyed (keying them FigN would have shifted 71 of B.9.23.13.7.'s figure keys, from one
+  rule on p895, and dropped figures passing to 352): figures pass 395 / fail 90 -> 83,
+  every Fig key unchanged except the 7 tagged formulas formerly keyed Fig (B.4.1.6.5.Fig2/4,
+  B.4.1.6.10.Fig2-5, B.4.1.6.12.Fig1) and the 3 figures after them in those provisions.
+  A stacked-vector-fragment merge (`merge_equation_fragments`) was built, measured a no-op on this
+  PDF (no formula in it is vector-drawn) and, since a vector crop can never be keyed Eq, could
+  only drop figures from numbering - so it was removed: no PDF's vector-drawn formula becomes Eq.
+- `build_web_pages.py`'s scrape can lose equations: the live site sometimes renders a page with
+  some `.equation-block`s missing (stable within a load, different between loads - Part 4.1 gave
+  60 or 91 of 91), and nothing checks the count against the content JSON's `[EQ:…]` markers, so a
+  run can drop equations (and shift later `…EqN` keys) silently. Check the PNG count per page
+  against `output/` after a re-scrape.
 - Prefer testing a small sample first for anything that processes the full 1685-page PDF or
   the full Workspace directory, before running it against the whole thing.
 - `output/` is shared by every session, so measure a change in a scratch directory instead:

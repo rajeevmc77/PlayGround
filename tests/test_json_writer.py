@@ -219,3 +219,31 @@ def test_empty_heading_is_pruned_but_real_heading_kept(tmp_path):
     payload = json.loads(out.read_text())["volume"]
     assert payload["heading"] == "Part 1"
     assert "heading" not in payload["children"][0]
+
+
+def test_write_json_records_each_images_structure_alt_and_source_kind(tmp_path):
+    root = Node(
+        type="Volume",
+        identifier="Volume",
+        citation="Volume",
+        title="",
+        page=1,
+        end_page=1,
+        bbox=BBox(0, 0, 0, 0),
+    )
+    image = ImageAsset(
+        page=505,
+        bbox=BBox(109, 228, 255, 284),
+        width=195,
+        height=75,
+        phash=None,
+        image_path="images/img_0.png",
+        alt="EQUATION",
+        source_kind="raster",
+    )
+    out_path = tmp_path / "out.json"
+
+    write_json(root, [], [image], str(out_path))
+
+    row = json.loads(out_path.read_text())["images"][0]
+    assert (row["alt"], row["source_kind"]) == ("EQUATION", "raster")

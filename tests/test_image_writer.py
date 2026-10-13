@@ -1,3 +1,5 @@
+import pytest
+
 from mo_toc.output.image_writer import write_images
 from mo_toc.parsing.image_extractor import RawImage
 
@@ -66,3 +68,37 @@ def test_wide_short_vector_formula_is_not_flagged_decorative(tmp_path):
     )
     assets = write_images([formula], str(output_dir))
     assert assets[0].decorative is False
+
+
+def _small_square(alt, kind="raster"):
+    # B.4.1.8.1.(2)(b)'s N-bar glyph: 7 x 9 pt, a decorative-icon shape.
+    return RawImage(
+        page=534,
+        bbox=(324.0, 469.0, 331.0, 478.0),
+        width=9,
+        height=12,
+        data=b"glyph",
+        ext="png",
+        phash=None,
+        kind=kind,
+        alt=alt,
+    )
+
+
+def test_asset_carries_the_structure_alt_and_how_the_image_was_drawn(tmp_path):
+    [asset] = write_images([_small_square("EQUATION", kind="vector")], str(tmp_path / "images"))
+
+    assert (asset.alt, asset.source_kind) == ("EQUATION", "vector")
+
+
+def test_a_tagged_equation_is_never_decorative_however_small_and_square(tmp_path):
+    [asset] = write_images([_small_square("EQUATION")], str(tmp_path / "images"))
+
+    assert asset.decorative is False
+
+
+@pytest.mark.parametrize("alt", [None, "", "equation", "C:\\figs\\logo.eps"])
+def test_a_small_square_image_without_the_equation_tag_stays_decorative(tmp_path, alt):
+    [asset] = write_images([_small_square(alt)], str(tmp_path / "images"))
+
+    assert asset.decorative is True

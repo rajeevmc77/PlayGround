@@ -10,10 +10,11 @@ mo_toc.parsing.parallel_extraction also calls them directly, one page at a
 time, from inside a worker process.
 """
 
+import dataclasses
 import io
 from dataclasses import dataclass
 
-from mo_toc.parsing.pdf_source import ExtractedImage, PageImageInfo, PdfSource
+from mo_toc.parsing.pdf_source import ExtractedImage, ImageAlt, PageImageInfo, PdfSource
 from mo_toc.parsing.table_extractor import detect_tables_on_page, rects_form_a_grid
 from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
 
@@ -34,6 +35,14 @@ class RawImage:
     # image - see that function's own docstring for the bug this guards
     # against.
     kind: str = "raster"
+    # The tagged PDF's structure-tree /Alt for this placement (e.g. "EQUATION"
+    # on every formula in the MO Package PDF); None when the page doesn't tag it.
+    alt: str | None = None
+
+
+# pt each edge of a tagged placement may sit off the image's own bbox: both
+# are the same transform, worked out by MuPDF and by image_placements.
+ALT_MATCH_TOLERANCE = 1.5
 
 
 def _phash(data: bytes) -> str | None:
@@ -77,11 +86,21 @@ def _as_drawn(extracted: ExtractedImage, info: PageImageInfo) -> ExtractedImage:
     return ExtractedImage(data=buf.getvalue(), ext="png", width=image.width, height=image.height)
 
 
+def _alt_at(bbox, alts: list[ImageAlt]) -> str | None:
+    for placed in alts:
+        if all(abs(a - b) <= ALT_MATCH_TOLERANCE for a, b in zip(bbox, placed.bbox, strict=True)):
+            return placed.alt
+    return None
+
+
 def raster_images_on_page(source: PdfSource, page_index: int) -> list[RawImage]:
+    infos = source.page_images(page_index)
+    alts = source.page_image_alts(page_index) if infos else []
     images = []
-    for info in source.page_images(page_index):
+    for info in infos:
         extracted = _as_drawn(source.extract_image(info.xref), info)
-        images.append(_raw_image(page_index, info.bbox, extracted, kind="raster"))
+        image = _raw_image(page_index, info.bbox, extracted, kind="raster")
+        images.append(dataclasses.replace(image, alt=_alt_at(info.bbox, alts)))
     return images
 
 

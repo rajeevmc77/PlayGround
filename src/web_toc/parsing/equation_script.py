@@ -13,10 +13,12 @@ unit here:
    places, so the owner makes it unique. A block with no node id is
    `<owner id>.eq`; a repeat within one owner gets `-n` (the key is also
    the PNG's file name, so it stays within page_writer's safe set). Returns
-   [{key, owner}] in document order; a table's pinned-column copy of a
-   header cell repeats its original's key.
-2. The caller screenshots each key's tight `mjx-math` glyph box once.
-3. SWAP_EQUATIONS_JS replaces each `mjx-container` with an
+   [{key, owner, nodeId}] in document order; a table's pinned-column copy
+   of a header cell repeats its original's key. nodeId is the raw
+   `data-node-id` (possibly ''), the lookup key into the site's own
+   latex/mathml for that formula - rendering that content is a separate
+   step (see equation_renderer.py), independent of this page.
+2. SWAP_EQUATIONS_JS replaces each `mjx-container` with an
    `<img class="equation-image">` of that PNG at the size and position the
    glyphs had, and returns the whole page's HTML - so the saved page, the
    viewer and the layout pass all show the captured image.
@@ -39,7 +41,8 @@ MARK_EQUATIONS_JS = """() => {
     if (!block.querySelector('mjx-container')) continue;
     const holder = block.parentElement.closest('[id]');
     const owner = holder && root.contains(holder) ? holder.id : '';
-    const base = [owner, block.dataset.nodeId || 'eq'].filter(Boolean).join('.');
+    const nodeId = block.dataset.nodeId || '';
+    const base = [owner, nodeId || 'eq'].filter(Boolean).join('.');
     // Counted apart, so the n-th pinned copy repeats the n-th original's key.
     const pinned = !!block.closest('.table-block__table--pinned-col');
     const counter = `${pinned}|${base}`;
@@ -48,7 +51,7 @@ MARK_EQUATIONS_JS = """() => {
     const key = n === 1 ? base : `${base}-${n}`;
     block.dataset.equationKey = key;
     block.dataset.equationOwner = owner;
-    marked.push({ key, owner });
+    marked.push({ key, owner, nodeId });
   }
   return marked;
 }"""

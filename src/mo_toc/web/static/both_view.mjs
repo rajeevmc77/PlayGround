@@ -3,14 +3,25 @@
 // drawing a highlight rectangle over the web page rendered in an iframe.
 // No DOM access here - see tests/js/both_view.test.mjs.
 
-// A Figure is any image the PDF itself captioned - genuine document
-// structure, kept "figure" even if its bbox shape also looks decorative.
-// Everything else splits on the same `decorative` flag the PDF tab's own
-// declutter toggle uses: a small icon/logo is "image", anything else
-// uncaptioned is an inline Equation/Formula crop.
+const EQUATION_KEY = /\.Eq\d+$/;
+
+// A web image says what it is (`kind`). A PDF image keyed EqN is a formula
+// (the build keys by the PDF's own EQUATION tag), whatever its caption or
+// size. Otherwise a Figure is any image the PDF captioned - kept "figure"
+// even if its bbox shape also looks decorative - and a small icon/logo is
+// "image" (the same `decorative` flag the PDF tab's declutter toggle uses).
+// An uncaptioned FigN image is a "figure" in a JSON that keys formulas EqN
+// (it records each image's `source_kind`), and an unkeyed one there (a rule,
+// table row or form field the build left neither Eq nor Fig) is an "image";
+// an older JSON never told its formulas apart, so there an uncaptioned image
+// is an Equation crop.
 export function classifyImage(img) {
+  if (img.kind) return img.kind;
+  if (EQUATION_KEY.test(img.unified_number || "")) return "equation";
   if (img.caption_kind === "Figure") return "figure";
-  return img.decorative ? "image" : "equation";
+  if (img.decorative) return "image";
+  if (!("source_kind" in img)) return "equation";
+  return img.unified_number ? "figure" : "image";
 }
 
 function walkTree(node, into) {

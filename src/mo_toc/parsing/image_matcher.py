@@ -7,6 +7,7 @@ rather than just "p.37" wherever a real caption exists for it.
 
 import dataclasses
 
+from mo_toc.domain.image_classification import is_tagged_equation
 from mo_toc.domain.models import Caption, ImageAsset, Node
 
 MAX_CAPTION_GAP = 50.0  # pt; beyond this a caption is presumed unrelated
@@ -90,6 +91,10 @@ def _kind_rank(caption: Caption) -> int:
 
 
 def _is_caption_eligible(image: ImageAsset) -> bool:
+    """A formula the PDF tags as one never takes a caption, so a Figure
+    caption next to it goes on to the figure it describes (B.4.1.6.12.(3))."""
+    if is_tagged_equation(image.alt):
+        return False
     width = image.bbox.x1 - image.bbox.x0
     height = image.bbox.y1 - image.bbox.y0
     return min(width, height) >= MIN_CAPTION_ELIGIBLE_DIM

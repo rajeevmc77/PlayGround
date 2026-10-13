@@ -7,9 +7,9 @@ step that talks to the site; build_web_toc.py then builds offline from it:
   scrolled until every table row the content JSON lists has lazy-loaded, plus
   a local mirror of every stylesheet, font and image the pages use.
 - output/web_pages/assets/equations/ and output/web_images/equations/: a PNG
-  of every MathJax-rendered equation, captured from the saved local copy;
-  the saved page then shows that PNG in place of MathJax (see
-  equation_script.py).
+  of every equation, rendered by MathJax from the site's own latex/mathml (the
+  cached content JSON); the saved page then shows that PNG in place of
+  MathJax (see equation_script.py).
 - output/web_pages/<citation>.layout.json: every element's xpath, rendered
   text and bbox, measured on the saved local copy (see layout_script.py).
 - output/web_images/: every figure's image file.
@@ -30,16 +30,23 @@ import argparse
 import asyncio
 import json
 import sys
+import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TypeVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from web_toc.domain.models import EquationCapture, ScrapedPage, WebNode
+from web_toc.domain.models import EquationSource, ScrapedPage, WebNode
 from web_toc.output.image_downloader import download_images
 from web_toc.output.page_writer import AssetSource, citation_file, download_assets, write_page
-from web_toc.output.source_cache import cache_contents, write_navigation, write_snapshot
+from web_toc.output.source_cache import (
+    cache_contents,
+    load_cached_equation_sources,
+    write_navigation,
+    write_snapshot,
+)
+from web_toc.parsing.equation_renderer import EquationRenderer
 from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
 from web_toc.parsing.image_extractor import extract_images
 from web_toc.parsing.local_page_server import serve_pages
@@ -63,8 +70,8 @@ DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "output")
 PAGE_FETCH_CONCURRENCY = 6
 NAV_CSS_PATTERN = "nav-tree|breadcrumbs"
 LAYOUT_SUFFIX = ".layout.json"
-# Equation PNGs are captured at twice their CSS px size, sharp enough to set
-# beside the PDF's own rasterised formula images.
+# Equation PNGs are rendered at 2x for sharpness, to set beside the PDF's own
+# rasterised formula images.
 EQUATION_SCALE = 2
 
 T = TypeVar("T")
@@ -162,13 +169,12 @@ async def _over_local_pages(
     pages_dir: Path,
     citations: list[str],
     visit: Callable[[PageSource, str], Awaitable[T]],
-    device_scale_factor: float = 1,
 ) -> list[tuple[str, T]]:
     """Runs `visit(browser, page url)` over each saved page as the viewer
     will render it - served locally, with the local asset mirror."""
     semaphore = asyncio.Semaphore(PAGE_FETCH_CONCURRENCY)
     with serve_pages(pages_dir) as base_url:
-        async with PlaywrightPageSource(device_scale_factor=device_scale_factor) as browser:
+        async with PlaywrightPageSource() as browser:
 
             async def one(citation: str) -> tuple[str, T]:
                 async with semaphore:
@@ -177,11 +183,11 @@ async def _over_local_pages(
             return await asyncio.gather(*(one(citation) for citation in citations))
 
 
-def _save_equations(pages_dir: Path, images_dir: Path, capture: EquationCapture) -> None:
+def _save_equations(pages_dir: Path, images_dir: Path, images: dict[str, bytes]) -> None:
     """Each PNG goes to the page asset mirror (what the rewritten page
     shows) and to web_images/ (next to the figures, for comparing with the
     PDF's formula images)."""
-    for key, png in capture.images.items():
+    for key, png in images.items():
         targets = [
             citation_file(directory / EQUATION_ASSET_DIR, key, ".png")
             for directory in (pages_dir / "assets", images_dir)
@@ -194,18 +200,60 @@ def _save_equations(pages_dir: Path, images_dir: Path, capture: EquationCapture)
             target.write_bytes(png)
 
 
-async def capture_equations(pages_dir: Path, images_dir: Path, citations: list[str]) -> None:
-    """Swaps every MathJax equation on the saved pages for a PNG of itself."""
+def _has_usable_source(source: EquationSource | None) -> bool:
+    return source is not None and (source.mathml is not None or isinstance(source.latex, str))
+
+
+async def _render_one_equation(
+    renderer: EquationRenderer, key: str, node_id: str, sources: dict[str, EquationSource]
+) -> bytes | None:
+    source = sources.get(node_id) if node_id else None
+    if source is None or not _has_usable_source(source):
+        print(
+            f"  skipped equation {key!r} (no cached latex/mathml for {node_id!r})", file=sys.stderr
+        )
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "eq.png"
+        try:
+            await renderer.render(source, target)
+        except ValueError as exc:
+            print(f"  skipped equation {key!r} ({exc})", file=sys.stderr)
+            return None
+        return target.read_bytes()
+
+
+async def _render_marked_equations(
+    node_id_by_key: dict[str, str], source_dir: Path
+) -> dict[str, bytes]:
+    """{key: PNG bytes}; launches no browser when nothing was marked."""
+    if not node_id_by_key:
+        return {}
+    sources = load_cached_equation_sources(source_dir)
+    images: dict[str, bytes] = {}
+    async with EquationRenderer(device_scale_factor=EQUATION_SCALE) as renderer:
+        for key, node_id in node_id_by_key.items():
+            png = await _render_one_equation(renderer, key, node_id, sources)
+            if png is not None:
+                images[key] = png
+    return images
+
+
+async def capture_equations(
+    pages_dir: Path, images_dir: Path, citations: list[str], source_dir: Path
+) -> None:
+    """Swaps every MathJax equation on the saved pages for a PNG rendered
+    from the site's own latex/mathml, rather than a screenshot of this
+    particular page's own on-screen rendering."""
     results = await _over_local_pages(
-        pages_dir,
-        citations,
-        lambda browser, url: browser.capture_equations(url),
-        device_scale_factor=EQUATION_SCALE,
+        pages_dir, citations, lambda browser, url: browser.capture_equations(url)
     )
-    for citation, capture in results:
-        if capture is not None:
-            write_page(pages_dir, citation, capture.html)
-            _save_equations(pages_dir, images_dir, capture)
+    captured = [(citation, capture) for citation, capture in results if capture is not None]
+    node_id_by_key = {m.key: m.node_id for _, capture in captured for m in capture.marked}
+    images = await _render_marked_equations(node_id_by_key, source_dir)
+    for citation, capture in captured:
+        write_page(pages_dir, citation, capture.html)
+    _save_equations(pages_dir, images_dir, images)
 
 
 async def measure_layouts(pages_dir: Path, citations: list[str]) -> None:
@@ -278,7 +326,7 @@ async def run(
     assets_dir.mkdir(parents=True, exist_ok=True)
     (assets_dir / "site-nav.css").write_text(build_nav_css(nav_rules), encoding="utf-8")
     _write_manifest(pages_dir, manifest, merge=only is not None)
-    await capture_equations(pages_dir, out / "web_images", list(manifest))
+    await capture_equations(pages_dir, out / "web_images", list(manifest), out / "web_source")
     await measure_layouts(pages_dir, list(manifest))
     return incomplete
 
