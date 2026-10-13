@@ -11,9 +11,10 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from web_toc.domain.models import WebNode
+from web_toc.domain.models import EquationSource, WebNode
 from web_toc.output.page_writer import citation_file
 from web_toc.parsing.content_url import content_url
+from web_toc.parsing.equation_sources import equation_sources_in_content
 from web_toc.parsing.site_source import WebSource
 
 NAVIGATION_FILE = "navigation.json"
@@ -62,6 +63,21 @@ def _write_content(source_dir: Path, citation: str, content: dict) -> None:
         raise ValueError(f"Unsafe citation for a file name: {citation!r}")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(content, ensure_ascii=False), encoding="utf-8")
+
+
+def load_cached_equation_sources(source_dir: Path) -> dict[str, EquationSource]:
+    """Merges every cached content JSON's equation sources into one lookup -
+    the site reuses one node id for the same formula in several places, so a
+    single global map (not one per page) is enough. Empty if the content
+    directory doesn't exist yet."""
+    content_dir = Path(source_dir) / CONTENT_DIR
+    if not content_dir.is_dir():
+        return {}
+    sources: dict[str, EquationSource] = {}
+    for path in sorted(content_dir.glob("*.json")):
+        content = json.loads(path.read_text(encoding="utf-8"))
+        sources.update(equation_sources_in_content(content))
+    return sources
 
 
 async def cache_contents(

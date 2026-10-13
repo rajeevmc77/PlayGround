@@ -7,6 +7,7 @@ from web_toc.domain.models import WebNode
 from web_toc.output.source_cache import (
     CONTENT_FETCH_CONCURRENCY,
     cache_contents,
+    load_cached_equation_sources,
     write_navigation,
     write_snapshot,
 )
@@ -128,3 +129,23 @@ def test_local_source_refuses_an_unsafe_citation(tmp_path):
 def test_local_source_without_a_cached_navigation_tree_says_how_to_build_it(tmp_path):
     with pytest.raises(FileNotFoundError, match="build_web_pages.py"):
         LocalWebSource(tmp_path).fetch_navigation_tree()
+
+
+def test_load_cached_equation_sources_merges_every_content_file(tmp_path):
+    content_dir = tmp_path / "content"
+    content_dir.mkdir()
+    (content_dir / "s1.json").write_text(
+        json.dumps({"id": "s1", "content": [{"id": "es1", "latex": "W=w"}]})
+    )
+    (content_dir / "s2.json").write_text(
+        json.dumps({"id": "s2", "content": [{"id": "eg1", "latex": "l_c", "mathml": "<math/>"}]})
+    )
+
+    sources = load_cached_equation_sources(tmp_path)
+
+    assert sources["es1"].latex == "W=w"
+    assert sources["eg1"].mathml == "<math/>"
+
+
+def test_load_cached_equation_sources_with_no_content_dir_returns_empty(tmp_path):
+    assert load_cached_equation_sources(tmp_path) == {}
