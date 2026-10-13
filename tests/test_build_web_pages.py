@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from build_web_pages import PAGE_FETCH_CONCURRENCY, main, remeasure, run
-from web_toc.domain.models import EquationCapture, ScrapedPage
+from web_toc.domain.models import EquationCapture, MarkedEquation, ScrapedPage
 
 BASE = "https://site.example"
 PART_URL = f"{BASE}/code/nbc.divA/1?version=2024&date=2024-03-08"
@@ -115,8 +115,29 @@ _SECTION_CONTENT = {
             "structure": {"header_rows": [{}], "body_rows": [{}, {}]},
         },
         {"type": "figure", "id": "nbc.divA.part1.sect1.figure1", "graphic": {"src": "g/f1"}},
+        {"type": "sentence", "id": "es1", "latex": "W=w"},
+        {"type": "sentence", "id": "eq1", "latex": "l_c"},
     ],
 }
+
+
+class _FakeRenderer:
+    """Deterministic stand-in for EquationRenderer - no real MathJax/browser
+    needed to test the orchestration wiring."""
+
+    def __init__(self, *, fail_for=frozenset()):
+        self._fail_for = fail_for
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return None
+
+    async def render(self, source, output_path):
+        if source.latex in self._fail_for:
+            raise ValueError(f"boom: {source.latex}")
+        output_path.write_bytes(f"png-for-{source.latex}".encode())
 
 
 class _FakeHttp:
@@ -352,24 +373,30 @@ def test_run_reports_a_saved_page_with_no_content_panel(tmp_path, capsys):
 
 _SECTION_CAPTURE = EquationCapture(
     html='<html><img class="equation-image" src="/web-assets/equations/es1.png"></html>',
-    images={"es1": b"png-es1", "nbc.divA.part1.sect1.eq1": b"png-eq1"},
+    marked=[
+        MarkedEquation(key="es1", node_id="es1"),
+        MarkedEquation(key="nbc.divA.part1.sect1.eq1", node_id="eq1"),
+    ],
 )
 
 
-def test_run_saves_each_captured_equation_for_the_page_and_for_comparison(tmp_path):
-    captures = {"nbc.divA.part1.sect1.html": _SECTION_CAPTURE}
-    out = _build(tmp_path, _FakeBrowser(_default_pages(), captures=captures), _content_http())
+def _build_with_equations(tmp_path, capture, renderer=None):
+    browser = _FakeBrowser(_default_pages(), captures={"nbc.divA.part1.sect1.html": capture})
+    with patch("build_web_pages.EquationRenderer", return_value=renderer or _FakeRenderer()):
+        return browser, _build(tmp_path, browser, _content_http())
 
-    for key, png in _SECTION_CAPTURE.images.items():
+
+def test_run_saves_each_rendered_equation_for_the_page_and_for_comparison(tmp_path):
+    _, out = _build_with_equations(tmp_path, _SECTION_CAPTURE)
+
+    expected = {"es1": b"png-for-W=w", "nbc.divA.part1.sect1.eq1": b"png-for-l_c"}
+    for key, png in expected.items():
         assert (out / "assets" / "equations" / f"{key}.png").read_bytes() == png
         assert (tmp_path / "web_images" / "equations" / f"{key}.png").read_bytes() == png
 
 
 def test_run_rewrites_a_page_with_equations_before_measuring_it(tmp_path):
-    captures = {"nbc.divA.part1.sect1.html": _SECTION_CAPTURE}
-    browser = _FakeBrowser(_default_pages(), captures=captures)
-
-    out = _build(tmp_path, browser, _content_http())
+    browser, out = _build_with_equations(tmp_path, _SECTION_CAPTURE)
 
     assert (out / "nbc.divA.part1.sect1.html").read_text() == _SECTION_CAPTURE.html
     assert "equation-image" not in (out / "nbc.divA.part1.html").read_text()
@@ -377,14 +404,94 @@ def test_run_rewrites_a_page_with_equations_before_measuring_it(tmp_path):
     assert kinds == ["capture", "capture", "layout", "layout"]
 
 
-def test_run_skips_an_equation_whose_key_is_not_a_safe_file_name(tmp_path, capsys):
-    capture = EquationCapture(html="<html></html>", images={"../evil": b"x", "es1": b"ok"})
-    browser = _FakeBrowser(_default_pages(), captures={"nbc.divA.part1.sect1.html": capture})
+def test_run_never_starts_the_equation_renderer_when_no_equation_was_marked(tmp_path):
+    browser = _FakeBrowser(_default_pages())
+    with patch("build_web_pages.EquationRenderer", side_effect=AssertionError("renderer started")):
+        out = _build(tmp_path, browser, _content_http())
 
-    out = _build(tmp_path, browser, _content_http())
+    assert (out / "nbc.divA.part1.sect1.html").exists()
+    assert not (out / "assets" / "equations").exists()
+
+
+def test_run_skips_an_equation_whose_key_is_not_a_safe_file_name(tmp_path, capsys):
+    capture = EquationCapture(
+        html="<html></html>",
+        marked=[
+            MarkedEquation(key="../evil", node_id="es1"),
+            MarkedEquation(key="es1", node_id="es1"),
+        ],
+    )
+    _, out = _build_with_equations(tmp_path, capture)
 
     assert sorted(p.name for p in (out / "assets" / "equations").iterdir()) == ["es1.png"]
     assert "skipped equation '../evil'" in capsys.readouterr().err
+
+
+def test_run_skips_an_equation_with_no_cached_source_and_keeps_the_rest(tmp_path, capsys):
+    capture = EquationCapture(
+        html="<html></html>",
+        marked=[
+            MarkedEquation(key="es1", node_id="es1"),
+            MarkedEquation(key="missing1", node_id="no-such-node"),
+            # A block with no data-node-id at all marks with node_id="" -
+            # must be skipped the same way, not crash on an empty lookup key.
+            MarkedEquation(key="noid1", node_id=""),
+        ],
+    )
+    _, out = _build_with_equations(tmp_path, capture)
+
+    assert (out / "assets" / "equations" / "es1.png").exists()
+    assert not (out / "assets" / "equations" / "missing1.png").exists()
+    assert not (out / "assets" / "equations" / "noid1.png").exists()
+    err = capsys.readouterr().err
+    assert "skipped equation 'missing1'" in err
+    assert "skipped equation 'noid1'" in err
+
+
+def test_run_skips_an_equation_the_renderer_fails_on_and_keeps_the_rest(tmp_path, capsys):
+    capture = EquationCapture(
+        html="<html></html>",
+        marked=[
+            MarkedEquation(key="es1", node_id="es1"),
+            MarkedEquation(key="nbc.divA.part1.sect1.eq1", node_id="eq1"),
+        ],
+    )
+    _, out = _build_with_equations(tmp_path, capture, _FakeRenderer(fail_for={"l_c"}))
+
+    assert (out / "assets" / "equations" / "es1.png").exists()
+    assert not (out / "assets" / "equations" / "nbc.divA.part1.sect1.eq1.png").exists()
+    assert "skipped equation 'nbc.divA.part1.sect1.eq1'" in capsys.readouterr().err
+
+
+def test_run_skips_an_equation_whose_cached_node_has_no_usable_source(tmp_path, capsys):
+    content = {
+        **_SECTION_CONTENT,
+        "content": [{"type": "sentence", "id": "es1", "latex": None, "mathml": None}],
+    }
+    capture = EquationCapture(
+        html="<html></html>", marked=[MarkedEquation(key="es1", node_id="es1")]
+    )
+    browser = _FakeBrowser(_default_pages(), captures={"nbc.divA.part1.sect1.html": capture})
+    http = _FakeHttp(contents={SECTION_CONTENT_URL: content})
+    with patch("build_web_pages.EquationRenderer", return_value=_FakeRenderer()):
+        out = _build(tmp_path, browser, http)
+
+    assert not (out / "assets" / "equations" / "es1.png").exists()
+    assert "skipped equation 'es1'" in capsys.readouterr().err
+
+
+def test_run_resolves_two_keys_sharing_the_same_node_id_independently(tmp_path):
+    capture = EquationCapture(
+        html="<html></html>",
+        marked=[
+            MarkedEquation(key="t1.eg1", node_id="eq1"),
+            MarkedEquation(key="t2.eg1", node_id="eq1"),
+        ],
+    )
+    _, out = _build_with_equations(tmp_path, capture)
+
+    assert (out / "assets" / "equations" / "t1.eg1.png").read_bytes() == b"png-for-l_c"
+    assert (out / "assets" / "equations" / "t2.eg1.png").read_bytes() == b"png-for-l_c"
 
 
 def test_run_downloads_every_figure_in_the_cached_content(tmp_path):
