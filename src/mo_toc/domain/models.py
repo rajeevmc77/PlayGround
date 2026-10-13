@@ -65,3 +65,8 @@ class ImageAsset:
     title: str = ""
     decorative: bool = False
     unified_number: str = ""
+    # The tagged PDF's structure-tree /Alt for the image ("EQUATION" marks a
+    # formula - see image_classification.is_tagged_equation); None if untagged.
+    alt: str | None = None
+    # "raster" (an embedded image) or "vector" (a rendered crop of drawn paths).
+    source_kind: str = "raster"

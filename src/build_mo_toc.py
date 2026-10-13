@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from mo_toc.domain.image_classification import is_equation_shaped
+from mo_toc.domain.image_classification import is_equation_shaped, is_tagged_equation
 from mo_toc.domain.models import ImageAsset
 from mo_toc.output.image_writer import write_images
 from mo_toc.output.json_writer import write_json
@@ -117,6 +117,18 @@ def _overlaps_a_table(image: ImageAsset, table_bboxes_by_page: dict[int, list]) 
 
 
 def _is_equation(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bool:
+    """The PDF's own EQUATION tag decides first, whatever the image's size,
+    shape, caption or table; an untagged image falls back to reading as a
+    formula by shape - unless it is a vector crop, which in this PDF is only
+    ever a table row or form field (no formula is drawn as vectors)."""
+    if is_tagged_equation(image.alt):
+        return True
+    if image.source_kind == "vector":
+        return False
+    return _is_shaped_like_an_equation(image, table_bboxes_by_page)
+
+
+def _is_shaped_like_an_equation(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bool:
     if image.decorative or image.caption_kind is not None:
         return False
     width, height = image.bbox.x1 - image.bbox.x0, image.bbox.y1 - image.bbox.y0
@@ -128,10 +140,11 @@ def _is_equation(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bo
 def partition_equations(
     images: list[ImageAsset], table_regions_by_page: list[list[TableRegion]]
 ) -> tuple[list[ImageAsset], list[ImageAsset]]:
-    """Splits out the images that read as an inline formula - wide/short,
-    uncaptioned (a real Figure caption always wins), and not embedded in a
-    table's own cell (that's a repeated assembly diagram, not a formula) -
-    from the rest, so the two groups can be keyed `EqN`/`FigN` separately
+    """Splits out the formula images - those the PDF tags /Alt (EQUATION),
+    and, of the untagged rasters, those that read as an inline formula:
+    wide/short, uncaptioned (a real Figure caption always wins), and not
+    embedded in a table's own cell (that's a repeated assembly diagram, not a
+    formula) - from the rest, so the two groups can be keyed `EqN`/`FigN` separately
     the same way web_toc's MathJax-screenshot equations already are (see
     shared/numbering.py's number_images `label` param). Every image ends up
     in exactly one of the two returned lists.

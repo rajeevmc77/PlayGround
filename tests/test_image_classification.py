@@ -1,4 +1,10 @@
-from mo_toc.domain.image_classification import is_decorative, is_equation_shaped
+import pytest
+
+from mo_toc.domain.image_classification import (
+    is_decorative,
+    is_equation_shaped,
+    is_tagged_equation,
+)
 
 
 def test_small_square_icon_is_decorative():
@@ -80,3 +86,30 @@ def test_a_wide_diagram_taller_than_any_formula_is_not_equation_shaped():
     # formula is as tall; nor is the BC logo on the Division C form (72pt).
     assert is_equation_shaped(406, 116) is False
     assert is_equation_shaped(185, 72) is False
+
+
+def test_the_pdfs_own_equation_tag_marks_an_equation():
+    # Every formula image in the MO Package PDF is a /Figure whose /Alt is "EQUATION".
+    assert is_tagged_equation("EQUATION") is True
+
+
+def test_the_equation_tag_is_matched_after_trimming_its_whitespace():
+    assert is_tagged_equation("  EQUATION\n") is True
+
+
+@pytest.mark.parametrize(
+    "alt",
+    [
+        None,
+        "",
+        "   ",
+        "equation",
+        "Equation",
+        "EQUATIONS",
+        "EQUATION 4.1.6.5",
+        "C:\\BCBC\\figures\\eg02520a.eps",
+        "A close up of a sign Description automatically generated",
+    ],
+)
+def test_any_other_alt_or_no_alt_is_not_the_equation_tag(alt):
+    assert is_tagged_equation(alt) is False

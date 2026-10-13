@@ -230,3 +230,16 @@ def test_image_asset_decorative_can_be_set():
         decorative=True,
     )
     assert image.decorative is True
+
+
+def test_image_asset_has_no_structure_alt_and_is_a_raster_by_default():
+    # Keeps an image built without them - and an older bcbc_pdf.json's rows - as they were.
+    image = ImageAsset(
+        page=1,
+        bbox=BBox(0, 0, 5, 5),
+        width=5,
+        height=5,
+        phash=None,
+        image_path="images/img_0.png",
+    )
+    assert (image.alt, image.source_kind) == (None, "raster")
