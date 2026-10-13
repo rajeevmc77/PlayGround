@@ -1,6 +1,7 @@
 import asyncio
 import json
 import signal
+import threading
 import time
 from dataclasses import replace
 
@@ -401,6 +402,46 @@ def test_prepare_pairs_estimates_tokens_from_the_prepared_sizes():
     scored = [ScoredPair(_pair("a"), PNG, PNG, 10.0)]
     (prepared,) = prepare_pairs(scored, max_edge=1024, token_scale=1.0)
     assert prepared.tokens == 516 and (prepared.pdf.width, prepared.pdf.height) == (40, 30)
+
+
+def _threads_seen_by_scorer(scorer_calls):
+    def scorer(pair, pdf, web):
+        scorer_calls.append(threading.current_thread())
+        time.sleep(0.02)
+        return 40.0
+
+    return scorer
+
+
+def test_classify_with_workers_scores_on_several_threads_and_keeps_the_row_order():
+    pairs = [_pair(str(n)) for n in range(8)]
+    files = _files(*(f"{side}/{n}.png" for n in range(8) for side in ("images", "web_images")))
+    threads: list = []
+    parallel = classify_pairs(
+        pairs, _loader(files), 90.0, _threads_seen_by_scorer(threads), workers=4
+    )
+    serial = classify_pairs(pairs, _loader(files), 90.0, _threads_seen_by_scorer([]))
+    assert len(set(threads)) > 1
+    assert [s.pair.row_id for s in parallel.to_llm] == [s.pair.row_id for s in serial.to_llm]
+    assert list(parallel.settled) == list(serial.settled)
+
+
+def test_prepare_with_workers_gives_the_same_pairs_in_the_same_order_as_one_worker():
+    from llm_compare.analysis.runner import ScoredPair
+
+    scored = [ScoredPair(_pair(str(n)), PNG, PNG, 10.0 + n) for n in range(6)]
+    serial = prepare_pairs(scored, max_edge=1024, token_scale=1.0)
+    parallel = prepare_pairs(scored, max_edge=1024, token_scale=1.0, workers=4)
+    assert parallel == serial
+
+
+def test_run_comparison_scores_on_the_configured_number_of_scoring_workers():
+    pairs = [_pair(str(n)) for n in range(8)]
+    files = _files(*(f"{side}/{n}.png" for n in range(8) for side in ("images", "web_images")))
+    threads: list = []
+    deps = _deps(ScriptedJudge(), scoring_workers=4)
+    run_comparison(pairs, _loader(files), deps, scorer=_threads_seen_by_scorer(threads))
+    assert len(set(threads)) > 1
 
 
 # ---- timing -----------------------------------------------------------------------------

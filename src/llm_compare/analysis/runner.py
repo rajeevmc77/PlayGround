@@ -13,6 +13,7 @@ from PIL import Image
 from llm_compare.analysis.hash_score import score_pair
 from llm_compare.analysis.interrupt import CtrlC, handling_ctrl_c
 from llm_compare.analysis.limiter import RateLimiter, call_with_retries
+from llm_compare.analysis.parallel import parallel_map
 from llm_compare.config import LlmCompareConfig
 from llm_compare.domain.batching import estimate_call_tokens, estimate_image_tokens, pack
 from llm_compare.domain.costing import add_usage, split_usage
@@ -153,11 +154,17 @@ def _score_files(
 
 
 def classify_pairs(
-    pairs: list[ImagePair], load: LoadBytes, threshold: float, scorer: Scorer = score_pair
+    pairs: list[ImagePair],
+    load: LoadBytes,
+    threshold: float,
+    scorer: Scorer = score_pair,
+    workers: int = 1,
 ) -> Classification:
+    outcomes = parallel_map(
+        lambda pair: _classify_one(pair, load, threshold, scorer), pairs, workers
+    )
     result = Classification(settled={}, to_llm=[])
-    for pair in pairs:
-        outcome = _classify_one(pair, load, threshold, scorer)
+    for pair, outcome in zip(pairs, outcomes, strict=True):
         if isinstance(outcome, ScoredPair):
             result.to_llm.append(outcome)
         else:
@@ -165,17 +172,18 @@ def classify_pairs(
     return result
 
 
+def _prepare_one(item: ScoredPair, max_edge: int, token_scale: float) -> PreparedPair:
+    pdf, web = prepare_image(item.pdf_bytes, max_edge), prepare_image(item.web_bytes, max_edge)
+    tokens = estimate_image_tokens(pdf.width, pdf.height, token_scale) + estimate_image_tokens(
+        web.width, web.height, token_scale
+    )
+    return PreparedPair(item.pair, item.score, pdf, web, tokens)
+
+
 def prepare_pairs(
-    scored: list[ScoredPair], max_edge: int, token_scale: float
+    scored: list[ScoredPair], max_edge: int, token_scale: float, workers: int = 1
 ) -> list[PreparedPair]:
-    prepared = []
-    for item in scored:
-        pdf, web = prepare_image(item.pdf_bytes, max_edge), prepare_image(item.web_bytes, max_edge)
-        tokens = estimate_image_tokens(pdf.width, pdf.height, token_scale) + estimate_image_tokens(
-            web.width, web.height, token_scale
-        )
-        prepared.append(PreparedPair(item.pair, item.score, pdf, web, tokens))
-    return prepared
+    return parallel_map(lambda item: _prepare_one(item, max_edge, token_scale), scored, workers)
 
 
 def _sizes(pair: PreparedPair) -> dict:
@@ -375,9 +383,10 @@ def _plan(
     limit: int | None = None,
     scorer: Scorer = score_pair,
 ) -> ComparisonPlan:
-    classified = classify_pairs(pairs, load, config.hash_match_percent, scorer)
+    workers = config.scoring_workers
+    classified = classify_pairs(pairs, load, config.hash_match_percent, scorer, workers)
     cut = len(classified.to_llm) if limit is None else limit
-    prepared = prepare_pairs(classified.to_llm[:cut], config.max_edge, config.token_scale)
+    prepared = prepare_pairs(classified.to_llm[:cut], config.max_edge, config.token_scale, workers)
     settled = dict(classified.settled)
     for item in classified.to_llm[cut:]:
         settled[item.pair.row_id] = _skipped(item.pair, "not judged: --limit reached")

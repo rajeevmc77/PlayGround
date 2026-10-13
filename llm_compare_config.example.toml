@@ -22,6 +22,8 @@ max_output_tokens = 8192     # output cap per call, thinking included; must cove
 rpm = 30                     # provider requests per minute
 tpm = 250000                 # provider tokens per minute
 workers = 4                  # concurrent calls
+scoring_workers = 8          # threads that score and resize the images before the first call
+                             # (656 pairs: ~38 s with 1, ~5 s with 8)
 request_timeout_seconds = 120  # per request; a stuck one is cut off and retried. Single-pair
                              # calls took 5-28 s in the 5-pair trial (the library's own wait
                              # is 600 s, which once stalled a run for ~18 minutes)

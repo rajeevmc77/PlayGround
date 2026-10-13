@@ -299,7 +299,11 @@ def _save_calibration(results: list[VariantResult], output_dir: Path) -> Path:
 
 def _calibrate(count: int, args, config, pairs, judge) -> int:
     routed = classify_pairs(
-        pairs, _loader(args.source_dir), config.hash_match_percent, score_pair
+        pairs,
+        _loader(args.source_dir),
+        config.hash_match_percent,
+        score_pair,
+        config.scoring_workers,
     ).to_llm
     shared_judge = judge or _real_judge(config)
     limiter = RateLimiter(config.rpm, config.tpm)
