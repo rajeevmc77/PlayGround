@@ -10,7 +10,13 @@ from web_toc.domain.models import EquationSource
 
 
 def _is_equation_node(node: dict) -> bool:
-    return "latex" in node and "id" in node
+    return "id" in node and ("latex" in node or "plainText" in node)
+
+
+def _latex_of(node: dict) -> str:
+    """A node with neither latex nor mathml (AppC's ex000108q1/q2) is
+    typeset by the site from its plainText, read as TeX."""
+    return node["latex"] if "latex" in node else node["plainText"]
 
 
 def _walk_dict(node: dict) -> list[dict]:
@@ -33,10 +39,10 @@ def _nodes_with_latex(value: object) -> list[dict]:
 
 
 def equation_sources_in_content(content: dict) -> dict[str, EquationSource]:
-    """{node id: EquationSource} for every latex-bearing node in one page's
+    """{node id: EquationSource} for every latex- (or plainText-) bearing node in one page's
     content JSON, however deeply nested."""
     return {
-        node["id"]: EquationSource(latex=node["latex"], mathml=node.get("mathml"))
+        node["id"]: EquationSource(latex=_latex_of(node), mathml=node.get("mathml"))
         for node in _nodes_with_latex(content)
         if node["id"]
     }
