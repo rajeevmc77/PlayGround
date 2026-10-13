@@ -25,6 +25,7 @@
 1. A tagged-EQUATION image is classified `Eq` before and regardless of: `decorative`, a Figure caption claim, overlap with a table bbox, `MAX_EQUATION_HEIGHT`, shape. It is never `decorative` (so `number_images` keys it).
 2. A Figure caption must not be consumed by a tagged equation: when the nearest image to a caption is a tagged equation, the caption goes to the next non-equation image (B.4.1.6.12: the formula above "Figure 4.1.6.12." must stop taking the caption).
 3. Untagged images keep today's behaviour EXCEPT: a vector-kind crop is never `Eq` (equation-shaped vector crops become Figures); an untagged raster that is equation-shaped (and not decorative/captioned/in a table) is still `Eq` (fallback; keeps B.A-9.23.13.2.(3)).
+   *Superseded by Ruling 10: such vector crops are left unkeyed (neither Eq nor Fig).*
 4. Boundaries: empty alt, alt other than EQUATION (e.g. an `.eps` path, "automatically generated"), image with no structure element, page with no structure tree, PDF with no `StructTreeRoot` at all -> behaves exactly like today. Match on the alt text exactly `EQUATION` (case-sensitive, trimmed) — pin with tests.
 5. The tag reader must be robust: a malformed/absent struct tree or content stream never crashes extraction (return no alts).
 

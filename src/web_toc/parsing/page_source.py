@@ -192,8 +192,9 @@ class PlaywrightPageSource:
         page with its key and content-JSON node id, and swaps each for an
         <img> placeholder of itself (see equation_script.py); None if the
         page has none left to capture. Rendering the placeholder's actual
-        pixel content happens separately, once per distinct node id across
-        the whole site (see build_web_pages.py's capture_equations)."""
+        pixel content happens separately, once per equation key across the
+        whole site, from that key's node's source (see build_web_pages.py's
+        capture_equations)."""
         tab = await self._context.new_page()
         try:
             await tab.goto(url, wait_until="load")

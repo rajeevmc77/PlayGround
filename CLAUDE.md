@@ -265,17 +265,21 @@ only if/when they're actually touched, not retroactively.
   `src/web_toc/parsing/equation_renderer.py` (see
   `docs/superpowers/specs/2026-10-12-equation-image-extraction-design.md`). Its real-mathml slow test
   moved to `tests/test_web_toc_equation_renderer.py`; `matplotlib` left `requirements.txt` with it.
-  Test count: 1535 (1516 default + 19 `slow`) before retirement, 1486 (1468 default + 18 `slow`) after.
+  Test count after the equation-image work (2026-10-13): 1562 collected - 1530 by default plus 32
+  `slow`. The 14 real-Chromium tests in `tests/test_web_toc_equation_renderer.py` are slow (they fetch
+  MathJax from cdnjs); `tests/test_web_toc_equation_renderer_wiring.py` covers the render wiring with
+  Playwright faked, in the default suite.
 - Equation images: on the web side each equation is rendered by headless MathJax from the content JSON's
-  mathml (then latex, then plainText) per node id, keyed `<owner>.<node id>` and mapped to the unified
+  mathml (then latex, then plainText) of its node, once per key `<owner>.<node id>`, mapped to the unified
   `…EqN`; the PNG is of the padded target, not the inline `mjx-container`, which cut tall fractions.
   On the PDF side the `/Alt (EQUATION)` tag decides (2026-10-13, on the same web inputs): PDF Eq
   103 -> 131 (129 tagged + 2 untagged rasters), decorative 38 -> 0, keys in common with the web's
   133 equations 84 -> 129 (web-only: AppC.Eq3/4, B.4.1.8.2.Eq3/4; PDF-only: B.A-9.23.3.1.(2).Eq1/2 -
   see the discrepancies report). Equations passing 53 -> 56 of the PDF's (55 against fresh web
-  renders): 51 of the 73 failures are the site's "[f]" MathJax errors. The 17 vector crops the
-  shape rule had keyed Eq are left unkeyed (keyed FigN, one rule on p895 shifted 71 of
-  B.9.23.13.7.'s figure keys and figures passing fell to 352): figures pass 395 / fail 90 -> 83,
+  renders): of the 73 failures among the 129 shared keys, 51 are the site's "[f]" MathJax errors
+  (the other 2 of the 75 are the PDF-only pair). The 17 vector crops the shape rule had keyed Eq
+  are left unkeyed (keying them FigN would have shifted 71 of B.9.23.13.7.'s figure keys, from one
+  rule on p895, and dropped figures passing to 352): figures pass 395 / fail 90 -> 83,
   every Fig key unchanged except the 7 tagged formulas formerly keyed Fig (B.4.1.6.5.Fig2/4,
   B.4.1.6.10.Fig2-5, B.4.1.6.12.Fig1) and the 3 figures after them in those provisions.
   A stacked-vector-fragment merge (`merge_equation_fragments`) was built, measured a no-op on this

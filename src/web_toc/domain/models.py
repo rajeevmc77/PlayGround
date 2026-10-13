@@ -59,7 +59,7 @@ class MarkedEquation:
 class EquationCapture:
     """A saved page with each MathJax equation-block tagged and swapped for
     an <img> of itself. The images themselves are rendered separately, once
-    per distinct node id, from the site's own latex/mathml (see
+    per equation key, from its node's own latex/mathml (see
     equation_renderer.py) - not screenshotted per page."""
 
     html: str

@@ -249,8 +249,10 @@ and adds periods after some section numbers.
 
 ## Figures and equations
 
-The PDF has 588 numbered images: 485 figures and 103 equations. 448 match the site's (395 figures,
-53 equations). Figures are compared by their drawing, allowing for the marked-up PDF's heavier line
+The PDF has 609 numbered images: 478 figures and 131 equations. 451 match the site's (395 figures,
+56 equations). Before 2026-10-13, when equations were told apart by shape rather than by the PDF's
+`EQUATION` tag, it had 588 (485 figures, 103 equations), of which 448 matched (395 figures, 53
+equations). Figures are compared by their drawing, allowing for the marked-up PDF's heavier line
 weight, its green revision frames and its smaller embedded copies. Equations are compared by their
 image, and, where OCR can read the PDF's formula, by its text against the site's formula text.
 
@@ -273,7 +275,7 @@ PDF equation now fails, because what the site shows is not the PDF's formula.
 these equations. In most of them the rest of the formula is intact; in the 4.1.8. group the whole
 formula has been lost and needs its source restored.
 
-### Formulas on one side only (8 equations)
+### Formulas on one side only (6 formulas: 4 on the site only, 2 in the PDF only)
 
 Equations pair by their number within the provision, so a formula only one side shows as an
 equation moves the numbers of the ones after it. Since 2026-10-13 the PDF's equations are the 129

@@ -122,10 +122,11 @@ _EQUATION, _FIGURE, _UNKEYED = "equation", "figure", "unkeyed"
 def _numbering_group(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> str:
     """The PDF's own EQUATION tag decides first, whatever the image's size,
     shape, caption or table; an untagged image falls back to reading as a
-    formula by shape - unless it is a vector crop, which in this PDF is only
-    ever a rule, table row or form field (no formula is drawn as vectors).
-    Such a crop is left unkeyed rather than made a figure: the shape rule
-    once keyed it Eq, so a FigN would shift every later figure's key."""
+    formula by shape - unless it is a vector crop. Every equation-shaped
+    vector crop in the MO Package PDF is a rule, table row or form field (no
+    formula in it is drawn as vectors), so such a crop is never made Eq; it
+    is left unkeyed rather than made a figure: the shape rule once keyed it
+    Eq, so a FigN would shift every later figure's key."""
     if is_tagged_equation(image.alt):
         return _EQUATION
     if not _is_shaped_like_an_equation(image, table_bboxes_by_page):
