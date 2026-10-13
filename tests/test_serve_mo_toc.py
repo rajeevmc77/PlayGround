@@ -57,7 +57,14 @@ def test_index_page_has_the_image_comparison_tab_and_its_panel(tmp_path):
 
     assert 'id="tab-llm-compare"' in html
     assert ">Image Comparison</button>" in html
-    for element_id in ("llm-compare", "llm-message", "llm-cards", "llm-verdict", "llm-query", "llm-table"):
+    for element_id in (
+        "llm-compare",
+        "llm-message",
+        "llm-cards",
+        "llm-verdict",
+        "llm-query",
+        "llm-table",
+    ):
         assert f'id="{element_id}"' in html
     assert html.index('id="tab-compare"') < html.index('id="tab-llm-compare"')
 
