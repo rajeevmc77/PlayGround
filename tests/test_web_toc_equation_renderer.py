@@ -1,5 +1,8 @@
 """Real MathJax rendering in a headless browser - no network beyond the
-MathJax CDN bundle every page in this pipeline already loads."""
+MathJax CDN bundle every page in this pipeline already loads. Every test here
+launches Chromium and fetches that bundle from cdnjs, so the whole module is
+`slow`; test_web_toc_equation_renderer_wiring.py covers the render wiring in
+the default suite with Playwright faked out."""
 
 import asyncio
 import time
@@ -8,6 +11,8 @@ import pytest
 
 from web_toc.domain.models import EquationSource
 from web_toc.parsing.equation_renderer import EquationRenderer
+
+pytestmark = pytest.mark.slow
 
 
 def _render(source: EquationSource, path):
@@ -79,11 +84,20 @@ def test_raises_value_error_when_latex_has_a_tex_error(tmp_path):
 
 
 def test_unrenderable_equation_fails_fast_not_on_the_screenshot_timeout(tmp_path):
-    started = time.monotonic()
-    with pytest.raises(ValueError):
-        _render(EquationSource(latex="", mathml="<not-math>not real markup<"), tmp_path / "eq.png")
-    # Includes browser launch + MathJax load; the old path added a 10 s+ wait.
-    assert time.monotonic() - started < 9
+    # Times the render alone (not the browser launch or MathJax download):
+    # the old path waited out the 10 s screenshot timeout before raising.
+    elapsed = []
+
+    async def go():
+        async with EquationRenderer() as renderer:
+            started = time.monotonic()
+            with pytest.raises(ValueError):
+                bad = EquationSource(latex="", mathml="<not-math>not real markup<")
+                await renderer.render(bad, tmp_path / "eq.png")
+            elapsed.append(time.monotonic() - started)
+
+    asyncio.run(go())
+    assert elapsed[0] < 5
 
 
 def test_renders_after_a_previous_render_raised_on_the_same_instance(tmp_path):
@@ -168,7 +182,6 @@ _EG02520A_MATHML = """<math xmlns="http://www.w3.org/1998/Math/MathML" display="
 </math>"""
 
 
-@pytest.mark.slow
 def test_renders_a_real_mathml_equation_to_a_nontrivial_png(tmp_path):
     from PIL import Image
 
