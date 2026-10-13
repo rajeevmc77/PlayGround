@@ -20,13 +20,8 @@ from playwright.async_api import (
 )
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-from web_toc.domain.models import EquationCapture, ScrapedPage
-from web_toc.parsing.equation_script import (
-    GLYPHS_SELECTOR,
-    MARK_EQUATIONS_JS,
-    MARKED_SELECTOR,
-    SWAP_EQUATIONS_JS,
-)
+from web_toc.domain.models import EquationCapture, MarkedEquation, ScrapedPage
+from web_toc.parsing.equation_script import MARK_EQUATIONS_JS, SWAP_EQUATIONS_JS
 from web_toc.parsing.layout_script import GRID_ROWS_JS, LAYOUT_JS
 from web_toc.parsing.scroll_plan import short_tables
 
@@ -110,17 +105,6 @@ class PageSource(Protocol):
 
 async def _row_counts(tab: Page, expected: dict[str, int]) -> dict[str, list[int]]:
     return short_tables(await tab.evaluate(_ROW_COUNTS_JS, list(expected)), expected)
-
-
-async def _screenshot_equations(tab: Page, keys: list[str]) -> dict[str, bytes]:
-    """One PNG per distinct key, of the first block marked with it."""
-    blocks = tab.locator(MARKED_SELECTOR)
-    images: dict[str, bytes] = {}
-    for index, key in enumerate(keys):
-        if key not in images:
-            glyphs = blocks.nth(index).locator(GLYPHS_SELECTOR).first
-            images[key] = await glyphs.screenshot()
-    return images
 
 
 class PlaywrightPageSource:
@@ -214,9 +198,12 @@ class PlaywrightPageSource:
             await tab.close()
 
     async def capture_equations(self, url: str) -> EquationCapture | None:
-        """Screenshots every MathJax equation on an already-saved, locally
-        served page and swaps each for an <img> of itself (see
-        equation_script.py); None if the page has none left to capture."""
+        """Tags every MathJax equation on an already-saved, locally served
+        page with its key and content-JSON node id, and swaps each for an
+        <img> placeholder of itself (see equation_script.py); None if the
+        page has none left to capture. Rendering the placeholder's actual
+        pixel content happens separately, once per distinct node id across
+        the whole site (see build_web_pages.py's capture_equations)."""
         tab = await self._context.new_page()
         try:
             await tab.goto(url, wait_until="load")
@@ -224,8 +211,11 @@ class PlaywrightPageSource:
             marked = await tab.evaluate(MARK_EQUATIONS_JS)
             if not marked:
                 return None
-            images = await _screenshot_equations(tab, [entry["key"] for entry in marked])
-            return EquationCapture(html=await tab.evaluate(SWAP_EQUATIONS_JS), images=images)
+            html = await tab.evaluate(SWAP_EQUATIONS_JS)
+            return EquationCapture(
+                html=html,
+                marked=[MarkedEquation(key=e["key"], node_id=e["nodeId"]) for e in marked],
+            )
         finally:
             await tab.close()
 

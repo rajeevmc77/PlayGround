@@ -1,13 +1,17 @@
-"""Captures each MathJax-rendered equation on a locally served page as a PNG
-and rewrites the page to show that image instead - in a real headless
-Chromium, over a page with the saved pages' real shell. The fixture's
-`mjx-*` elements stand in for MathJax's CHTML output: a full-width
-`mjx-container` around a tight `mjx-math` glyph box."""
+"""Tags each MathJax-rendered equation on a locally served page with its key
+and node id, and swaps each for an <img> placeholder of itself - in a real
+headless Chromium, over a page with the saved pages' real shell. The
+fixture's `mjx-*` elements stand in for MathJax's CHTML output: a full-width
+`mjx-container` around a tight `mjx-math` glyph box. Rendering the <img>'s
+actual pixel content is a separate concern (see equation_renderer.py /
+build_web_pages.py) - this only covers marking, sizing/positioning and the
+swap."""
 
 import asyncio
-import struct
+import io
 
 import pytest
+from PIL import Image
 
 from web_toc.parsing.equation_script import EQUATION_ASSET_DIR
 from web_toc.parsing.local_page_server import serve_pages
@@ -51,7 +55,7 @@ _PLAIN_PAGE = """<!DOCTYPE html><html><body><main><div><main class="ui-ContentPa
 
 
 async def _capture(base_url):
-    async with PlaywrightPageSource(device_scale_factor=2) as source:
+    async with PlaywrightPageSource() as source:
         return {
             "page": await source.capture_equations(f"{base_url}/page.html"),
             "plain": await source.capture_equations(f"{base_url}/plain.html"),
@@ -59,7 +63,8 @@ async def _capture(base_url):
 
 
 async def _render(base_url):
-    """The rewritten page, served back with its PNGs, as a browser sees it."""
+    """The rewritten page, served back with placeholder PNGs, as a browser
+    sees it."""
     async with PlaywrightPageSource() as source:
         tab = await source._context.new_page()
         await tab.goto(f"{base_url}/rewritten.html", wait_until="load")
@@ -76,8 +81,13 @@ async def _render(base_url):
     return seen, mathjax_left
 
 
-def _png_size(data: bytes) -> tuple[int, int]:
-    return struct.unpack(">II", data[16:24])  # the IHDR chunk's width, height
+def _placeholder_png():
+    out = io.BytesIO()
+    Image.new("RGB", (1, 1)).save(out, format="PNG")
+    return out.getvalue()
+
+
+_PLACEHOLDER_PNG = _placeholder_png()
 
 
 @pytest.fixture(scope="module")
@@ -91,28 +101,25 @@ def captured(tmp_path_factory):
         (pages_dir / "rewritten.html").write_text(page.html)
         images_dir = pages_dir / "assets" / EQUATION_ASSET_DIR
         images_dir.mkdir(parents=True)
-        for key, data in page.images.items():
-            (images_dir / f"{key}.png").write_bytes(data)
+        for marked in page.marked:
+            (images_dir / f"{marked.key}.png").write_bytes(_PLACEHOLDER_PNG)
         result["rendered"], result["mathjax_left"] = asyncio.run(_render(base_url))
     return result
 
 
-def test_every_equation_gets_one_png_keyed_by_its_owner_and_node_id(captured):
+def test_every_equation_is_marked_with_its_key_and_node_id(captured):
     # The site reuses a node id for the same formula in several places, so
     # the owner's id makes the key unique; one with no node id is "eq", and
     # a repeat within one owner is "-n". The pinned-column copy of a header
-    # cell is the same equation.
-    assert sorted(captured["page"].images) == ["p3.eq", "p3.eq-2", "s2.clause2.es1", "t1.eg2"]
-    assert all(data.startswith(b"\x89PNG") for data in captured["page"].images.values())
+    # cell is the same equation again.
+    by_key = {m.key: m.node_id for m in captured["page"].marked}
+    assert sorted(by_key) == ["p3.eq", "p3.eq-2", "s2.clause2.es1", "t1.eg2"]
+    assert by_key["s2.clause2.es1"] == "es1"
+    assert by_key["t1.eg2"] == "eg2"
+    assert by_key["p3.eq"] == ""  # no data-node-id on this block
 
 
-def test_each_png_is_the_tight_glyph_box_at_the_capture_scale(captured):
-    images = captured["page"].images
-    assert _png_size(images["s2.clause2.es1"]) == (240, 60)
-    assert _png_size(images["p3.eq-2"]) == (40, 20)
-
-
-def test_the_rewritten_page_shows_each_png_in_place_of_mathjax(captured):
+def test_the_rewritten_page_shows_a_placeholder_in_place_of_mathjax(captured):
     seen, mathjax_left = captured["rendered"], captured["mathjax_left"]
     assert mathjax_left == 0
     assert all(img["loaded"] for img in seen)
