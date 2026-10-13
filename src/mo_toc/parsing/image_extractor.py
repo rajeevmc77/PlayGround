@@ -16,11 +16,7 @@ from dataclasses import dataclass
 
 from mo_toc.parsing.pdf_source import ExtractedImage, ImageAlt, PageImageInfo, PdfSource
 from mo_toc.parsing.table_extractor import detect_tables_on_page, rects_form_a_grid
-from mo_toc.parsing.vector_cluster import (
-    cluster_drawing_rects,
-    exclude_overlapping_rects,
-    merge_equation_fragments,
-)
+from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
 
 
 @dataclass(frozen=True)
@@ -127,7 +123,6 @@ def vector_images_on_page(
 ) -> list[RawImage]:
     rects = drawing_rects if drawing_rects is not None else source.page_drawing_rects(page_index)
     clusters = cluster_drawing_rects(rects)
-    clusters = merge_equation_fragments(clusters)
     clusters = exclude_overlapping_rects(clusters, list(raster_bboxes) + list(table_bboxes))
     clusters = [c for c in clusters if not rects_form_a_grid(_rects_within(c, rects))]
     images = []

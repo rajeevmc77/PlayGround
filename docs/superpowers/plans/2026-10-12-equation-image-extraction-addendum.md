@@ -6,7 +6,7 @@
 
 **Goal:** make every EQUATION-tagged PDF image an `Eq` image (keyed `…EqN`, linked to the web equation by the shared unified key), without relying on shape heuristics; stop keying vector crops as `Eq`.
 
-**Spec amendment:** the spec's PDF-side section (stacked-fragment merge) stays as built (harmless, no effect on this PDF). Add: *PDF equations are identified by the PDF's structure-tree `/Alt (EQUATION)` tag when present; the shape heuristic (`is_equation_shaped`) remains only as the fallback for untagged raster images; a vector crop is never classified as an equation.*
+**Spec amendment:** the spec's PDF-side section (stacked-fragment merge) stays as built (harmless, no effect on this PDF) - *later removed by Ruling 11; see the spec's Amendment*. Add: *PDF equations are identified by the PDF's structure-tree `/Alt (EQUATION)` tag when present; the shape heuristic (`is_equation_shaped`) remains only as the fallback for untagged raster images; a vector crop is never classified as an equation.*
 
 ## Global Constraints
 - Same as the main plan: TDD (failing test first), functions <=20 lines, complexity <=6, nesting <=2, Clean Architecture (domain logic free of PDF-library specifics; the PDF library stays inside `PdfSource`), never weaken/delete existing tests to pass (a test that asserts the OLD classification may be updated only when the new behaviour is the intended one — say so in the report), ruff/radon/vulture/pytest per CLAUDE.md.

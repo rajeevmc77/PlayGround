@@ -164,6 +164,20 @@ vertically-stacked pieces using a wider gap tolerance than the general
   `pdf_source.py:184-203`) — only the clustering changes, not the
   rendering.
 
+### Amendment (2026-10-13): PDF-side design superseded
+
+This section's design is superseded. PDF equations are identified by the
+tagged PDF's structure-tree `/Alt (EQUATION)` tag
+(`PdfSource.page_image_alts`); the shape heuristic only decides for
+untagged rasters, and an equation-shaped vector crop is left unkeyed
+(neither Eq nor Fig). The stacked-fragment merge described above was
+built (`merge_equation_fragments`), measured a no-op on the real PDF (no
+formula in it is vector-drawn), and - since under the unkeyed-vector rule
+its output could never be keyed Eq and could only remove figures from
+numbering - removed. The main plan's Tasks 1-2 and this spec's
+stacked-merge tests are historical. See the plan addendum
+`docs/superpowers/plans/2026-10-12-equation-image-extraction-addendum.md`.
+
 ## Testing
 
 Per `CLAUDE.md`'s TDD workflow:

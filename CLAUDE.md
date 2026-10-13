@@ -278,8 +278,9 @@ only if/when they're actually touched, not retroactively.
   B.9.23.13.7.'s figure keys and figures passing fell to 352): figures pass 395 / fail 90 -> 83,
   every Fig key unchanged except the 7 tagged formulas formerly keyed Fig (B.4.1.6.5.Fig2/4,
   B.4.1.6.10.Fig2-5, B.4.1.6.12.Fig1) and the 3 figures after them in those provisions.
-  `merge_equation_fragments` (`src/mo_toc/parsing/vector_cluster.py`) merges stacked vector
-  fragments but is a no-op on this PDF (no formula in it is vector-drawn); kept for other documents.
+  A stacked-vector-fragment merge (`merge_equation_fragments`) was built, measured a no-op on this
+  PDF (no formula in it is vector-drawn) and, since a vector crop can never be keyed Eq, could
+  only drop figures from numbering - so it was removed: no PDF's vector-drawn formula becomes Eq.
 - `build_web_pages.py`'s scrape can lose equations: the live site sometimes renders a page with
   some `.equation-block`s missing (stable within a load, different between loads - Part 4.1 gave
   60 or 91 of 91), and nothing checks the count against the content JSON's `[EQ:…]` markers, so a

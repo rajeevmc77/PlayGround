@@ -10,6 +10,8 @@
 
 **Spec:** [docs/superpowers/specs/2026-10-12-equation-image-extraction-design.md](../specs/2026-10-12-equation-image-extraction-design.md)
 
+> **Historical (2026-10-13):** Tasks 1-2 (the PDF-side stacked-fragment merge, `merge_equation_fragments`) were built, measured a no-op on the real PDF, and then removed (Ruling 11): PDF equations are now identified by the PDF's `/Alt (EQUATION)` tag and equation-shaped vector crops are left unkeyed. See the spec's "Amendment" and the addendum plan.
+
 ## Global Constraints
 
 - Functions ≤20 executable lines, cyclomatic complexity ≤6, nesting ≤2 levels (CLAUDE.md Code standards).
