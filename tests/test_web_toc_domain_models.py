@@ -1,4 +1,10 @@
-from web_toc.domain.models import EquationCapture, ScrapedPage, WebImage, WebNode
+from web_toc.domain.models import (
+    EquationCapture,
+    MarkedEquation,
+    ScrapedPage,
+    WebImage,
+    WebNode,
+)
 
 
 def test_web_node_defaults_to_no_children():
@@ -157,9 +163,9 @@ def test_web_image_is_a_figure_unless_marked_an_equation():
     assert equation.kind == "equation"
 
 
-def test_equation_capture_holds_the_rewritten_page_and_one_png_per_key():
-    capture = EquationCapture(html="<html></html>", images={"es1": b"png"})
-    assert capture.images == {"es1": b"png"}
+def test_equation_capture_holds_the_rewritten_page_and_its_marked_equations():
+    capture = EquationCapture(html="<html></html>", marked=[MarkedEquation("p.es1", "es1")])
+    assert capture.marked == [MarkedEquation("p.es1", "es1")]
 
 
 def test_scraped_page_incomplete_defaults_to_empty_and_is_independent():
