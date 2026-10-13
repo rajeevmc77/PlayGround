@@ -101,3 +101,41 @@ def test_renders_after_a_previous_render_raised_on_the_same_instance(tmp_path):
 def test_raises_value_error_for_malformed_latex_with_unbalanced_braces(tmp_path):
     with pytest.raises(ValueError):
         _render(EquationSource(latex=r"\frac{1}{2"), tmp_path / "eq.png")
+
+
+# Real mathml for eg02520a from the live equation-map.json: the site flattens
+# its latex field into raw newlines and a bare combining-macron character, so
+# its latex is unusable, but this mathml is what the site's own MathJax
+# actually renders, confirmed by inspecting the live page's DOM.
+_EG02520A_MATHML = """<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+   <mtext xmlns="">[f]</mtext>
+   <mtext xmlns="">[a]</mtext>
+   <mover xmlns="">
+      <mrow>
+         <mi>N</mi>
+      </mrow>
+      <mo>^</mo>
+   </mover>
+   <mover xmlns="">
+      <mrow>
+         <mtext>̄</mtext>
+      </mrow>
+      <mo>^</mo>
+   </mover>
+</math>"""
+
+
+@pytest.mark.slow
+def test_renders_a_real_mathml_equation_to_a_nontrivial_png(tmp_path):
+    from PIL import Image
+
+    target = tmp_path / "eg02520a.png"
+    _render(EquationSource(latex="", mathml=_EG02520A_MATHML), target)
+
+    # An empty/failed typeset would screenshot as a near-zero-size sliver; a
+    # real "[f][a]N-hat" render at the default browser font size comes out
+    # around 47x19px.
+    assert target.read_bytes().startswith(b"\x89PNG")
+    with Image.open(target) as img:
+        assert img.width > 30
+        assert img.height > 10

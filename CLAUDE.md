@@ -62,7 +62,8 @@ independent tools live here:
    exits non-zero if a table stays short), saves its `main.ui-ContentPanel` to
    `output/web_pages/<citation>.html`, mirrors every stylesheet/font/image under
    `output/web_pages/assets/` (plus `site-nav.css`), downloads figures to `output/web_images/`,
-   then serves the saved pages locally, screenshots every MathJax-rendered equation to a PNG
+   then renders every equation from the site's own mathml (latex as a fallback) cached in the
+   content JSON, through headless MathJax, to a PNG
    (`output/web_images/equations/` and `output/web_pages/assets/equations/`), rewrites each
    saved page to show those PNGs in place of MathJax, and measures the pages into
    `output/web_pages/<citation>.layout.json` (once the page's web fonts have loaded -
@@ -252,6 +253,18 @@ only if/when they're actually touched, not retroactively.
   The Workflow/Code standards/Definition of done above are the bar for new work going
   forward; they don't retroactively apply to what's already there unless it's being touched
   anyway.
+- `src/equation_export/` - an earlier, standalone LaTeX-export experiment that fetched the site's
+  `equation-map.json` directly and was never wired into `web_toc`/`comparison` - was retired once this
+  work found the same latex/mathml already sitting in the content JSON `build_web_pages.py` caches, and
+  ported the module's one load-bearing piece, MathJax headless rendering, into
+  `src/web_toc/parsing/equation_renderer.py` (see
+  `docs/superpowers/specs/2026-10-12-equation-image-extraction-design.md`). Its real-mathml slow test
+  moved to `tests/test_web_toc_equation_renderer.py`; `matplotlib` left `requirements.txt` with it.
+  Test count: 1535 (1516 default + 19 `slow`) before retirement, 1486 (1468 default + 18 `slow`) after.
+- Equation images: on the web side each equation is rendered by headless MathJax from the content JSON's
+  mathml (latex fallback) per node id, keyed `<owner>.<node id>` and mapped to the unified `…EqN`. On the
+  PDF side, stacked vector equation fragments merge via `merge_equation_fragments` in
+  `src/mo_toc/parsing/vector_cluster.py`.
 - Prefer testing a small sample first for anything that processes the full 1685-page PDF or
   the full Workspace directory, before running it against the whole thing.
 - `output/` is shared by every session, so measure a change in a scratch directory instead:
