@@ -12,7 +12,9 @@ select = ["E", "F", "I", "UP", "B"]
 # `complete` is the dspy.LM custom-engine method dspy calls on the llm_compare tests' canned engines.
 # PdfLocation / WebLocation's box corners x0..y1 are read as row["pdf_location"]["x0"] etc. from
 # the report's asdict() rows, never as attributes.
+# pytest reads a test module's `pytestmark` by name.
 ignore_names = [
+    "pytestmark",
     "do_GET",
     "log_message",
     "daemon_threads",

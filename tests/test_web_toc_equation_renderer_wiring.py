@@ -16,7 +16,7 @@ class _FakeLocator:
     def __init__(self, page):
         self._page = page
 
-    async def screenshot(self, path, timeout):
+    async def screenshot(self, path, **_options):
         self._page.screenshots.append(path)
 
 
