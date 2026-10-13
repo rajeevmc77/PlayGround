@@ -19,11 +19,18 @@ _TARGET_SELECTOR = f"#{_TARGET_ELEMENT_ID} mjx-container"
 
 # typeset:false skips the (nonexistent, at load time) initial auto-typeset -
 # each equation is typeset explicitly via typesetPromise below instead.
+# Dropping the bundle's noundefined package makes an unknown control sequence a real
+# merror instead of silently-red literal text that would look like a result.
 _PAGE_HTML = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<script>window.MathJax = {{ startup: {{ typeset: false }} }};</script>
+<script>
+window.MathJax = {{
+    startup: {{ typeset: false }},
+    tex: {{ packages: {{'[-]': ['noundefined']}} }}
+}};
+</script>
 <script src="{_MATHJAX_SCRIPT_URL}"></script>
 </head>
 <body style="margin:0; padding: 20px; display: inline-block;">
@@ -34,12 +41,17 @@ _PAGE_HTML = f"""<!DOCTYPE html>
 
 # typesetClear drops MathJax's bookkeeping for whatever this element held
 # before, so replacing its content and re-typesetting doesn't get skipped as
-# "already processed".
-_TYPESET_SCRIPT = f"""(markup) => {{
+# "already processed". MathJax renders a TeX/MathML error in place (an
+# mjx-merror / data-mjx-error node) and still emits a container, so the
+# outcome is read back here rather than inferred from the container existing.
+_TYPESET_SCRIPT = f"""async (markup) => {{
     const target = document.getElementById("{_TARGET_ELEMENT_ID}");
     MathJax.typesetClear([target]);
     target.innerHTML = markup;
-    return MathJax.typesetPromise([target]);
+    await MathJax.typesetPromise([target]);
+    if (!target.querySelector("mjx-container")) return "no-container";
+    if (target.querySelector("mjx-merror, [data-mjx-error]")) return "error";
+    return "ok";
 }}"""
 
 
@@ -102,7 +114,9 @@ class EquationRenderer:
         assert self._page is not None
         markup = _as_markup(source)
         try:
-            await self._page.evaluate(_TYPESET_SCRIPT, markup)
+            outcome = await self._page.evaluate(_TYPESET_SCRIPT, markup)
+            if outcome != "ok":
+                raise ValueError(f"MathJax did not typeset ({outcome}): {markup!r}")
             await self._page.locator(_TARGET_SELECTOR).screenshot(
                 path=str(output_path), timeout=_TYPESET_TIMEOUT_MS
             )

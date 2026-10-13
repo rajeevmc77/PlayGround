@@ -2,6 +2,7 @@
 MathJax CDN bundle every page in this pipeline already loads."""
 
 import asyncio
+import time
 
 import pytest
 
@@ -66,3 +67,37 @@ def test_renders_several_equations_in_sequence_on_one_shared_instance(tmp_path):
     asyncio.run(go())
     assert (tmp_path / "a.png").read_bytes().startswith(b"\x89PNG")
     assert (tmp_path / "b.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_raises_value_error_when_latex_has_a_tex_error(tmp_path):
+    # MathJax renders a TeX error in place and still produces a container, so
+    # without an explicit check a junk "\undefinedcmd x" image would be saved.
+    target = tmp_path / "eq.png"
+    with pytest.raises(ValueError):
+        _render(EquationSource(latex=r"\undefinedcmd x"), target)
+    assert not target.exists()
+
+
+def test_unrenderable_equation_fails_fast_not_on_the_screenshot_timeout(tmp_path):
+    started = time.monotonic()
+    with pytest.raises(ValueError):
+        _render(EquationSource(latex="", mathml="<not-math>not real markup<"), tmp_path / "eq.png")
+    # Includes browser launch + MathJax load; the old path added a 10 s+ wait.
+    assert time.monotonic() - started < 9
+
+
+def test_renders_after_a_previous_render_raised_on_the_same_instance(tmp_path):
+    async def go():
+        async with EquationRenderer() as renderer:
+            with pytest.raises(ValueError):
+                bad = EquationSource(latex=r"\undefinedcmd x")
+                await renderer.render(bad, tmp_path / "bad.png")
+            await renderer.render(EquationSource(latex="x^2"), tmp_path / "good.png")
+
+    asyncio.run(go())
+    assert (tmp_path / "good.png").read_bytes().startswith(b"\x89PNG")
+
+
+def test_raises_value_error_for_malformed_latex_with_unbalanced_braces(tmp_path):
+    with pytest.raises(ValueError):
+        _render(EquationSource(latex=r"\frac{1}{2"), tmp_path / "eq.png")
