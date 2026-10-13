@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from PIL import Image
 
 from mo_toc.parsing.image_extractor import extract_images, vector_images_on_page
-from mo_toc.parsing.pdf_source import ExtractedImage, PageImageInfo, PageLine
+from mo_toc.parsing.pdf_source import ExtractedImage, ImageAlt, PageImageInfo, PageLine
 
 
 def _png_bytes(size=(10, 10), color=(255, 0, 0)):
@@ -15,11 +15,17 @@ def _png_bytes(size=(10, 10), color=(255, 0, 0)):
 
 class FakeImageSource:
     def __init__(
-        self, pages_images: dict[int, list[PageImageInfo]], pages_drawings=None, pages_lines=None
+        self,
+        pages_images: dict[int, list[PageImageInfo]],
+        pages_drawings=None,
+        pages_lines=None,
+        pages_alts=None,
     ):
         self._pages_images = pages_images
         self._pages_drawings = pages_drawings or {}
         self._pages_lines = pages_lines or {}
+        self._pages_alts = pages_alts or {}
+        self.alt_requests = []
         self._xref_bytes = {}
 
     @property
@@ -32,6 +38,10 @@ class FakeImageSource:
 
     def page_images(self, page_index):
         return self._pages_images.get(page_index, [])
+
+    def page_image_alts(self, page_index):
+        self.alt_requests.append(page_index)
+        return self._pages_alts.get(page_index, [])
 
     def register_image(self, xref, data, ext="png", width=10, height=10):
         self._xref_bytes[xref] = ExtractedImage(data=data, ext=ext, width=width, height=height)
@@ -280,3 +290,56 @@ def test_vector_images_on_page_merges_stacked_equation_fragments():
 
     assert len(result) == 1
     assert rendered == [(0, 0, 60, 28)]
+
+
+def _source_with_one_image(alts, bbox=(100.0, 200.0, 140.0, 212.0)):
+    source = FakeImageSource({0: [PageImageInfo(bbox=bbox, xref=1)]}, pages_alts={0: alts})
+    source.register_image(1, _png_bytes())
+    return source
+
+
+def test_a_raster_image_carries_the_alt_the_structure_tree_gives_its_placement():
+    alts = [ImageAlt(bbox=(300.0, 10.0, 320.0, 20.0), alt="other.eps")]
+    alts.append(ImageAlt(bbox=(100.0, 200.0, 140.0, 212.0), alt="EQUATION"))
+
+    [image] = extract_images(_source_with_one_image(alts))
+
+    assert image.alt == "EQUATION"
+
+
+def test_an_alt_placed_within_a_point_and_a_half_of_the_image_is_its_alt():
+    alts = [ImageAlt(bbox=(101.4, 198.6, 141.4, 213.4), alt="EQUATION")]
+
+    [image] = extract_images(_source_with_one_image(alts))
+
+    assert image.alt == "EQUATION"
+
+
+def test_an_alt_placed_further_off_than_that_belongs_to_another_image():
+    alts = [ImageAlt(bbox=(100.0, 200.0, 140.0, 213.6), alt="EQUATION")]
+
+    [image] = extract_images(_source_with_one_image(alts))
+
+    assert image.alt is None
+
+
+def test_an_image_with_no_tagged_placement_has_no_alt():
+    [image] = extract_images(_source_with_one_image([]))
+
+    assert image.alt is None
+
+
+def test_a_vector_crop_has_no_alt():
+    source = FakeImageSource({}, pages_drawings={0: [(0, 0, 100, 100)]})
+
+    [image] = extract_images(source)
+
+    assert (image.kind, image.alt) == ("vector", None)
+
+
+def test_a_page_without_raster_images_does_not_read_its_structure_tree():
+    source = FakeImageSource({1: []}, pages_lines={0: []})
+
+    extract_images(source)
+
+    assert source.alt_requests == []

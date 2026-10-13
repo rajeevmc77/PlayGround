@@ -19,6 +19,9 @@ class FakePdfSource:
     def page_images(self, page_index):
         return []
 
+    def page_image_alts(self, page_index):
+        return []
+
     def extract_image(self, xref):
         raise NotImplementedError
 
