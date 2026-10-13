@@ -32,6 +32,50 @@ test("classifyImage: an uncaptioned non-decorative image is 'equation'", () => {
   assert.equal(classifyImage({ caption_kind: null, decorative: false }), "equation");
 });
 
+test("classifyImage: an image keyed EqN is 'equation' whatever its caption or size", () => {
+  const eq = { unified_number: "B.4.1.8.4.Eq1", source_kind: "raster" };
+  assert.equal(classifyImage({ ...eq, caption_kind: null, decorative: false }), "equation");
+  assert.equal(classifyImage({ ...eq, caption_kind: null, decorative: true }), "equation");
+  assert.equal(classifyImage({ ...eq, caption_kind: "Figure", decorative: false }), "equation");
+});
+
+test("classifyImage: an uncaptioned image keyed FigN by a JSON that keys formulas EqN is 'figure'", () => {
+  // bcbc_pdf.json records source_kind once it classifies formulas by the
+  // PDF's EQUATION tag - its uncaptioned FigN images (vector crops of table
+  // rows, form fields) are not formulas.
+  const crop = { unified_number: "BM.Fig3", source_kind: "vector", caption_kind: null };
+  assert.equal(classifyImage({ ...crop, decorative: false }), "figure");
+  assert.equal(classifyImage({ ...crop, source_kind: "raster", decorative: false }), "figure");
+});
+
+test("classifyImage: a decorative image stays 'image' in a JSON that keys formulas EqN", () => {
+  const icon = { unified_number: null, source_kind: "raster", caption_kind: null };
+  assert.equal(classifyImage({ ...icon, decorative: true }), "image");
+});
+
+test("classifyImage: an older JSON without source_kind keeps its uncaptioned FigN crops as 'equation'", () => {
+  assert.equal(
+    classifyImage({ unified_number: "B.4.1.6.5.Fig2", caption_kind: null, decorative: false }),
+    "equation",
+  );
+});
+
+test("classifyImage: an image with no unified_number at all falls back on caption/decorative", () => {
+  assert.equal(classifyImage({ caption_kind: null, decorative: false, unified_number: null }), "equation");
+  assert.equal(classifyImage({ caption_kind: "Figure", decorative: false }), "figure");
+});
+
+test("classifyImage: a web image says what it is with its own kind", () => {
+  assert.equal(classifyImage({ kind: "equation", unified_number: "AppC.Eq1" }), "equation");
+  assert.equal(classifyImage({ kind: "figure", unified_number: "B.4.1.6.5.Fig1" }), "figure");
+});
+
+test("classifyImage: 'Eq' must be the whole key segment - FigEq1 or Eq1a is not an equation key", () => {
+  const base = { caption_kind: "Figure", decorative: false, source_kind: "raster" };
+  assert.equal(classifyImage({ ...base, unified_number: "B.1.FigEq1" }), "figure");
+  assert.equal(classifyImage({ ...base, unified_number: "B.1.Eq1a" }), "figure");
+});
+
 const node = (type, unified_number, location, children = []) => ({
   type,
   unified_number,
