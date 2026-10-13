@@ -9,14 +9,26 @@ file-loading wrapper)."""
 from web_toc.domain.models import EquationSource
 
 
+def _is_equation_node(node: dict) -> bool:
+    return "latex" in node and "id" in node
+
+
+def _walk_dict(node: dict) -> list[dict]:
+    found = [node] if _is_equation_node(node) else []
+    for child in node.values():
+        found += _nodes_with_latex(child)
+    return found
+
+
+def _walk_list(items: list) -> list[dict]:
+    return [node for item in items for node in _nodes_with_latex(item)]
+
+
 def _nodes_with_latex(value: object) -> list[dict]:
     if isinstance(value, dict):
-        found = [value] if "latex" in value and "id" in value else []
-        for child in value.values():
-            found += _nodes_with_latex(child)
-        return found
+        return _walk_dict(value)
     if isinstance(value, list):
-        return [node for item in value for node in _nodes_with_latex(item)]
+        return _walk_list(value)
     return []
 
 
