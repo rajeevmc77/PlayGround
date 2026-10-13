@@ -48,6 +48,15 @@ test("classifyImage: an uncaptioned image keyed FigN by a JSON that keys formula
   assert.equal(classifyImage({ ...crop, source_kind: "raster", decorative: false }), "figure");
 });
 
+test("classifyImage: an unkeyed uncaptioned non-decorative image is 'image' in a JSON that keys formulas EqN", () => {
+  // The equation-shaped vector crops (rules, table rows, form fields) the
+  // build leaves unkeyed are neither a Figure nor a formula.
+  const crop = { source_kind: "vector", caption_kind: null, decorative: false };
+  assert.equal(classifyImage({ ...crop, unified_number: null }), "image");
+  assert.equal(classifyImage({ ...crop, unified_number: "" }), "image");
+  assert.equal(classifyImage(crop), "image");
+});
+
 test("classifyImage: a decorative image stays 'image' in a JSON that keys formulas EqN", () => {
   const icon = { unified_number: null, source_kind: "raster", caption_kind: null };
   assert.equal(classifyImage({ ...icon, decorative: true }), "image");

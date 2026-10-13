@@ -11,14 +11,17 @@ const EQUATION_KEY = /\.Eq\d+$/;
 // even if its bbox shape also looks decorative - and a small icon/logo is
 // "image" (the same `decorative` flag the PDF tab's declutter toggle uses).
 // An uncaptioned FigN image is a "figure" in a JSON that keys formulas EqN
-// (it records each image's `source_kind`); an older JSON never told its
-// formulas apart, so there an uncaptioned image is an Equation crop.
+// (it records each image's `source_kind`), and an unkeyed one there (a rule,
+// table row or form field the build left neither Eq nor Fig) is an "image";
+// an older JSON never told its formulas apart, so there an uncaptioned image
+// is an Equation crop.
 export function classifyImage(img) {
   if (img.kind) return img.kind;
   if (EQUATION_KEY.test(img.unified_number || "")) return "equation";
   if (img.caption_kind === "Figure") return "figure";
   if (img.decorative) return "image";
-  return "source_kind" in img ? "figure" : "equation";
+  if (!("source_kind" in img)) return "equation";
+  return img.unified_number ? "figure" : "image";
 }
 
 function walkTree(node, into) {
