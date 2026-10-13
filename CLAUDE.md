@@ -46,7 +46,9 @@ independent tools live here:
    never across provisions. A PDF image is an equation (`…EqN`) when the tagged PDF's structure
    tree gives it `/Alt (EQUATION)` (`PdfSource.page_image_alts`), whatever its size, caption or
    table; the shape heuristic (`is_equation_shaped`) only decides for untagged rasters, and a
-   vector crop is never an equation. `comparison.json`'s `counterparts` records
+   vector crop is never an equation - one that the shape rule would call a formula (a rule,
+   table row or form field) is left unkeyed, neither Eq nor Fig, so it shifts no figure's key.
+   `comparison.json`'s `counterparts` records
    every pairing that differs (null = no web counterpart) and the viewer's web highlight
    follows it (`webLocationFor` in `both_view.mjs`). Its `reasons` say why each failed text
    item or image differs - the differing stretches with context and their kind, or which
@@ -272,8 +274,10 @@ only if/when they're actually touched, not retroactively.
   133 equations 84 -> 129 (web-only: AppC.Eq3/4, B.4.1.8.2.Eq3/4; PDF-only: B.A-9.23.3.1.(2).Eq1/2 -
   see the discrepancies report). Equations passing 53 -> 56 of the PDF's (55 against fresh web
   renders): 51 of the 73 failures are the site's "[f]" MathJax errors. The 17 vector crops the
-  shape rule had keyed Eq are now FigN; one (a rule on p895) shifts B.9.23.13.7.'s later Fig keys,
-  so figures passing fell 395 -> 352 (leaving those 17 crops unkeyed instead keeps 395).
+  shape rule had keyed Eq are left unkeyed (keyed FigN, one rule on p895 shifted 71 of
+  B.9.23.13.7.'s figure keys and figures passing fell to 352): figures pass 395 / fail 90 -> 83,
+  every Fig key unchanged except the 7 tagged formulas formerly keyed Fig (B.4.1.6.5.Fig2/4,
+  B.4.1.6.10.Fig2-5, B.4.1.6.12.Fig1) and the 3 figures after them in those provisions.
   `merge_equation_fragments` (`src/mo_toc/parsing/vector_cluster.py`) merges stacked vector
   fragments but is a no-op on this PDF (no formula in it is vector-drawn); kept for other documents.
 - `build_web_pages.py`'s scrape can lose equations: the live site sometimes renders a page with

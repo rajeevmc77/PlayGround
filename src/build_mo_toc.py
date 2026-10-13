@@ -116,16 +116,21 @@ def _overlaps_a_table(image: ImageAsset, table_bboxes_by_page: dict[int, list]) 
     return not exclude_overlapping_rects([image.bbox.as_tuple()], table_bboxes)
 
 
-def _is_equation(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bool:
+_EQUATION, _FIGURE, _UNKEYED = "equation", "figure", "unkeyed"
+
+
+def _numbering_group(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> str:
     """The PDF's own EQUATION tag decides first, whatever the image's size,
     shape, caption or table; an untagged image falls back to reading as a
     formula by shape - unless it is a vector crop, which in this PDF is only
-    ever a table row or form field (no formula is drawn as vectors)."""
+    ever a rule, table row or form field (no formula is drawn as vectors).
+    Such a crop is left unkeyed rather than made a figure: the shape rule
+    once keyed it Eq, so a FigN would shift every later figure's key."""
     if is_tagged_equation(image.alt):
-        return True
-    if image.source_kind == "vector":
-        return False
-    return _is_shaped_like_an_equation(image, table_bboxes_by_page)
+        return _EQUATION
+    if not _is_shaped_like_an_equation(image, table_bboxes_by_page):
+        return _FIGURE
+    return _UNKEYED if image.source_kind == "vector" else _EQUATION
 
 
 def _is_shaped_like_an_equation(image: ImageAsset, table_bboxes_by_page: dict[int, list]) -> bool:
@@ -147,14 +152,14 @@ def partition_equations(
     formula) - from the rest, so the two groups can be keyed `EqN`/`FigN` separately
     the same way web_toc's MathJax-screenshot equations already are (see
     shared/numbering.py's number_images `label` param). Every image ends up
-    in exactly one of the two returned lists.
+    in exactly one of the two returned lists, except an untagged vector crop
+    shaped like a formula, which is in neither and so stays unkeyed.
     """
     table_bboxes_by_page = _table_bboxes_by_page(table_regions_by_page)
-    equations, figures = [], []
+    groups = {_EQUATION: [], _FIGURE: [], _UNKEYED: []}
     for image in images:
-        target = equations if _is_equation(image, table_bboxes_by_page) else figures
-        target.append(image)
-    return equations, figures
+        groups[_numbering_group(image, table_bboxes_by_page)].append(image)
+    return groups[_EQUATION], groups[_FIGURE]
 
 
 def run(pdf_path: str, output_dir: str) -> None:
