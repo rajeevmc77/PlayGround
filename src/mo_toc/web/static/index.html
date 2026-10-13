@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <title>MO Package TOC Viewer</title>
-  <link rel="stylesheet" href="/static/style.css?v=5">
+  <link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
   <div id="tabs">
     <button id="tab-toc-both" class="active">Table of Contents - Both</button>
     <button id="tab-compare">Compare</button>
+    <button id="tab-llm-compare">Image Comparison</button>
   </div>
   <div id="toc-both">
     <div id="both-tree">
@@ -68,6 +69,16 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/static/viewer.js?v=30"></script>
+  <div id="llm-compare" style="display:none">
+    <div id="llm-message" class="compare-placeholder" role="status"></div>
+    <div id="llm-cards" class="llm-cards"></div>
+    <div id="llm-toolbar" class="llm-toolbar" hidden>
+      <select id="llm-verdict" aria-label="Filter by verdict"></select>
+      <input id="llm-query" type="search" aria-label="Search by unified number" placeholder="Search unified number">
+      <span id="llm-count" class="llm-count"></span>
+    </div>
+    <div id="llm-table" class="llm-table-wrap"></div>
+  </div>
+  <script type="module" src="/static/viewer.js?v=31"></script>
 </body>
 </html>

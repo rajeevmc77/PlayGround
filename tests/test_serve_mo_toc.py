@@ -52,6 +52,16 @@ def test_app_serves_index_page(tmp_path):
     assert b"MO Package TOC Viewer" in resp.content
 
 
+def test_index_page_has_the_image_comparison_tab_and_its_panel(tmp_path):
+    html = _make_client(tmp_path).get("/").text
+
+    assert 'id="tab-llm-compare"' in html
+    assert ">Image Comparison</button>" in html
+    for element_id in ("llm-compare", "llm-message", "llm-cards", "llm-verdict", "llm-query", "llm-table"):
+        assert f'id="{element_id}"' in html
+    assert html.index('id="tab-compare"') < html.index('id="tab-llm-compare"')
+
+
 def test_main_exits_when_toc_json_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(serve_mo_toc, "TOC_JSON", str(tmp_path / "missing.json"))
 

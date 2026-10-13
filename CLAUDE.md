@@ -21,12 +21,12 @@ independent tools live here:
    Appendix chain, BackMatter) plus a flat Table/Figure caption index
    and a full embedded-image index — every node carries a page number and a precise
    bounding box. Served as JSON/Markdown (`src/build_mo_toc.py`) and through an
-   interactive web viewer (`src/serve_mo_toc.py`) with two tabs: "Table of Contents - Both"
+   interactive web viewer (`src/serve_mo_toc.py`) with three tabs: "Table of Contents - Both"
    (the PDF tree driving the PDF page and the matching saved web page side by side, each
    highlighting the clicked location - the web box is measured live from the node's
    `xpath` in the saved page, hugging its rendered text; Figures / Tables / Equations / Text / Images filters
    show or hide those rows — headings always stay, and an image whose row is hidden moves up
-   to the nearest row still shown) and "Compare" (PDF vs web images).
+   to the nearest row still shown) and "Compare" (PDF vs web images), plus "Image Comparison" (below).
    The tree's ✓/✗ comes from `src/build_comparison.py`: a leaf's text must match the web's
    exactly apart from whitespace, dot glyphs ("•" bullets, unit dots "•"/"·"/"⋅") and the
    site's typing and punctuation conventions it accepts (a typed "---"/"--" is one dash; a
@@ -142,6 +142,10 @@ and prints which path works and why.
    other settings from `llm_compare_config.toml` (see `llm_compare_config.example.toml`); both
    files are git-ignored. Spec `docs/superpowers/specs/2026-10-12-llm-image-compare-design.md`,
    plan `docs/superpowers/plans/2026-10-12-llm-image-compare.md`.
+   The viewer's third tab, "Image Comparison", shows `output/llm_image_compare.json` (read-only: the
+   script still writes it; `/api/llm-comparison` re-reads the file on every request and the tab
+   re-fetches each time it is opened, `/api/llm-image/<path>` serves images from under `output/`;
+   a missing file shows "Run src/build_llm_comparison.py first"; helpers in `llm_compare_view.mjs`).
 
 ## Folder structure
 - `app.py` — the FastAPI app; stays in the project root (its own entry point).
