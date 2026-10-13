@@ -1,4 +1,8 @@
-from mo_toc.parsing.vector_cluster import cluster_drawing_rects, exclude_overlapping_rects
+from mo_toc.parsing.vector_cluster import (
+    cluster_drawing_rects,
+    exclude_overlapping_rects,
+    merge_equation_fragments,
+)
 
 
 def test_empty_input_returns_empty_list():
@@ -44,3 +48,51 @@ def test_exclude_overlapping_rects_drops_clusters_over_raster_images():
 def test_exclude_overlapping_rects_keeps_all_when_no_raster_images():
     clusters = [(0, 0, 30, 30)]
     assert exclude_overlapping_rects(clusters, []) == clusters
+
+
+def test_stacked_fraction_pieces_merge_when_gap_exceeds_general_margin():
+    numerator = (0, 0, 60, 8)
+    denominator = (0, 20, 60, 28)  # 12pt gap: > MERGE_MARGIN(5), within STACK_GAP_LIMIT
+    result = merge_equation_fragments([numerator, denominator])
+    assert result == [(0, 0, 60, 28)]
+
+
+def test_two_separate_diagrams_stay_separate():
+    top = (0, 0, 50, 50)
+    bottom = (0, 60, 50, 110)  # 10pt gap, but the union is too tall to be an equation
+    result = merge_equation_fragments([top, bottom])
+    assert sorted(result) == sorted([top, bottom])
+
+
+def test_stacked_but_not_horizontally_overlapping_stays_separate():
+    left = (0, 0, 40, 8)
+    right = (100, 20, 140, 28)
+    result = merge_equation_fragments([left, right])
+    assert sorted(result) == sorted([left, right])
+
+
+def test_gap_beyond_the_tallest_known_equation_stays_separate():
+    top = (0, 0, 60, 8)
+    bottom = (0, 100, 60, 108)  # 92pt gap, well past STACK_GAP_LIMIT
+    result = merge_equation_fragments([top, bottom])
+    assert sorted(result) == sorted([top, bottom])
+
+
+def test_a_thin_bar_between_numerator_and_denominator_is_absorbed_into_one_equation():
+    numerator = (0, 0, 60, 8)
+    bar = (0, 14, 60, 14.5)
+    denominator = (0, 20, 60, 28)
+    result = merge_equation_fragments([numerator, bar, denominator])
+    assert result == [(0, 0, 60, 28)]
+
+
+def test_a_tall_diagram_near_a_formula_stays_separate():
+    formula = (0, 0, 60, 8)
+    diagram = (0, 20, 60, 120)  # 12pt gap, full x overlap, but the union is 120pt tall
+    result = merge_equation_fragments([formula, diagram])
+    assert sorted(result) == sorted([formula, diagram])
+
+
+def test_empty_and_single_cluster_are_unchanged():
+    assert merge_equation_fragments([]) == []
+    assert merge_equation_fragments([(0, 0, 60, 8)]) == [(0, 0, 60, 8)]
