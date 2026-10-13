@@ -15,7 +15,15 @@ from web_toc.domain.models import EquationSource
 _MATHJAX_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"
 _TYPESET_TIMEOUT_MS = 10_000
 _TARGET_ELEMENT_ID = "equation-target"
-_TARGET_SELECTOR = f"#{_TARGET_ELEMENT_ID} mjx-container"
+# The screenshot is of the whole target, not of the mjx-container: an inline
+# container's box is only its line's height, so a fraction or root standing
+# taller than the line was cut off at the top and bottom. The inline-block
+# target's line box takes in every glyph box; the padding keeps a blank
+# border round the formula, and a display container's own 1em vertical margin
+# is dropped so it doesn't pad the image.
+_TARGET_SELECTOR = f"#{_TARGET_ELEMENT_ID}"
+_TARGET_STYLE = f"""#{_TARGET_ELEMENT_ID} {{ display: inline-block; padding: 2px; }}
+#{_TARGET_ELEMENT_ID} mjx-container[display="true"] {{ margin: 0; }}"""
 
 # typeset:false skips the (nonexistent, at load time) initial auto-typeset -
 # each equation is typeset explicitly via typesetPromise below instead.
@@ -32,6 +40,9 @@ window.MathJax = {{
 }};
 </script>
 <script src="{_MATHJAX_SCRIPT_URL}"></script>
+<style>
+{_TARGET_STYLE}
+</style>
 </head>
 <body style="margin:0; padding: 20px; display: inline-block;">
 <div id="{_TARGET_ELEMENT_ID}"></div>

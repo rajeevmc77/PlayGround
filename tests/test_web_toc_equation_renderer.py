@@ -103,6 +103,49 @@ def test_raises_value_error_for_malformed_latex_with_unbalanced_braces(tmp_path)
         _render(EquationSource(latex=r"\frac{1}{2"), tmp_path / "eq.png")
 
 
+def _ink_on_edges(path) -> dict[str, bool]:
+    from PIL import Image
+
+    with Image.open(path) as img:
+        grey = img.convert("L")
+        width, height = grey.size
+        edges = {
+            "top": [(x, 0) for x in range(width)],
+            "bottom": [(x, height - 1) for x in range(width)],
+            "left": [(0, y) for y in range(height)],
+            "right": [(width - 1, y) for y in range(height)],
+        }
+        return {side: any(grey.getpixel(p) < 128 for p in px) for side, px in edges.items()}
+
+
+# An inline fraction (es013709q3, eg02664a, eg02643a on the site) stands
+# taller than its inline mjx-container's own box: a screenshot of just that
+# box cut the numerator's top and the denominator's bottom off.
+_INLINE_FRACTION_MATHML = """<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">
+   <mi>A</mi><mo>=</mo>
+   <mfrac>
+      <mrow><mn>1</mn><mn>000</mn><mi>A</mi></mrow>
+      <mrow><mi>max</mi><mo>(</mo><msup><mi>L</mi><mn>2</mn></msup><mo>,</mo><mn>25</mn><mo>)</mo></mrow>
+   </mfrac>
+</math>"""
+_DISPLAY_FRACTION_MATHML = "<math display='block'><mfrac><mi>a</mi><mi>b</mi></mfrac></math>"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        EquationSource(latex="", mathml=_INLINE_FRACTION_MATHML),
+        EquationSource(latex=r"\frac{w^{2}_{s}}{l_{s}}"),
+        EquationSource(latex="x", mathml=_DISPLAY_FRACTION_MATHML),
+    ],
+    ids=["inline-mathml-fraction", "latex-fraction", "display-mathml-fraction"],
+)
+def test_the_png_holds_the_whole_formula_not_clipped_at_any_edge(tmp_path, source):
+    target = tmp_path / "eq.png"
+    _render(source, target)
+    assert _ink_on_edges(target) == {"top": False, "bottom": False, "left": False, "right": False}
+
+
 # Real mathml for eg02520a from the live equation-map.json: the site flattens
 # its latex field into raw newlines and a bare combining-macron character, so
 # its latex is unusable, but this mathml is what the site's own MathJax
