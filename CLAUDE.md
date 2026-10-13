@@ -43,7 +43,10 @@ independent tools live here:
    a row starts, not the positions a span covers). Images pair by `unified_number` within their
    provision, except where the two sides label a provision's non-table images differently
    (Fig vs Eq) and have as many: those pair in page order (`src/comparison/image_pairing.py`) -
-   never across provisions. `comparison.json`'s `counterparts` records
+   never across provisions. A PDF image is an equation (`…EqN`) when the tagged PDF's structure
+   tree gives it `/Alt (EQUATION)` (`PdfSource.page_image_alts`), whatever its size, caption or
+   table; the shape heuristic (`is_equation_shaped`) only decides for untagged rasters, and a
+   vector crop is never an equation. `comparison.json`'s `counterparts` records
    every pairing that differs (null = no web counterpart) and the viewer's web highlight
    follows it (`webLocationFor` in `both_view.mjs`). Its `reasons` say why each failed text
    item or image differs - the differing stretches with context and their kind, or which
@@ -262,9 +265,22 @@ only if/when they're actually touched, not retroactively.
   moved to `tests/test_web_toc_equation_renderer.py`; `matplotlib` left `requirements.txt` with it.
   Test count: 1535 (1516 default + 19 `slow`) before retirement, 1486 (1468 default + 18 `slow`) after.
 - Equation images: on the web side each equation is rendered by headless MathJax from the content JSON's
-  mathml (latex fallback) per node id, keyed `<owner>.<node id>` and mapped to the unified `…EqN`. On the
-  PDF side, stacked vector equation fragments merge via `merge_equation_fragments` in
-  `src/mo_toc/parsing/vector_cluster.py`.
+  mathml (then latex, then plainText) per node id, keyed `<owner>.<node id>` and mapped to the unified
+  `…EqN`; the PNG is of the padded target, not the inline `mjx-container`, which cut tall fractions.
+  On the PDF side the `/Alt (EQUATION)` tag decides (2026-10-13, on the same web inputs): PDF Eq
+  103 -> 131 (129 tagged + 2 untagged rasters), decorative 38 -> 0, keys in common with the web's
+  133 equations 84 -> 129 (web-only: AppC.Eq3/4, B.4.1.8.2.Eq3/4; PDF-only: B.A-9.23.3.1.(2).Eq1/2 -
+  see the discrepancies report). Equations passing 53 -> 56 of the PDF's (55 against fresh web
+  renders): 51 of the 73 failures are the site's "[f]" MathJax errors. The 17 vector crops the
+  shape rule had keyed Eq are now FigN; one (a rule on p895) shifts B.9.23.13.7.'s later Fig keys,
+  so figures passing fell 395 -> 352 (leaving those 17 crops unkeyed instead keeps 395).
+  `merge_equation_fragments` (`src/mo_toc/parsing/vector_cluster.py`) merges stacked vector
+  fragments but is a no-op on this PDF (no formula in it is vector-drawn); kept for other documents.
+- `build_web_pages.py`'s scrape can lose equations: the live site sometimes renders a page with
+  some `.equation-block`s missing (stable within a load, different between loads - Part 4.1 gave
+  60 or 91 of 91), and nothing checks the count against the content JSON's `[EQ:…]` markers, so a
+  run can drop equations (and shift later `…EqN` keys) silently. Check the PNG count per page
+  against `output/` after a re-scrape.
 - Prefer testing a small sample first for anything that processes the full 1685-page PDF or
   the full Workspace directory, before running it against the whole thing.
 - `output/` is shared by every session, so measure a change in a scratch directory instead:
