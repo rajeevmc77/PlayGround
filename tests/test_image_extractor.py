@@ -266,3 +266,17 @@ def test_an_upright_image_keeps_its_own_bytes():
     source.register_image(1, data, ext="jpeg", width=4, height=4)
     [image] = extract_images(source)
     assert (image.data, image.ext) == (data, "jpeg")
+
+
+def test_vector_images_on_page_merges_stacked_equation_fragments():
+    numerator = (0, 0, 60, 8)
+    denominator = (0, 20, 60, 28)  # 12pt gap - would stay split without the merge pass
+    rendered = []
+    source = _fake_source(rendered)
+
+    result = vector_images_on_page(
+        source, 0, raster_bboxes=[], drawing_rects=[numerator, denominator]
+    )
+
+    assert len(result) == 1
+    assert rendered == [(0, 0, 60, 28)]
