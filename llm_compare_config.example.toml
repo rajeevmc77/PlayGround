@@ -19,9 +19,12 @@ max_output_tokens = 8192     # output cap per call, thinking included; must cove
                                   # with reasoning_effort = "" use about 800 (450-1,640 measured)
 # token_scale = 1.0  # --calibrate suggests a value; actual input tokens were ~1.29x the
                      # tiling estimate on gemini-3.8-flash
+# Set rpm/tpm ~10% under your project's limits for the model (AI Studio > Rate limit; the docs do not
+# publish them: gemini-3.8-flash showed 1K RPM / 2M TPM / 10K RPD on a Tier 1 project).
 rpm = 30                     # provider requests per minute
 tpm = 250000                 # provider tokens per minute
-workers = 4                  # concurrent calls
+workers = 4                  # concurrent calls - what bounds a run's speed when rpm/tpm are far above
+                             # its use: 49 calls of ~8 s took 4m 26 s at 4, so 16-24 is worth trying
 request_timeout_seconds = 120  # per request; a stuck one is cut off and retried. Single-pair
                              # calls took 5-28 s in the 5-pair trial (the library's own wait
                              # is 600 s, which once stalled a run for ~18 minutes)
