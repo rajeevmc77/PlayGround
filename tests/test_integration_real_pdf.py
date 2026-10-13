@@ -355,3 +355,18 @@ def test_figure_a_1_1_1_1_6_has_a_formatted_title_and_note_level_owner(tmp_path)
     figure = next(i for i in matched if i.caption_identifier == "A-1.1.1.1.(6)")
     assert figure.title == "Figure A-1.1.1.1.(6)"
     assert figure.owner_citation == "Note:A-1.1.1.1.(6)"
+
+
+@pytest.mark.slow
+def test_the_real_pdfs_formula_images_carry_its_equation_tag():
+    from mo_toc.parsing.image_extractor import raster_images_on_page
+
+    source = PyMuPdfSource(str(PDF_PATH))
+    alts = {p: [i.alt for i in raster_images_on_page(source, p - 1)] for p in (1, 505, 1616)}
+
+    # p505: B.4.1.6.12's two formulas, then Figure 4.1.6.12. (an .eps path).
+    assert alts[505][:2] == ["EQUATION", "EQUATION"] and alts[505][2].endswith(".eps")
+    # p1616: AppD's 11 formulas, inline C'r and f'c glyphs included.
+    assert alts[1616] == ["EQUATION"] * 11
+    # p1: an untagged logo and an image with an auto-generated description.
+    assert alts[1][0] is None and "automatically generated" in alts[1][1]

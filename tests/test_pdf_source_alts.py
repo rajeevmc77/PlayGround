@@ -172,6 +172,16 @@ def test_a_malformed_parent_tree_gives_no_alts_instead_of_failing(tmp_path, pare
     assert PyMuPdfSource(_tagged_pdf(tmp_path, parent_tree=parent_tree)).page_image_alts(0) == []
 
 
+def test_a_parent_tree_whose_kids_loop_back_on_it_gives_no_alts(tmp_path):
+    doc, page = _tagged_doc()
+    _figure, tree = _tag(doc, page, "/Alt (EQUATION)", "<< >>")
+    doc.update_object(tree, f"<< /Kids [ {tree} 0 R ] >>")
+    path = str(tmp_path / "cycle.pdf")
+    doc.save(path)
+
+    assert PyMuPdfSource(path).page_image_alts(0) == []
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -191,6 +201,12 @@ def test_a_placement_records_the_transform_composed_through_nested_q_blocks():
     content = b"q 2 0 0 2 10 10 cm q 50 0 0 20 0 0 cm /Im0 Do Q Q"
 
     assert image_placements(content) == [((100.0, 0.0, 0.0, 40.0, 10.0, 10.0), None)]
+
+
+def test_operator_words_in_a_comment_are_not_read():
+    content = b"% q 2 0 0 2 0 0 cm /Im9 Do\n/Im0 Do"
+
+    assert image_placements(content) == [((1.0, 0.0, 0.0, 1.0, 0.0, 0.0), None)]
 
 
 def test_restoring_the_graphics_state_undoes_a_transform():
