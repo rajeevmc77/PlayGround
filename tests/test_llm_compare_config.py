@@ -160,3 +160,10 @@ def test_a_non_text_reasoning_effort_is_rejected(value):
 def test_reasoning_effort_is_not_read_from_the_environment():
     env = {"REASONING_EFFORT": "high", "GEMINI_REASONING_EFFORT": "high"}
     assert load_config("", env, env).reasoning_effort == "low"
+
+
+def test_scoring_workers_defaults_to_eight_and_must_be_at_least_one():
+    assert load_config("", {}).scoring_workers == 8
+    assert load_config("scoring_workers = 3", {}).scoring_workers == 3
+    with pytest.raises(ConfigError, match="scoring_workers"):
+        load_config("scoring_workers = 0", {})

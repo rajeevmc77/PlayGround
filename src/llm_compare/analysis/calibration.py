@@ -85,7 +85,9 @@ async def _run_one(scored, variant, config, make_deps) -> VariantResult:
         config, max_edge=variant.max_edge, max_pairs_per_call=variant.max_pairs_per_call
     )
     deps = make_deps(settings)
-    prepared = prepare_pairs(scored, settings.max_edge, settings.token_scale)
+    prepared = prepare_pairs(
+        scored, settings.max_edge, settings.token_scale, settings.scoring_workers
+    )
     started = deps.clock()
     records = list((await judge_pairs(prepared, deps)).values())
     elapsed = deps.clock() - started

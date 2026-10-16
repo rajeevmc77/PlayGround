@@ -280,3 +280,135 @@ def test_get_web_asset_refuses_to_escape_the_assets_dir(tmp_path):
 
 def test_get_web_asset_returns_503_when_no_dir_configured(tmp_path):
     assert _make_client(tmp_path).get("/web-assets/site-nav.css").status_code == 503
+
+
+def _make_llm_client(tmp_path, **kwargs):
+    json_path = _write_fixture_json(tmp_path)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir(exist_ok=True)
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    app = create_app(
+        toc_json_path=json_path, pdf_path=str(pdf_path), images_dir=str(images_dir), **kwargs
+    )
+    return TestClient(app)
+
+
+def test_llm_comparison_returns_the_report(tmp_path):
+    report = tmp_path / "llm_image_compare.json"
+    report.write_text(json.dumps({"summary": {"total_rows": 1}, "rows": []}))
+    client = _make_llm_client(tmp_path, llm_report_path=str(report))
+
+    resp = client.get("/api/llm-comparison")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"summary": {"total_rows": 1}, "rows": []}
+
+
+def test_llm_comparison_rereads_the_file_on_every_request(tmp_path):
+    report = tmp_path / "llm_image_compare.json"
+    client = _make_llm_client(tmp_path, llm_report_path=str(report))
+    assert client.get("/api/llm-comparison").status_code == 503
+
+    report.write_text(json.dumps({"rows": [1]}))
+    assert client.get("/api/llm-comparison").json() == {"rows": [1]}
+
+    report.write_text(json.dumps({"rows": [1, 2]}))
+    assert client.get("/api/llm-comparison").json() == {"rows": [1, 2]}
+
+
+def test_llm_comparison_returns_503_when_the_path_is_unset(tmp_path):
+    resp = _make_llm_client(tmp_path).get("/api/llm-comparison")
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Run src/build_llm_comparison.py first"
+
+
+def test_llm_comparison_returns_503_when_the_file_is_missing(tmp_path):
+    client = _make_llm_client(tmp_path, llm_report_path=str(tmp_path / "nope.json"))
+
+    resp = client.get("/api/llm-comparison")
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Run src/build_llm_comparison.py first"
+
+
+def test_llm_comparison_returns_503_for_a_file_that_is_not_json(tmp_path):
+    report = tmp_path / "llm_image_compare.json"
+    report.write_text('{"rows": [')
+    client = _make_llm_client(tmp_path, llm_report_path=str(report))
+
+    resp = client.get("/api/llm-comparison")
+
+    assert resp.status_code == 503
+    assert "not valid JSON" in resp.json()["detail"]
+    assert "build_llm_comparison.py" in resp.json()["detail"]
+
+
+def _llm_output_dir(tmp_path):
+    out = tmp_path / "output"
+    (out / "images").mkdir(parents=True)
+    (out / "images" / "a b.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    return out
+
+
+def test_llm_image_serves_a_file_under_the_output_dir(tmp_path):
+    out = _llm_output_dir(tmp_path)
+    client = _make_llm_client(tmp_path, output_dir=str(out))
+
+    resp = client.get("/api/llm-image/images/a%20b.png")
+
+    assert resp.status_code == 200
+    assert resp.content.endswith(b"fake")
+
+
+def test_llm_image_returns_404_for_a_missing_file(tmp_path):
+    client = _make_llm_client(tmp_path, output_dir=str(_llm_output_dir(tmp_path)))
+
+    assert client.get("/api/llm-image/images/none.png").status_code == 404
+
+
+def test_llm_image_returns_404_for_a_directory(tmp_path):
+    client = _make_llm_client(tmp_path, output_dir=str(_llm_output_dir(tmp_path)))
+
+    assert client.get("/api/llm-image/images").status_code == 404
+
+
+def test_llm_image_refuses_dot_dot_traversal(tmp_path):
+    out = _llm_output_dir(tmp_path)
+    (tmp_path / "secret.txt").write_text("secret")
+    client = _make_llm_client(tmp_path, output_dir=str(out))
+
+    for url in ("/api/llm-image/../secret.txt", "/api/llm-image/images/%2e%2e/%2e%2e/secret.txt"):
+        assert client.get(url).status_code == 404
+    assert client.get("/api/llm-image/images%2F..%2F..%2Fsecret.txt").status_code == 404
+
+
+def test_llm_image_returns_404_for_a_nul_byte_in_the_path(tmp_path):
+    client = _make_llm_client(tmp_path, output_dir=str(_llm_output_dir(tmp_path)))
+
+    assert client.get("/api/llm-image/images/a%00.png").status_code == 404
+
+
+def test_llm_image_refuses_an_absolute_path(tmp_path):
+    out = _llm_output_dir(tmp_path)
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret")
+    client = _make_llm_client(tmp_path, output_dir=str(out))
+
+    assert client.get(f"/api/llm-image/{outside}").status_code == 404
+    assert client.get(f"/api/llm-image/%2F{str(outside).lstrip('/')}").status_code == 404
+
+
+def test_llm_image_refuses_a_symlink_that_escapes_the_output_dir(tmp_path):
+    out = _llm_output_dir(tmp_path)
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret")
+    (out / "images" / "link.png").symlink_to(outside)
+    client = _make_llm_client(tmp_path, output_dir=str(out))
+
+    assert client.get("/api/llm-image/images/link.png").status_code == 404
+
+
+def test_llm_image_returns_503_when_no_output_dir_is_configured(tmp_path):
+    assert _make_llm_client(tmp_path).get("/api/llm-image/images/a.png").status_code == 503

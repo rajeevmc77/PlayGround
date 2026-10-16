@@ -19,6 +19,9 @@ IMAGES_DIR = str(PROJECT_ROOT / "output" / "images")
 WEB_TOC_JSON = str(PROJECT_ROOT / "output" / "bcbc_web.json")
 WEB_PAGES_DIR = str(PROJECT_ROOT / "output" / "web_pages")
 COMPARISON_JSON = str(PROJECT_ROOT / "output" / "comparison.json")
+OUTPUT_DIR = str(PROJECT_ROOT / "output")
+# Read on every request, so it may not exist yet when the server starts.
+LLM_REPORT_JSON = str(PROJECT_ROOT / "output" / "llm_image_compare.json")
 
 _app = None
 
@@ -44,6 +47,8 @@ def _get_app():
             web_toc_json_path=web_toc_json,
             web_pages_dir=WEB_PAGES_DIR,
             comparison_json_path=comparison_json,
+            llm_report_path=LLM_REPORT_JSON,
+            output_dir=OUTPUT_DIR,
         )
     return _app
 

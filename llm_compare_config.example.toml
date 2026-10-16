@@ -25,6 +25,8 @@ rpm = 30                     # provider requests per minute
 tpm = 250000                 # provider tokens per minute
 workers = 4                  # concurrent calls - what bounds a run's speed when rpm/tpm are far above
                              # its use: 49 calls of ~8 s took 4m 26 s at 4, so 16-24 is worth trying
+scoring_workers = 8          # threads that score and resize the images before the first call
+                             # (656 pairs: ~38 s with 1, ~5 s with 8)
 request_timeout_seconds = 120  # per request; a stuck one is cut off and retried. Single-pair
                              # calls took 5-28 s in the 5-pair trial (the library's own wait
                              # is 600 s, which once stalled a run for ~18 minutes)

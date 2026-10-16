@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from web_toc.output.page_writer import asset_file, page_file
 
 _NOT_BUILT = "Run src/build_web_pages.py first"
+_LLM_NOT_BUILT = "Run src/build_llm_comparison.py first"
 
 
 def _add_web_page_routes(app: FastAPI, web_pages_dir: str | None) -> None:
@@ -35,6 +36,47 @@ def _add_web_page_routes(app: FastAPI, web_pages_dir: str | None) -> None:
         return FileResponse(str(existing(asset_file(built_dir() / "assets", f"/{site_path}"))))
 
 
+def _read_llm_report(report_path: str | None):
+    """The LLM image report, read fresh so a run made while the server is up shows
+    after a browser refresh; 503 (never a traceback) when it is absent or unreadable."""
+    if not report_path or not Path(report_path).is_file():
+        raise HTTPException(status_code=503, detail=_LLM_NOT_BUILT)
+    try:
+        return json.loads(Path(report_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        detail = f"{Path(report_path).name} is not valid JSON ({error}). {_LLM_NOT_BUILT}"
+        raise HTTPException(status_code=503, detail=detail) from error
+
+
+def _image_under(root: Path, relative: str) -> Path:
+    """`relative` resolved inside `root`; 404 for anything that lands outside it
+    (`..`, an absolute path, a symlink out) or is not a file."""
+    resolved_root = root.resolve()
+    try:
+        target = (resolved_root / relative).resolve()
+        inside = target.is_relative_to(resolved_root) and target.is_file()
+    except (OSError, ValueError):  # e.g. a NUL byte in the path
+        inside = False
+    if not inside:
+        raise HTTPException(status_code=404, detail="Not found")
+    return target
+
+
+def _add_llm_routes(app: FastAPI, llm_report_path: str | None, output_dir: str | None) -> None:
+    """The viewer's "Image Comparison" tab: build_llm_comparison.py's report and the
+    PDF/web image files it points at (paths relative to the output dir)."""
+
+    @app.get("/api/llm-comparison")
+    def get_llm_comparison():
+        return JSONResponse(_read_llm_report(llm_report_path))
+
+    @app.get("/api/llm-image/{path:path}")
+    def get_llm_image(path: str):
+        if not output_dir:
+            raise HTTPException(status_code=503, detail=_LLM_NOT_BUILT)
+        return FileResponse(str(_image_under(Path(output_dir), path)))
+
+
 def create_app(
     toc_json_path: str,
     pdf_path: str,
@@ -42,6 +84,8 @@ def create_app(
     web_toc_json_path: str | None = None,
     web_pages_dir: str | None = None,
     comparison_json_path: str | None = None,
+    llm_report_path: str | None = None,
+    output_dir: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="MO Package TOC Viewer")
     payload = json.loads(Path(toc_json_path).read_text())
@@ -99,6 +143,7 @@ def create_app(
         return FileResponse(str(file_path))
 
     _add_web_page_routes(app, web_pages_dir)
+    _add_llm_routes(app, llm_report_path, output_dir)
 
     static_dir = Path(__file__).resolve().parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

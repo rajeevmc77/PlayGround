@@ -15,6 +15,17 @@ import {
   webLocationFor,
 } from "./both_view.mjs?v=8";
 import { filterIds, statusBadge } from "./compare_view.mjs?v=1";
+import {
+  filterRows,
+  hashText,
+  imageUrl,
+  pdfLink,
+  summaryCards,
+  usageLines,
+  verdictClass,
+  verdictOptions,
+  webLink,
+} from "./llm_compare_view.mjs?v=1";
 import { reasonView } from "./reason_view.mjs?v=1";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -483,14 +494,185 @@ function renderCompareTree() {
   content.appendChild(renderTocNode(tocVolume, 0, filters, "_compareImages", comparePanel, true));
 }
 
-const TABS = ["toc-both", "compare"];
+// "Image Comparison" tab: the LLM judgement of PDF/web image pairs from
+// output/llm_image_compare.json. Report text is untrusted, so every node is
+// built with createElement/textContent (llm_compare_view.mjs does the rest).
+let llmReport = null;
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+function showLlmMessage(text) {
+  const box = document.getElementById("llm-message");
+  box.textContent = text;
+  box.hidden = !text;
+}
+
+async function fetchLlmReport() {
+  const res = await fetch("/api/llm-comparison");
+  if (res.ok) return res.json();
+  const body = await res.json().catch(() => ({}));
+  throw new Error(body.detail || `The report request failed (${res.status})`);
+}
+
+function clearLlmPanel() {
+  document.getElementById("llm-cards").replaceChildren();
+  document.getElementById("llm-table").replaceChildren();
+  document.getElementById("llm-toolbar").hidden = true;
+}
+
+function externalLink(href, text) {
+  const link = el("a", "", text);
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener";
+  return link;
+}
+
+function llmImage(path, alt) {
+  const src = imageUrl(path);
+  if (src === null) return el("span", "llm-none", "—");
+  const img = el("img");
+  img.loading = "lazy";
+  img.src = src;
+  img.alt = alt;
+  const link = externalLink(src, "");
+  link.append(img);
+  return link;
+}
+
+function llmImageCell(path, alt, href, linkText) {
+  const cell = el("td");
+  cell.append(llmImage(path, alt));
+  if (!href) return cell;
+  const where = el("div", "llm-loc");
+  where.append(externalLink(href, linkText));
+  cell.append(where);
+  return cell;
+}
+
+function llmVerdictCell(row) {
+  const cell = el("td");
+  cell.append(el("span", `llm-badge ${verdictClass(row.verdict)}`, row.verdict), el("div", "llm-cap", row.route));
+  return cell;
+}
+
+function llmDetailsCell(row) {
+  const cell = el("td");
+  const hash = hashText(row);
+  if (hash) cell.append(el("div", "llm-cap", hash));
+  if (row.differences?.length) {
+    const list = el("ul");
+    row.differences.forEach((text) => list.append(el("li", "", text)));
+    cell.append(list);
+  }
+  if (row.message) cell.append(el("div", "", row.message));
+  if (!cell.childNodes.length) cell.append(el("span", "llm-none", "—"));
+  return cell;
+}
+
+function llmUsageCell(row) {
+  const cell = el("td", "llm-num");
+  const lines = usageLines(row);
+  if (!lines.length) cell.append(el("span", "llm-none", "—"));
+  lines.forEach((line, i) => cell.append(el("div", i === lines.length - 1 ? "llm-cap" : "", line)));
+  return cell;
+}
+
+function llmRow(row) {
+  const tr = el("tr");
+  tr.append(
+    el("td", "llm-key", row.key),
+    llmImageCell(row.pdf_path, `PDF image ${row.key}`, pdfLink(row), `PDF p.${row.pdf_location?.page} ↗`),
+    llmImageCell(row.web_path, `Web image ${row.key}`, webLink(row), "saved page ↗"),
+    llmVerdictCell(row),
+    llmDetailsCell(row),
+    llmUsageCell(row)
+  );
+  return tr;
+}
+
+const LLM_COLUMNS = ["Unified number", "PDF image", "Web image", "Verdict", "Details", "Tokens / cost"];
+
+function llmTable(rows) {
+  const table = el("table", "llm-grid");
+  const head = el("tr");
+  LLM_COLUMNS.forEach((name) => head.append(el("th", "", name)));
+  const thead = el("thead");
+  thead.append(head);
+  const body = el("tbody");
+  rows.forEach((row) => body.append(llmRow(row)));
+  table.append(thead, body);
+  return table;
+}
+
+function renderLlmRows() {
+  if (llmReport === null) return;
+  const rows = filterRows(llmReport.rows, {
+    verdict: document.getElementById("llm-verdict").value,
+    query: document.getElementById("llm-query").value,
+  });
+  document.getElementById("llm-table").replaceChildren(llmTable(rows));
+  document.getElementById("llm-count").textContent = `${rows.length} of ${llmReport.rows.length} shown`;
+}
+
+function renderLlmCards(summary) {
+  const cards = summaryCards(summary).map(({ label, value }) => {
+    const card = el("div", "llm-card");
+    card.append(el("b", "", value), el("span", "", label));
+    return card;
+  });
+  document.getElementById("llm-cards").replaceChildren(...cards);
+}
+
+function fillVerdictSelect(counts) {
+  const select = document.getElementById("llm-verdict");
+  const previous = select.value;
+  const options = verdictOptions(counts).map(({ value, label }) => new Option(label, value));
+  select.replaceChildren(...options);
+  if (options.some((option) => option.value === previous)) select.value = previous;
+}
+
+function renderLlmReport() {
+  const subtitle = [llmReport.model, llmReport.prompt_version, llmReport.generated_at].filter(Boolean);
+  showLlmMessage(subtitle.join(" · "));
+  renderLlmCards(llmReport.summary);
+  fillVerdictSelect(llmReport.summary?.counts);
+  document.getElementById("llm-toolbar").hidden = false;
+  renderLlmRows();
+}
+
+// Fetched each time the tab opens, so a run made while the server is up
+// shows without a restart; a failure shows the server's own explanation.
+async function loadLlmCompare() {
+  showLlmMessage("Loading the image comparison report…");
+  try {
+    llmReport = await fetchLlmReport();
+  } catch (error) {
+    llmReport = null;
+    clearLlmPanel();
+    showLlmMessage(error.message);
+    return;
+  }
+  renderLlmReport();
+}
+
+const TABS = ["toc-both", "compare", "llm-compare"];
 
 function switchTab(active) {
   TABS.forEach((name) => {
     document.getElementById(`tab-${name}`).classList.toggle("active", name === active);
     document.getElementById(name).style.display = name === active ? "flex" : "none";
   });
+  if (active === "llm-compare") loadLlmCompare();
 }
+
+document.getElementById("llm-verdict").addEventListener("change", renderLlmRows);
+document.getElementById("llm-query").addEventListener("input", renderLlmRows);
 
 TABS.forEach((name) => {
   document.getElementById(`tab-${name}`).addEventListener("click", () => switchTab(name));

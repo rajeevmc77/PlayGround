@@ -29,6 +29,9 @@ class LlmCompareConfig:
     rpm: int = 30
     tpm: int = 250_000
     workers: int = 4
+    # Threads that score and resize the images before any call (Pillow/numpy/zlib release the
+    # GIL: ~38 s serial -> ~5 s with 8 on 656 pairs).
+    scoring_workers: int = 8
     single_retries: int = 2
     retry_attempts: int = 5
     retry_base_delay: float = 1.0
@@ -52,6 +55,7 @@ _INT_KEYS = (
     "rpm",
     "tpm",
     "workers",
+    "scoring_workers",
     "single_retries",
     "retry_attempts",
 )

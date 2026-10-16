@@ -43,8 +43,9 @@ def plan_run(
     prices: Prices | None,
     scorer: Scorer = score_pair,
 ) -> RunPlan:
-    classified = classify_pairs(pairs, load, config.hash_match_percent, scorer)
-    prepared = prepare_pairs(classified.to_llm, config.max_edge, config.token_scale)
+    workers = config.scoring_workers
+    classified = classify_pairs(pairs, load, config.hash_match_percent, scorer, workers)
+    prepared = prepare_pairs(classified.to_llm, config.max_edge, config.token_scale, workers)
     misses = [
         pair
         for pair in prepared
